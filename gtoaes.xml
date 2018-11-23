@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<version>0.7</version>
+<date>20171015T122644</date>
+<Server>
+    <Client>4010</Client>
+    <Database>4011</Database>
+    <Mount>4012</Mount>
+    <Focus>4013</Focus>
+    <Telescope>4014</Telescope>
+    <Camera>4015</Camera>
+    <Annex>4016</Annex>
+</Server>
+<NTP>
+    <Enable>true</Enable>
+    <IP>172.28.1.3</IP>
+    <MaximumDifference>5</MaximumDifference>
+</NTP>
+<Observatory>
+    <group_id>001</group_id>
+    <device_type>GWAC</device_type>
+    <name>Xinglong</name>
+    <longitude>117.57454166666668</longitude>
+    <latitude>40.395933333333332</latitude>
+    <altitude>900</altitude>
+</Observatory>
+<Observatory>
+    <group_id>002</group_id>
+    <device_type>Normal</device_type>
+    <name>Xinglong</name>
+    <longitude>117.57454166666668</longitude>
+    <latitude>40.395933333333332</latitude>
+    <altitude>900</altitude>
+</Observatory>
