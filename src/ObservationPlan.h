@@ -81,20 +81,35 @@ public:
 	}
 
 	/*!
-	 * @brief 检查/确认计划是否与标志匹配
+	 * @brief 关联计划与观测系统
+	 * @param gid 组标志
+	 * @param uid 单元标志
+	 * @note
+	 * 当计划状态变更为OBSPLAN_RUN时调用
+	 */
+	void CoupleOBSS(const string &_gid, const string &_uid) {
+		namespace pt = boost::posix_time;
+		if (plan->gid.empty()) plan->gid = _gid;
+		if (plan->uid.empty()) plan->uid = _uid;
+		op_time = pt::to_iso_extended_string(pt::second_clock::universal_time());
+	}
+
+	/*!
+	 * @brief 检查/确认闲置计划是否与标志匹配
 	 * @param gid 组标志
 	 * @param uid 单元标志
 	 * @return
 	 *  1: 强匹配. gid:uid完全相同
 	 *  0: 弱匹配. gid:uid弱一致
 	 * -1: gid:uid不一致
+	 * -2: 计划不可被选择
 	 */
-	int IsMatched(const string& group, const string& unit) {
-		if (!plan.use_count()) return -1;
+	int IdleMatched(const string& _gid, const string& _uid) {
+		if (state > OBSPLAN_INT) return -2;
 		string gid = plan->gid;
 		string uid = plan->uid;
-		if (gid == group && uid == unit) return 1;
-		if (uid.empty() && (gid == group || gid.empty())) return 0;
+		if (gid == _gid && uid == _uid) return 1;
+		if (uid.empty() && (gid == _gid || gid.empty())) return 0;
 		return -1;
 	}
 
@@ -107,6 +122,20 @@ public:
 	int RelativePriority(int x) {
 		if (!plan.use_count()) return -1;
 		return (plan->priority - x);
+	}
+
+	/*!
+	 * @brief 查找相机标志对应的断点
+	 * @param cid 相机标志
+	 * @return
+	 * 断点地址
+	 */
+	apobject GetBreakPoint(const string &cid) {
+		apobject object;
+		ObsPlanBreakPtVec::iterator it;
+		for (it = ptBreak.begin(); it != ptBreak.end() && (*it)->cid != cid; ++it);
+		if (it != ptBreak.end()) object = *it;
+		return object;
 	}
 };
 typedef boost::shared_ptr<ObservationPlan> ObsPlanPtr;

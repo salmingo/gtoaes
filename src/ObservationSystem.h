@@ -29,6 +29,7 @@ struct InformationTelescope {
 	double az, el;		//< 指向坐标, 量纲: 角度. 地平系
 	double ora, odc;	//< 目标坐标, 量纲: 角度. 赤道系
 	double dra, ddc;	//< 导星量, 量纲: 角度. 赤道系
+	int moving;			//< 望远镜到达稳定态的控制量
 
 public:
 	InformationTelescope& operator=(aptele x) {
@@ -77,6 +78,27 @@ public:
 	void ResetOffset() {
 		dra = ddc = 0.0;
 	}
+	/*!
+	 * @brief 开始指向过程
+	 * @note
+	 * 指向过程包括: 指向, 复位, 导星
+	 */
+	void BeginMove() {
+		moving = 3;
+	}
+
+	/*!
+	 * @brief 是否进入稳定态
+	 * @return
+	 * 稳定态标志
+	 */
+	bool StableArrive() {
+		return (moving && --moving == 0);
+	}
+
+	void UnstableArrive() {
+		if (moving < 3) ++moving;
+	}
 };
 typedef InformationTelescope NFTele;
 typedef boost::shared_ptr<NFTele> NFTelePtr;
@@ -124,17 +146,13 @@ typedef boost::container::stable_vector<ObssCamPtr> ObssCamVec;
 struct ObservationSystemData {//< 观测系统数据
 	bool		enabled;	//< 启用标志
 	bool		running;	//< 工作标志
-	bool        automode;	//< 自动工作模式
+	bool		automode;	//< 自动工作模式
 	OBSS_STATUS	state;		//< 系统工作状态
 	/* 相机统计状态 */
-	int         exposing;	//< 开始曝光的相机数量
-	int         lighting;	//< 处于曝光状态的、需要天光的相机数量
-	int         flatting;	//< 处于平场状态的相机数量
-	/* 望远镜位置与导星量 */
-	double		objra;		//< 目标赤经, 量纲: 角度
-	double		objdc;		//< 目标赤纬, 量纲: 角度
-	double		dra;		//< 目标赤经, 量纲: 角度
-	double		ddc;		//< 目标赤纬, 量纲: 角度
+	int			exposing;	//< 开始曝光的相机数量
+	int			lighting;	//< 处于曝光状态的、需要天光的相机数量
+	int			flatting;	//< 处于平场状态的相机数量
+	int			waitflat;	//< 等待平场重新定位的相机数量
 
 public:
 	ObservationSystemData(const string& gid, const string& uid) {
@@ -145,10 +163,7 @@ public:
 		exposing= 0;
 		lighting= 0;
 		flatting= 0;
-		objra   = 0.0;
-		objdc   = 0.0;
-		dra     = 0.0;
-		ddc     = 0.0;
+		waitflat= 0;
 	}
 
 	/*!
@@ -176,6 +191,19 @@ public:
 			if (imgtyp == IMGTYPE_FLAT) --flatting;
 		}
 		return !exposing;
+	}
+
+	/*!
+	 * @brief 检查是否所有相机都进入等待平场状态
+	 * @return
+	 * 所有相机都进入等待平场状态
+	 */
+	bool enter_waitflat() {
+		return (++waitflat == flatting);
+	}
+
+	bool leave_waitflat() {
+		return (--waitflat == 0);
 	}
 };
 typedef ObservationSystemData ObssData;
@@ -208,8 +236,8 @@ protected:
 		MSG_RECEIVE_CAMERA,		//< 收到相机信息
 		MSG_CLOSE_TELESCOPE,	//< 通用望远镜断开连接
 		MSG_CLOSE_CAMERA,		//< 相机断开网络连接
-		MSG_TELESCOPE_CHANGED,	//< 望远镜工作状态变化
-		MSG_CAMERA_CHANGED,		//< 相机工作状态变化
+		MSG_TELESCOPE_TRACKING,	//< 望远镜进入跟踪状态
+		MSG_OUT_SAFELIMIT,		//< 望远镜超出限位范围
 		MSG_NEW_PROTOCOL,		//< 新的通信协议需要观测系统处理
 		MSG_NEW_PLAN,			//< 新的观测计划需要执行
 		MSG_FLAT_RESLEW,		//< 为平场重新指向
@@ -225,7 +253,7 @@ protected:
 	string	gid_;		//< 组标志
 	string	uid_;		//< 单元标志
 	int		timezone_;	//< 时区
-	double	minEle_;	//< 最小仰角, 量纲: 角度
+	double	minEle_;	//< 最小仰角, 量纲: 弧度
 	boost::posix_time::ptime tmLast_;	//< 时标, 记录: 系统创建时间, 最后一条网络连接断开时间
 	OBSERVATION_DURATION odtype_;	//< 观测周期类型
 
@@ -393,7 +421,7 @@ public:
 	 * - plan指向空指针, 代表无可执行计划
 	 * - plan非空时, 该计划需要立即执行: 在GC中已完成检测
 	 */
-	virtual bool NotifyPlan(ObsPlanPtr plan);
+	void NotifyPlan(ObsPlanPtr plan);
 	/*!
 	 * @brief 计算观测计划的相对优先级
 	 * @param plan 观测计划
@@ -422,14 +450,29 @@ public:
 protected:
 ///////////////////////////////////////////////////////////////////////////////
 	/*!
+	 * @brief 由网络连接地址查找对应的相机访问接口
+	 * @param ptr 网络资源地址
+	 * @return
+	 * 对应的相机访问接口
+	 */
+	ObssCamPtr find_camera(TCPClient *ptr);
+	/*!
+	 * @brief 由相机标志查找对应的相机访问接口
+	 * @param cid 相机标志
+	 * @return
+	 * 对应的相机访问接口
+	 */
+	ObssCamPtr find_camera(const string &cid);
+	/*!
 	 * @brief 为平场随机生成一个天顶附近位置
-	 * @param ra   赤经, 量纲: 角度
-	 * @param dec  赤纬, 量纲: 角度
+	 * @param ra    赤经, 量纲: 角度
+	 * @param dec   赤纬, 量纲: 角度
+	 * @param epoch 历元
 	 * @note
 	 * - 上午方位角范围: [180, 360)
 	 * - 下午方位角范围: [0, 180)
 	 */
-	void flat_position(double& ra, double& dec);
+	void flat_position(double& ra, double& dec, double& epoch);
 	/*!
 	 * @brief 检查坐标是否在安全范围内
 	 * @param ra   赤经, 量纲: 角度
@@ -468,13 +511,22 @@ protected:
 	 * @return
 	 * 状态改变结果
 	 */
-	virtual bool change_planstate(ObsPlanPtr plan, OBSPLAN_STATUS state);
+	bool change_planstate(ObsPlanPtr plan, OBSPLAN_STATUS state);
+	/*!
+	 * @brief 依据观测系统类型, 修正观测计划工作状态
+	 * @param plan       观测计划
+	 * @param old_state  观测计划当前状态
+	 * @param new_state  新的状态
+	 * @return
+	 * 状态改变结果
+	 */
+	virtual bool change_planstate(ObsPlanPtr plan, OBSPLAN_STATUS old_state, OBSPLAN_STATUS new_state) = 0;
 	/*!
 	 * @brief 解析观测计划, 尤其是其中的曝光参数, 形成ascii_proto_object并发送给对应相机
 	 * @return
 	 * 观测计划解析结果
 	 */
-	virtual bool resolve_obsplan() = 0;
+	virtual void resolve_obsplan() = 0;
 	/*!
 	 * @brief 将格式化字符串信息发送给相机
 	 * @param s    格式化字符串
@@ -482,6 +534,24 @@ protected:
 	 * @param cid  相机标志
 	 */
 	void write_to_camera(const char *s, const int n, const char *cid = NULL);
+	/*!
+	 * @brief 控制相机曝光操作
+	 * @param cid 相机标志
+	 * @param cmd 曝光指令
+	 */
+	void command_expose(const string &cid, EXPOSE_COMMAND cmd);
+	/*!
+	 * @brief 检查切换系统工作状态
+	 */
+	void switch_state();
+	/*!
+	 * @brief 检查望远镜是否指向到位
+	 * @return
+	 * 望远镜指向到位标志
+	 * @note
+	 * GWAC系统与通用系统稳定度要求不同
+	 */
+	virtual bool target_arrived() = 0;
 
 protected:
 ///////////////////////////////////////////////////////////////////////////////
@@ -537,17 +607,13 @@ protected:
 	 */
 	void on_close_camera(const long client, const long ec);
 	/*!
-	 * @brief 响应消息MSG_TELESCOPE_CHANGED
-	 * @param old_state 原状态
-	 * @param new_state 新状态
+	 * @brief 响应消息MSG_TELESCOPE_TRACKING
 	 */
-	void on_telescope_changed(const long old_state, const long new_state);
+	void on_telescope_tracking(const long, const long);
 	/*!
-	 * @brief 响应消息MSG_CAMERA_CHANGED
-	 * @param old_state 原状态
-	 * @param new_state 新状态
+	 * @brief 响应消息MSG_OUT_SAFELIMIT
 	 */
-	void on_camera_changed(const long old_state, const long new_state);
+	void on_out_safelimit(const long, const long);
 	/*!
 	 * @brief 处理由GeneralControl转发的ascii_proto_xxx通信协议
 	 */
@@ -555,7 +621,7 @@ protected:
 	/*!
 	 * @brief 处理接收的观测计划
 	 */
-	virtual void on_new_plan(const long, const long) = 0;
+	void on_new_plan(const long, const long);
 	/*!
 	 * @brief 为采集平场重新指向至中天附近位置
 	 */
@@ -659,7 +725,7 @@ protected:
 	 * - GWAC系统: 删除该计划
 	 * - 通用系统: 退还计划队列
 	 */
-	virtual void process_abortplan(int plan_sn) = 0;
+	virtual void process_abortplan(int plan_sn = -1) = 0;
 	/*!
 	 * @brief 启动自动化天文观测流程
 	 */
@@ -703,9 +769,10 @@ protected:
 	void process_info_mcover(apmcover proto);
 	/*!
 	 * @brief 处理相机状态信息
-	 * @param proto 通信协议
+	 * @param camptr 相机封装访问接口
+	 * @param proto  通信协议
 	 */
-	void process_info_camera(apcam proto);
+	void process_info_camera(ObssCamPtr camptr, apcam proto);
 };
 typedef boost::shared_ptr<ObservationSystem> ObsSysPtr;
 

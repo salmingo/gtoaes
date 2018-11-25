@@ -5,8 +5,11 @@
  */
 
 #include "ObservationSystemGWAC.h"
+#include "GLog.h"
+#include "ADefine.h"
 
 using namespace boost::posix_time;
+using namespace AstroUtil;
 
 ObsSysGWACPtr make_obss_gwac(const string& gid, const string& uid) {
 	return boost::make_shared<ObservationSystemGWAC>(gid, uid);
@@ -29,21 +32,80 @@ void ObservationSystemGWAC::NotifyState(mpstate proto) {
 }
 
 void ObservationSystemGWAC::NotifyUtc(mputc proto) {
-
+	static int count(999);
+	nftele_->utc = proto->utc;
+	if (++count == 1000) {// 检查望远镜时钟是否正确. 每1000周期检查一次
+		count = 0;
+		ptime now = microsec_clock::universal_time();
+		try {
+			/*
+			 * 计算转台控制机时钟漂移
+			 * - ss > 0: 时钟过慢
+			 * - ss < 0: 时钟过快
+			 */
+			ptime utc = from_iso_extended_string(proto->utc);
+			ptime::time_duration_type::tick_type ss = (now - utc).total_milliseconds();
+			if (ss > 5000 || ss < -5000) {
+				_gLog.Write(LOG_WARN, NULL, "telescope [%s:%s] time drifts %.3f seconds",
+						gid_.c_str(), uid_.c_str(), ss * 0.001);
+			}
+		}
+		catch(...) {
+			_gLog.Write(LOG_WARN, NULL, "wrong time [%s] from telescope [%s:%s]", proto->utc.c_str(),
+					gid_.c_str(), uid_.c_str());
+		}
+	}
 }
 
 void ObservationSystemGWAC::NotifyPosition(mpposition proto) {
+	double azi, ele;
+	double ra(proto->ra), dc(proto->dc);
+	bool safe = safe_position(ra, dc, azi, ele);
+	TELESCOPE_STATE state = nftele_->state;
+	bool slewing = state == TELESCOPE_SLEWING;
+	bool parking = state == TELESCOPE_PARKING;
 
+	if (!safe) {// 超出限位
+		if (state != TELESCOPE_PARKING) {
+			_gLog.Write(LOG_WARN, NULL, "telescope [%s:%s] position [%.4f, %.4f] is out of safe limit",
+					gid_.c_str(), uid_.c_str(), ra, dc);
+			nftele_->state = TELESCOPE_PARKING;
+			PostMessage(MSG_OUT_SAFELIMIT);
+		}
+	}
+	else if(slewing || parking) {// 是否由动至静
+		double e1 = slewing ? fabs(nftele_->ra - ra) : fabs(nftele_->az - azi);
+		double e2 = slewing ? fabs(nftele_->dc - dc) : fabs(nftele_->el - ele);
+		double t(0.003); // 到位阈值: 0.003度==10.8角秒
+
+		if (e1 > 180.0) e1 = 360.0 - e1;
+		if (e1 < t && e2 < t) {// 指向到位, 但此时不确定指向是否正确
+			if (nftele_->StableArrive()) {
+				_gLog.Write("telescope [%s:%s] arrived at [%.4f, %.4f]",
+						gid_.c_str(), uid_.c_str(), ra, dc);
+				nftele_->state = slewing ? TELESCOPE_TRACKING : TELESCOPE_PARKED;
+				if (nftele_->state == TELESCOPE_TRACKING) PostMessage(MSG_TELESCOPE_TRACKING);
+			}
+		}
+		else nftele_->UnstableArrive();
+	}
+
+	// 更新转台指向坐标
+	nftele_->ra = ra, nftele_->dc = dc;
+	nftele_->az = azi * D2R, nftele_->el = ele * D2R;
 }
 
 void ObservationSystemGWAC::NotifyCooler(apcooler proto) {
 	tmLast_ = second_clock::universal_time();
 }
 
-bool ObservationSystemGWAC::NotifyPlan(ObsPlanPtr plan) {
-	if (!ObservationSystem::NotifyPlan(plan)) return false;
+bool ObservationSystemGWAC::safe_position(double ra, double dec, double &azi, double &ele) {
+	mutex_lock lck(mtx_ats_);
+	ptime now = microsec_clock::universal_time();
 
-	return true;
+	ats_->SetMJD(now.date().modjulian_day() + now.time_of_day().total_milliseconds() * 0.001 / DAYSEC);
+	ats_->Eq2Horizon(ats_->LocalMeanSiderealTime() - ra * D2R, dec * D2R, azi, ele);
+	return (ele > minEle_);
 }
 
 int ObservationSystemGWAC::relative_priority(int x) {
@@ -57,25 +119,26 @@ int ObservationSystemGWAC::relative_priority(int x) {
  * bool change_planstate() 改变观测计划工作状态
  * - GWAC系统中断计划后, 状态变更为结束, 即不再执行该计划
  */
-bool ObservationSystemGWAC::change_planstate(ObsPlanPtr plan, OBSPLAN_STATUS state) {
-	if (!ObservationSystem::change_planstate(plan, state)) return false;
-	if (plan->state == OBSPLAN_INT) plan->state = OBSPLAN_OVER;
+bool ObservationSystemGWAC::change_planstate(ObsPlanPtr plan, OBSPLAN_STATUS old_state, OBSPLAN_STATUS new_state) {
+	if (new_state == OBSPLAN_INT) {
+		plan->state = old_state == OBSPLAN_WAIT ? OBSPLAN_ABANDON : OBSPLAN_OVER;
+		return true;
+	}
 
-	return true;
+	return false;
 }
 
 /*
- * bool resolve_obsplan() 解析并投递GWAC观测计划给相机
+ * void resolve_obsplan() 解析并投递GWAC观测计划给相机
  * - GWAC系统中, 所有相机使用相同参数
  */
-bool ObservationSystemGWAC::resolve_obsplan() {
+void ObservationSystemGWAC::resolve_obsplan() {
 	apappplan plan = plan_now_->plan;
-	apobject proto = boost::make_shared<ascii_proto_object>();
+	apobject proto = boost::make_shared<ascii_proto_object>(*plan);
 	const char *s;
 	int n;
 
 	// 构建ascii_proto_object成员变量
-	*proto = *plan;
 	proto->expdur = plan->expdur[0];
 	proto->frmcnt = plan->frmcnt[0];
 	if (plan->delay.size()) proto->delay = plan->delay[0];
@@ -83,12 +146,10 @@ bool ObservationSystemGWAC::resolve_obsplan() {
 	// 构建并发送格式化字符串
 	s = ascproto_->CompactObject(proto, n);
 	write_to_camera(s, n);
-
-	return true;
 }
 
-void ObservationSystemGWAC::on_new_plan(const long, const long) {
-
+bool ObservationSystemGWAC::target_arrived() {
+	return false;
 }
 
 bool ObservationSystemGWAC::process_guide(apguide proto) {
@@ -160,7 +221,7 @@ bool ObservationSystemGWAC::process_focusync() {
 
 void ObservationSystemGWAC::process_abortplan(int plan_sn) {
 	if (plan_wait_.use_count() && (plan_sn == -1 || (*plan_wait_) == plan_sn)) {
-		change_planstate(plan_wait_, OBSPLAN_DELETE);
+		ObservationSystem::change_planstate(plan_wait_, OBSPLAN_DELETE);
 		cb_planstate_changed_(plan_wait_);
 		plan_wait_.reset();
 	}

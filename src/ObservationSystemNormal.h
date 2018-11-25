@@ -24,11 +24,6 @@ public:
 	 * 关联结果
 	 */
 	bool CoupleTelescope(TcpCPtr ptr);
-	/*!
-	 * @brief 接收新的观测计划
-	 * @param plan 以通信协议格式记录的观测计划
-	 */
-	bool NotifyPlan(ObsPlanPtr plan);
 
 protected:
 	/*!
@@ -39,11 +34,26 @@ protected:
 	 */
 	int relative_priority(int x);
 	/*!
-	 * @brief 解析通用观测计划, 尤其是其中的曝光参数, 形成ascii_proto_object并发送给对应相机
+	 * @brief 依据观测系统类型, 修正观测计划工作状态
+	 * @param plan       观测计划
+	 * @param old_state  观测计划当前状态
+	 * @param new_state  新的状态
 	 * @return
-	 * 观测计划解析结果
+	 * 状态改变结果
 	 */
-	bool resolve_obsplan();
+	bool change_planstate(ObsPlanPtr plan, OBSPLAN_STATUS old_state, OBSPLAN_STATUS new_state);
+	/*!
+	 * @brief 解析通用观测计划, 尤其是其中的曝光参数, 形成ascii_proto_object并发送给对应相机
+	 */
+	void resolve_obsplan();
+	/*!
+	 * @brief 检查望远镜是否指向到位
+	 * @return
+	 * 望远镜指向到位标志
+	 * @note
+	 * GWAC系统与通用系统稳定度要求不同
+	 */
+	bool target_arrived();
 
 protected:
 	/*!
@@ -52,10 +62,6 @@ protected:
 	 * @param ec     错误代码
 	 */
 	void receive_telescope(const long client, const long ec);
-	/*!
-	 * @brief 处理接收的观测计划
-	 */
-	void on_new_plan(const long, const long);
 	/*!
 	 * @brief 导星
 	 * @param proto 通信协议

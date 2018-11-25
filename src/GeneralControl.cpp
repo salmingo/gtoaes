@@ -383,22 +383,17 @@ void GeneralControl::process_protocol_append_plan(apappplan plan) {
 		 * - 分配给匹配的在线系统
 		 * - 由计划调度策略触发执行, 即并非立即执行
 		 */
-		int matched(0);
-		if (obss_normal_.size()) {
+		if (!empty) catalogue_new_plan(plan);
+		else if (obss_normal_.size()) {
 			mutex_lock lck(mtx_obss_normal_);
 			int x(0);	// 系统匹配结果
 			for (ObsSysVec::iterator it = obss_normal_.begin(); it != obss_normal_.end() && x != 1; ++it) {
 				if ((x = (*it)->IsMatched(gid, uid)) >= 0) {
-					++matched;
-					if (empty) (*it)->GetID(plan->gid, plan->uid);
+					(*it)->GetID(plan->gid, plan->uid);
 					catalogue_new_plan(ascproto_->CopyAppendPlan(plan));
 				}
 			}
 		}
-		/*
-		 * 当指定观测系统不在线时, 存储该计划, 等待系统上线后执行
-		 */
-		if (!(matched || empty)) catalogue_new_plan(plan);
 	}
 	else if (iequals(imgtype, "object")) {
 		/*
@@ -455,22 +450,17 @@ void GeneralControl::process_protocol_append_gwac(apappplan plan) {
 		 * - 分配给匹配的在线系统
 		 * - 由计划调度策略触发执行, 即并非立即执行
 		 */
-		int matched(0);
-		if (obss_gwac_.size()) {
+		if (!empty) catalogue_new_plan(plan);
+		else if (obss_gwac_.size()) {
 			mutex_lock lck(mtx_obss_gwac_);
 			int x(0);	// 系统匹配结果
 			for (ObsSysVec::iterator it = obss_gwac_.begin(); it != obss_gwac_.end() && x != 1; ++it) {
 				if ((x = (*it)->IsMatched(gid, uid)) >= 0) {
-					++matched;
-					if (empty) (*it)->GetID(plan->gid, plan->uid);
+					(*it)->GetID(plan->gid, plan->uid);
 					catalogue_new_plan(ascproto_->CopyAppendPlan(plan));
 				}
 			}
 		}
-		/*
-		 * 当指定观测系统不在线时, 存储该计划, 等待系统上线后执行
-		 */
-		if (!(matched || empty)) catalogue_new_plan(plan);
 	}
 	else if (!empty && iequals(imgtype, "object")) {
 		/* GWAC系统不接受object图像类型时, gid:uid为通配符 */
@@ -573,12 +563,8 @@ void GeneralControl::process_protocol_check_plan(apchkplan proto, TCPClient* cli
 			if (plan_sn < 0 || (*it)->plan->plan_sn == plan_sn) {
 				if (!found) found = true;
 				// 构建并发送计划状态
+				if (plan_sn < 0) *plan = *((*it)->plan);
 				state = plan->state = (*it)->state;
-				if (plan_sn < 0) plan->plan_sn = (*it)->plan->plan_sn;
-				if (state >= OBSPLAN_WAIT && state <= OBSPLAN_RUN) {// 计划被选中执行时, 填充观测系统标志
-					plan->gid = (*it)->plan->gid;
-					plan->uid = (*it)->plan->uid;
-				}
 				output = ascproto_->CompactPlan(plan, n);
 				client->Write(output, n);
 			}
@@ -861,13 +847,13 @@ void GeneralControl::on_acquire_plan(const long, const long) {
 		ptime now = second_clock::universal_time();
 		ObsPlanPtr plan;
 		for (ExObsPlanVec::iterator it = plans_.begin(); it != plans_.end(); ++it) {
-			if ((*it)->IsMatched(gid, uid) >= 0 && obss->PlanRelativePriority((*it)->plan, now) > 0) {
+			if ((*it)->IdleMatched(gid, uid) >= 0 && obss->PlanRelativePriority((*it)->plan, now) > 0) {
 				(*it)->AssignObservationSystem(obss);
 				plan = to_obsplan(*it);
 				break;
 			}
 		}
-		obss->NotifyPlan(plan); // 当没有可执行计划时plan指向空指针
+		if (plan.use_count()) obss->NotifyPlan(plan);
 	}
 }
 
@@ -1170,15 +1156,12 @@ ExObsPlanPtr GeneralControl::from_obsplan(ObsPlanPtr ptr) {
 }
 
 /*
- * 回调函数:
- * void planstate_change(): 改变观测计划工作状态
- * void acquire_new_gwac(): GWAC系统申请新的观测计划
- * void acquire_new_plan(): 通用系统申请新的观测计划
+ * void planstate_changed() 观测计划工作状态发生改变
+ * - 回调函数
+ * - 当计划完成/中断/删除时, 解除与观测系统的关联
  */
 void GeneralControl::planstate_changed(ObsPlanPtr ptr) {
-	if (ptr->state != OBSPLAN_WAIT && ptr->state != OBSPLAN_RUN) {
-		from_obsplan(ptr)->obss.reset();
-	}
+	if (ptr->state == OBSPLAN_INT || ptr->state >= OBSPLAN_OVER) from_obsplan(ptr)->obss.reset();
 }
 
 void GeneralControl::acquire_new_gwac(const string& gid, const string& uid) {

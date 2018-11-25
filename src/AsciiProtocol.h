@@ -264,6 +264,14 @@ public:
 		plan_sn = INT_MIN;
 		state   = 0;
 	}
+
+	ascii_proto_plan& operator=(const ascii_proto_append_plan &plan) {
+		plan_sn = plan.plan_sn;
+		gid     = plan.gid;
+		uid     = plan.uid;
+
+		return *this;
+	}
 };
 typedef boost::shared_ptr<ascii_proto_plan> applan;
 

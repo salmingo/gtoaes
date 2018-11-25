@@ -28,12 +28,6 @@ bool ObservationSystemNormal::CoupleTelescope(TcpCPtr ptr) {
 	return true;
 }
 
-bool ObservationSystemNormal::NotifyPlan(ObsPlanPtr plan) {
-	if (!ObservationSystem::NotifyPlan(plan)) return false;
-
-	return true;
-}
-
 int ObservationSystemNormal::relative_priority(int x) {
 	int r1(x), r2(x);
 	if (plan_now_.use_count())  r1 = x - plan_now_->plan->priority;
@@ -41,58 +35,79 @@ int ObservationSystemNormal::relative_priority(int x) {
 	return (r1 < r2 ? r1 : r2);
 }
 
-bool ObservationSystemNormal::resolve_obsplan() {
-	mutex_lock lck(mtx_camera_);
-
-	// 检查图像类型
-	apappplan plan = plan_now_->plan;
-	IMAGE_TYPE imgtyp;
-	string abbr;
-
-	imgtyp = check_imgtype(plan->imgtype, abbr);
-	if (imgtyp <= IMGTYPE_DARK) {
-		plan->filter.clear();
-		plan->delay.clear();
+/*
+ * bool change_planstate() 改变观测计划工作状态
+ * - GWAC系统中断计划后, 状态变更为结束, 即不再执行该计划
+ */
+bool ObservationSystemNormal::change_planstate(ObsPlanPtr plan, OBSPLAN_STATUS old_state, OBSPLAN_STATUS new_state) {
+	if (new_state == OBSPLAN_INT && old_state == OBSPLAN_WAIT) {
+		plan->state = OBSPLAN_CAT;
+		return true;
 	}
-	if (imgtyp != IMGTYPE_OBJECT || plan->objname.empty()) plan->objname = abbr;
 
-	// 构建并发送格式化字符串
-	vector<string> &filter = plan->filter;
-	vector<double> &expdur = plan->expdur;
-	vector<double> &delay  = plan->delay;
-	vector<int>    &frmcnt = plan->frmcnt;
-	int ncam = cameras_.size(), n, i;
-	int nfilter(filter.size()), nexpdur(expdur.size()), ndelay(delay.size()), nfrmcnt(frmcnt.size());
-	int ifilter(0), iexpdur(0), idelay(0), ifrmcnt(0);
-	apobject object = boost::make_shared<ascii_proto_object>(); // 为各个相机分别生成参数
+	return false;
+}
+
+/*
+ * bool resolve_obsplan() 解析曝光参数并发送给相机
+ * - 全新执行计划: 解析观测计划, 提取曝光参数发送给相机
+ * - 中断后再次执行计划: 将中断断点记录的曝光参数发送给相机
+ */
+void ObservationSystemNormal::resolve_obsplan() {
+	int n;
 	const char *s;
 
-	*object = *plan;
-	for (i = 0; i < ncam; ++i) {
-		// 为各相机分别构建ascii_proto_object对象
-		object->expdur = expdur[iexpdur];
-		object->frmcnt = frmcnt[ifrmcnt];
-		if (nfilter) object->filter = filter[ifilter];
-		if (ndelay)  object->delay  = delay[idelay];
+	if (plan_now_->ptBreak.size()) {// 从断点中读取曝光参数
+		ObsPlanBreakPtVec &param = plan_now_->ptBreak;
+		ObsPlanBreakPtVec::iterator it;
+		ObssCamPtr camptr;
 
-		if (++ifilter >= nfilter) ifilter = 0;
-		if (++iexpdur >= nexpdur) iexpdur = 0;
-		if (++idelay  >= ndelay)  idelay  = 0;
-		if (++ifrmcnt >= nfrmcnt) ifrmcnt = 0;
-
-		// 构建并发送格式化字符串
-		s = ascproto_->CompactObject(object, n);
-		cameras_[i]->tcptr->Write(s, n);
+		for (it = param.begin(); it != param.end(); ++it) {
+			camptr = find_camera((*it)->cid);
+			s = ascproto_->CompactObject(*it, n);
+			camptr->tcptr->Write(s, n);
+		}
 	}
-	return true;
+	else {// 从观测计划中读取曝光参数
+		mutex_lock lck(mtx_camera_);
+
+		apappplan plan = plan_now_->plan;
+		vector<string> &filter = plan->filter;
+		vector<double> &expdur = plan->expdur;
+		vector<double> &delay  = plan->delay;
+		vector<int>    &frmcnt = plan->frmcnt;
+		int nfilter(filter.size()), nexpdur(expdur.size()), ndelay(delay.size()), nfrmcnt(frmcnt.size());
+		int ifilter(0), iexpdur(0), idelay(0), ifrmcnt(0);
+		ObssCamVec::iterator it;
+
+		for (it = cameras_.begin(); it != cameras_.end(); ++it) {
+			apobject object = boost::make_shared<ascii_proto_object>(*plan); // 为各个相机分别生成参数
+			object->cid    = (*it)->cid;
+			object->expdur = expdur[iexpdur];
+			object->frmcnt = frmcnt[ifrmcnt];
+			if (nfilter) object->filter = filter[ifilter];
+			if (ndelay)  object->delay  = delay[idelay];
+
+			if (++iexpdur >= nexpdur) iexpdur = 0;
+			if (++ifrmcnt >= nfrmcnt) ifrmcnt = 0;
+			if (nfilter && ++ifilter >= nfilter) ifilter = 0;
+			if (ndelay && ++idelay  >= ndelay)   idelay  = 0;
+
+			// 构建并发送格式化字符串
+			s = ascproto_->CompactObject(object, n);
+			(*it)->tcptr->Write(s, n);
+			// 存储断点
+			plan_now_->ptBreak.push_back(object);
+		}
+	}
+}
+
+bool ObservationSystemNormal::target_arrived() {
+	return false;
 }
 
 void ObservationSystemNormal::receive_telescope(const long client, const long ec) {
 	PostMessage(ec ? MSG_CLOSE_TELESCOPE : MSG_RECEIVE_TELESCOPE);
-}
-
-void ObservationSystemNormal::on_new_plan(const long, const long) {
-
 }
 
 bool ObservationSystemNormal::process_guide(apguide proto) {
@@ -167,7 +182,7 @@ bool ObservationSystemNormal::process_focusync() {
 
 void ObservationSystemNormal::process_abortplan(int plan_sn) {
 	if (plan_wait_.use_count() && (plan_sn == -1 || (*plan_wait_) == plan_sn)) {
-		change_planstate(plan_wait_, OBSPLAN_CAT);
+		ObservationSystem::change_planstate(plan_wait_, OBSPLAN_CAT);
 		cb_planstate_changed_(plan_wait_);
 		plan_wait_.reset();
 	}

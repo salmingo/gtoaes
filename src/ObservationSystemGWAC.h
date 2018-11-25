@@ -46,13 +46,20 @@ public:
 	 * @brief 通知制冷信息
 	 */
 	void NotifyCooler(apcooler proto);
-	/*!
-	 * @brief 接收新的观测计划
-	 * @param plan 以通信协议格式记录的观测计划
-	 */
-	bool NotifyPlan(ObsPlanPtr plan);
 
 protected:
+	/*!
+	 * @brief 检查坐标是否在安全范围内
+	 * @param ra   赤经, 量纲: 角度
+	 * @param dec  赤纬, 量纲: 角度
+	 * @param azi  方位角, 量纲: 角度
+	 * @param ele  高度角, 量纲: 角度
+	 * @return
+	 * 坐标在安全范围内返回true
+	 * @note
+	 * - 检查坐标在当前时间的高度角是否大于阈值
+	 */
+	bool safe_position(double ra, double dec, double &azi, double &ele);
 	/*!
 	 * @brief 计算x与当前可用观测计划的相对优先级
 	 * @param x 待评估优先级
@@ -61,25 +68,28 @@ protected:
 	 */
 	int relative_priority(int x);
 	/*!
-	 * @brief 改变观测计划工作状态
-	 * @param plan   观测计划
-	 * @param state  工作状态
+	 * @brief 依据观测系统类型, 修正观测计划工作状态
+	 * @param plan       观测计划
+	 * @param old_state  观测计划当前状态
+	 * @param new_state  新的状态
 	 * @return
 	 * 状态改变结果
 	 */
-	bool change_planstate(ObsPlanPtr plan, OBSPLAN_STATUS state);
+	bool change_planstate(ObsPlanPtr plan, OBSPLAN_STATUS old_state, OBSPLAN_STATUS new_state);
 	/*!
 	 * @brief 解析GWAC观测计划, 形成ascii_proto_object并发送给对应相机
-	 * @return
-	 * 观测计划解析结果
 	 */
-	bool resolve_obsplan();
+	void resolve_obsplan();
+	/*!
+	 * @brief 检查望远镜是否指向到位
+	 * @return
+	 * 望远镜指向到位标志
+	 * @note
+	 * GWAC系统与通用系统稳定度要求不同
+	 */
+	bool target_arrived();
 
 protected:
-	/*!
-	 * @brief 处理接收的观测计划
-	 */
-	void on_new_plan(const long, const long);
 	/*!
 	 * @brief 导星
 	 * @param proto 通信协议

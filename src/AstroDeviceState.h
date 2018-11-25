@@ -65,7 +65,7 @@ enum CAMCTL_STATUS {// 相机工作状态
 enum OBSS_STATUS {// 观测系统状态
 	OBSS_ERROR,		//< 错误
 	OBSS_INIT,		//< 正在完成初始化
-	OBSS_READY,		//< 准备就绪, 可以处理指令及观测计划
+	OBSS_RUN,		//< 准备就绪, 可以处理指令及观测计划
 	OBSS_STOP		//< 停用
 };
 

@@ -404,8 +404,7 @@ const char *AsciiProtocol::CompactAbortImage(apabortimg proto, int &n) {
 }
 
 const char *AsciiProtocol::CompactAppendPlan(apappplan proto, int &n) {
-	if (!proto.use_count()
-			|| !(proto->expdur.size() && proto->frmcnt.size()))
+	if (!proto.use_count() || !(proto->expdur.size() && proto->frmcnt.size()))
 		return NULL;
 
 	int size, i;
