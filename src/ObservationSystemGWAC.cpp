@@ -199,6 +199,8 @@ bool ObservationSystemGWAC::process_abortslew() {
 
 bool ObservationSystemGWAC::process_park() {
 	if (!ObservationSystem::process_park()) return false;
+	nftele_->state = TELESCOPE_PARKING;
+
 	int n;
 	const char *s = mntproto_->CompactPark(n);
 	return tcpc_telescope_->Write(s, n);

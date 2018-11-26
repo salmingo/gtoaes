@@ -150,8 +150,6 @@ struct ObservationSystemData {//< 观测系统数据
 	OBSS_STATUS	state;		//< 系统工作状态
 	/* 相机统计状态 */
 	int			exposing;	//< 开始曝光的相机数量
-	int			lighting;	//< 处于曝光状态的、需要天光的相机数量
-	int			flatting;	//< 处于平场状态的相机数量
 	int			waitflat;	//< 等待平场重新定位的相机数量
 
 public:
@@ -161,36 +159,23 @@ public:
 		automode= false;
 		state   = OBSS_ERROR;
 		exposing= 0;
-		lighting= 0;
-		flatting= 0;
 		waitflat= 0;
 	}
 
 	/*!
 	 * @brief 为某台相机进入曝光模式设置控制参量
-	 * @param imgtyp 图像类型
 	 */
-	void enter_exposing(IMAGE_TYPE imgtyp) {
+	void enter_exposing() {
 		++exposing;
-		if (imgtyp >= IMGTYPE_FLAT) {
-			++lighting;
-			if (imgtyp == IMGTYPE_FLAT) ++flatting;
-		}
 	}
 
 	/*!
 	 * @brief 为某台相机离开曝光模式设置控制参量
-	 * @param imgtyp 图像类型
 	 * @return
 	 * 任一相机仍处于曝光模式时返回false; 所有相机都离开曝光模式时返回true
 	 */
-	bool leave_expoing(IMAGE_TYPE imgtyp) {
-		--exposing;
-		if (imgtyp >= IMGTYPE_FLAT) {
-			--lighting;
-			if (imgtyp == IMGTYPE_FLAT) --flatting;
-		}
-		return !exposing;
+	bool leave_expoing() {
+		return (exposing && --exposing == 0);
 	}
 
 	/*!
@@ -199,11 +184,11 @@ public:
 	 * 所有相机都进入等待平场状态
 	 */
 	bool enter_waitflat() {
-		return (++waitflat == flatting);
+		return (++waitflat == exposing);
 	}
 
 	bool leave_waitflat() {
-		return (--waitflat == 0);
+		return (waitflat && --waitflat == 0);
 	}
 };
 typedef ObservationSystemData ObssData;
@@ -712,7 +697,7 @@ protected:
 	 * @note
 	 * 当cid.empty()判为真或适用所有相机时, 该指令将触发停止观测计划
 	 */
-	void process_abortimage(const char *cid = NULL);
+	void process_abortimage(const string &cid);
 	/*!
 	 * @brief 删除观测计划
 	 * @param plan_sn 计划编号
