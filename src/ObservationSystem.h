@@ -216,11 +216,13 @@ public:
 
 public:
 	/*!
-	 * @function PlanStateChanged 声明ObservationSystem回调函数类型, 当观测计划状态发生变化时触发
+	 * @function PlanFinished 声明ObservationSystem回调函数类型, 当观测计划终止时触发
 	 * @param ObsPlanPtr 观测计划指针
+	 * @note
+	 * - 响应观测计划正常/异常结束
 	 */
-	typedef boost::signals2::signal<void (ObsPlanPtr)> PlanStateChanged;
-	typedef PlanStateChanged::slot_type PlanStateChangedSlot;
+	typedef boost::signals2::signal<void (ObsPlanPtr)> PlanFinished;
+	typedef PlanFinished::slot_type PlanFinishedSlot;
 	/*!
 	 * @function AcquireNewPlan 声明ObservationSystem回调函数类型, 申请新的观测计划时触发
 	 * @param _1 组标志
@@ -254,8 +256,9 @@ protected:
 	string	uid_;		//< 单元标志
 	int		timezone_;	//< 时区
 	double	minEle_;	//< 最小仰角, 量纲: 弧度
-	boost::posix_time::ptime tmLast_;	//< 时标, 记录: 系统创建时间, 最后一条网络连接断开时间
 	OBSERVATION_DURATION odtype_;	//< 观测周期类型
+	boost::posix_time::ptime tmLast_;		//< 时标, 记录: 系统创建时间, 最后一条网络连接断开时间
+	boost::posix_time::ptime lastguide_;	//< 时标: 最后一次导星的UTC时间
 
 //////////////////////////////////////////////////////////////////////
 	boost::shared_ptr<AstroUtil::ATimeSpace> ats_;	//< 天文时-空转换接口
@@ -284,8 +287,8 @@ protected:
 
 //////////////////////////////////////////////////////////////////////
 	/* 回调函数 */
-	PlanStateChanged cb_planstate_changed_;	//< 观测计划状态发生变更
-	AcquireNewPlan  cb_acqnewplan_;			//< 申请新的观测计划
+	PlanFinished cb_plan_finished_;	//< 观测计划状态发生变更
+	AcquireNewPlan  cb_acqnewplan_;	//< 申请新的观测计划
 
 //////////////////////////////////////////////////////////////////////
 	/* 线程 */
@@ -437,10 +440,10 @@ public:
 	 */
 	int PlanRelativePriority(apappplan plan, boost::posix_time::ptime& now);
 	/*!
-	 * @brief 注册观测计划状态变更回调函数
+	 * @brief 注册观测计划终止回调函数
 	 * @param slot 插槽函数
 	 */
-	void RegisterPlanStateChanged(const PlanStateChangedSlot& slot);
+	void RegisterPlanFinished(const PlanFinishedSlot& slot);
 	/*!
 	 * @brief 注册申请观测计划回调函数
 	 * @param slot 插槽函数
@@ -675,7 +678,7 @@ protected:
 	 * @brief 导星
 	 * @param proto 通信协议
 	 */
-	virtual bool process_guide(apguide proto);
+	virtual void process_guide(apguide proto) = 0;
 	/*!
 	 * @brief 开关镜盖
 	 * @note

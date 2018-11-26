@@ -110,11 +110,15 @@ void ObservationSystemNormal::receive_telescope(const long client, const long ec
 	PostMessage(ec ? MSG_CLOSE_TELESCOPE : MSG_RECEIVE_TELESCOPE);
 }
 
-bool ObservationSystemNormal::process_guide(apguide proto) {
-	if (!ObservationSystem::process_guide(proto)) return false;
-	int n;
-	const char *s = ascproto_->CompactGuide(proto, n);
-	return tcpc_telescope_->Write(s, n);
+void ObservationSystemNormal::process_guide(apguide proto) {
+	/* 导星条件1: 最后一次导星距离现在现在时间已超过30秒 */
+	ptime now = second_clock::universal_time();
+	if ((now - lastguide_).total_seconds() < 30)
+		return;
+
+//	int n;
+//	const char *s = ascproto_->CompactGuide(proto, n);
+//	return tcpc_telescope_->Write(s, n);
 }
 
 bool ObservationSystemNormal::process_fwhm(apfwhm proto) {
@@ -183,7 +187,7 @@ bool ObservationSystemNormal::process_focusync() {
 void ObservationSystemNormal::process_abortplan(int plan_sn) {
 	if (plan_wait_.use_count() && (plan_sn == -1 || (*plan_wait_) == plan_sn)) {
 		ObservationSystem::change_planstate(plan_wait_, OBSPLAN_CAT);
-		cb_planstate_changed_(plan_wait_);
+		cb_plan_finished_(plan_wait_);
 		plan_wait_.reset();
 	}
 }

@@ -94,7 +94,7 @@ protected:
 	 * @brief 导星
 	 * @param proto 通信协议
 	 */
-	bool process_guide(apguide proto);
+	void process_guide(apguide proto);
 	/*!
 	 * @brief 通过数据处理统计得到的FWHM, 通知望远镜调焦
 	 * @param proto 通信协议

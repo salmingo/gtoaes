@@ -23,13 +23,14 @@ ObservationSystemCamera::ObservationSystemCamera(const string& id) {
 ObservationSystem::ObservationSystem(const string& gid, const string& uid) {
 	gid_      = gid;
 	uid_      = uid;
-	tmLast_   = second_clock::universal_time();
-	data_     = boost::make_shared<ObservationSystemData>(gid, uid);
-	ats_      = boost::make_shared<ATimeSpace>();
-	ascproto_ = make_ascproto();
 	timezone_ = 8;
 	minEle_   = 20.0 * D2R;
 	odtype_   = OD_DAY;
+	tmLast_   = second_clock::universal_time();
+	lastguide_= tmLast_;
+	data_     = boost::make_shared<ObservationSystemData>(gid, uid);
+	ats_      = boost::make_shared<ATimeSpace>();
+	ascproto_ = make_ascproto();
 	bufrcv_.reset(new char[TCP_PACK_SIZE]);
 }
 
@@ -162,20 +163,16 @@ void ObservationSystem::DecoupleTelescope(TcpCPtr client) {
 }
 
 bool ObservationSystem::CoupleCamera(TcpCPtr client, const string& cid) {
-	mutex_lock lck(mtx_camera_);
-	ObssCamVec::iterator it;
-
-	for (it = cameras_.begin(); it != cameras_.end() && (**it) != client; ++it);
-	if (it == cameras_.end()) {
+	ObssCamPtr camptr = find_camera(cid);
+	if (!camptr.use_count()) {
 		_gLog.Write("camera [%s:%s:%s] is on-line", gid_.c_str(), uid_.c_str(), cid.c_str());
-		// 保存相机标志与网络资源
 		ObssCamPtr one = boost::make_shared<ObssCamera>(cid);
-		one->tcptr = client;
-		cameras_.push_back(one);
-		// 重定向读出函数
 		const TCPClient::CBSlot& slot = boost::bind(&ObservationSystem::receive_camera, this, _1, _2);
 		client->RegisterRead(slot);
-
+		one->tcptr = client;
+		// 相机资源入库, 并检查系统工作状态
+		mutex_lock lck(mtx_camera_);
+		cameras_.push_back(one);
 		switch_state();
 		return true;
 	}
@@ -183,8 +180,8 @@ bool ObservationSystem::CoupleCamera(TcpCPtr client, const string& cid) {
 	return false;
 }
 
-void ObservationSystem::RegisterPlanStateChanged(const PlanStateChangedSlot& slot) {
-	cb_planstate_changed_.connect(slot);
+void ObservationSystem::RegisterPlanFinished(const PlanFinishedSlot& slot) {
+	cb_plan_finished_.connect(slot);
 }
 
 void ObservationSystem::RegisterAcquireNewPlan(const AcquireNewPlanSlot& slot) {
@@ -193,9 +190,15 @@ void ObservationSystem::RegisterAcquireNewPlan(const AcquireNewPlanSlot& slot) {
 
 //////////////////////////////////////////////////////////////////////////////
 /* 响应GeneralControl传递消息 */
+/*
+ * void NotifyProtocol() 处理由GC转发的、适用于该观测系统的指令
+ * - 缓存指令, 并触发消息
+ * - NotifyProtocol在GC的消息队列中调用
+ */
 void ObservationSystem::NotifyProtocol(apbase body) {
 	mutex_lock lck(mtx_queap_);
 	que_ap_.push_back(body);
+
 	PostMessage(MSG_NEW_PROTOCOL);
 }
 
@@ -204,12 +207,11 @@ void ObservationSystem::NotifyPlan(ObsPlanPtr plan) {
 	if (change_planstate(plan_wait_, OBSPLAN_INT)) {
 		_gLog.Write("plan[%d] on [%s:%s] is %s", plan_wait_->plan->plan_sn,
 				gid_.c_str(), uid_.c_str(), OBSPLAN_STATUS_STR[plan_wait_->state]);
-		cb_planstate_changed_(plan_wait_);
+		cb_plan_finished_(plan_wait_);
 	}
 	/* 新的计划进入等待区 */
 	plan_wait_ = plan; // 计划先进入等待区
 	change_planstate(plan_wait_, OBSPLAN_WAIT); // 计划状态变更为等待
-	cb_planstate_changed_(plan_wait_);
 	PostMessage(MSG_NEW_PLAN);
 }
 
@@ -309,13 +311,10 @@ bool ObservationSystem::interrupt_plan(OBSPLAN_STATUS state) {
 		_gLog.Write("plan[%d] on [%s:%s] is %s", plan_now_->plan->plan_sn,
 				gid_.c_str(), uid_.c_str(), OBSPLAN_STATUS_STR[plan_now_->state]);
 
-//		int n;
-//		const char *s = ascproto_->CompactExpose(EXPOSE_STOP, n);
-//		write_to_camera(s, n);
 		command_expose("", EXPOSE_STOP);
 		if (immediate) {
 			// plan_sn == INT_MAX为手动曝光模式
-			if (!((*plan_now_) == INT_MAX)) cb_planstate_changed_(plan_now_);
+			if (!((*plan_now_) == INT_MAX)) cb_plan_finished_(plan_now_);
 			plan_now_.reset();
 		}
 	}
@@ -605,9 +604,12 @@ void ObservationSystem::on_close_camera(const long client, const long ec) {
 }
 
 void ObservationSystem::on_telescope_tracking(const long, const long) {
+	/* 检查指向是否到位 */
+
 }
 
 void ObservationSystem::on_out_safelimit(const long, const long) {
+	process_park();
 }
 
 void ObservationSystem::on_new_protocol(const long, const long) {
@@ -688,6 +690,7 @@ bool ObservationSystem::process_homesync(aphomesync proto) {
 bool ObservationSystem::process_slewto(apslewto proto) {
 	if (plan_now_.use_count() || !safe_position(proto->ra, proto->dc))
 		return false;
+	nftele_->BeginMove();
 	return process_slewto(proto->ra, proto->dc, proto->epoch);
 }
 
@@ -708,16 +711,8 @@ bool ObservationSystem::process_abortslew() {
  */
 bool ObservationSystem::process_park() {
 	interrupt_plan();
+	nftele_->BeginMove();
 	return (nftele_->state != TELESCOPE_PARKING && nftele_->state != TELESCOPE_PARKED);
-}
-
-/*!
- * @brief 导星
- * @param proto 通信协议
- */
-bool ObservationSystem::process_guide(apguide proto) {
-	// 若协议中记录的是目标位置和定位位置, 应将计算后的修正位置写入ra/dec, 并清除目标位置
-	return false;
 }
 
 /*!
@@ -891,7 +886,25 @@ void ObservationSystem::process_disable(apdisable proto) {
  * @param proto 通信协议
  */
 void ObservationSystem::process_info_telescope(aptele proto) {
+	double ra(proto->ra), dc(proto->dc);
+	TELESCOPE_STATE state = proto->state;
+	// 更新望远镜指向坐标
+	*nftele_ = *proto;
 
+	if (proto->ele * D2R <= minEle_) {
+		if (state != TELESCOPE_PARKING) {
+			_gLog.Write(LOG_WARN, NULL, "telescope [%s:%s] position [%.4f, %.4f] is out of safe limit",
+					gid_.c_str(), uid_.c_str(), ra, dc);
+			PostMessage(MSG_OUT_SAFELIMIT);
+		}
+	}
+	else if (state == TELESCOPE_TRACKING || state == TELESCOPE_PARKED) {
+		if (nftele_->StableArrive()) {
+			_gLog.Write("telescope [%s:%s] arrived at [%.4f, %.4f]",
+					gid_.c_str(), uid_.c_str(), ra, dc);
+			if (state == TELESCOPE_TRACKING) PostMessage(MSG_TELESCOPE_TRACKING);
+		}
+	}
 }
 
 /*!
@@ -928,7 +941,7 @@ void ObservationSystem::process_info_camera(ObssCamPtr camptr, apcam proto) {
 				if (data_->leave_expoing(plan_now_->imgtype)) {
 					if (plan_now_->state == OBSPLAN_RUN) {
 						change_planstate(plan_now_, OBSPLAN_OVER);
-						cb_planstate_changed_(plan_now_);
+						cb_plan_finished_(plan_now_);
 
 						_gLog.Write("plan [%d] on [%s:%s] is %s", plan_now_->plan->plan_sn,
 								gid_.c_str(), uid_.c_str(), OBSPLAN_STATUS_STR[plan_now_->state]);
@@ -966,7 +979,6 @@ void ObservationSystem::on_new_plan(const long, const long) {
 		plan_wait_.reset();
 
 		change_planstate(plan_now_, OBSPLAN_RUN);
-		cb_planstate_changed_(plan_now_);
 		_gLog.Write("plan[%d] on [%s:%s] is %s", plan_now_->plan->plan_sn,
 				gid_.c_str(), uid_.c_str(), OBSPLAN_STATUS_STR[plan_now_->state]);
 	}

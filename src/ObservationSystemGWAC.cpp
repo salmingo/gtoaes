@@ -8,8 +8,9 @@
 #include "GLog.h"
 #include "ADefine.h"
 
-using namespace boost::posix_time;
 using namespace AstroUtil;
+using namespace boost;
+using namespace boost::posix_time;
 
 ObsSysGWACPtr make_obss_gwac(const string& gid, const string& uid) {
 	return boost::make_shared<ObservationSystemGWAC>(gid, uid);
@@ -58,12 +59,16 @@ void ObservationSystemGWAC::NotifyUtc(mputc proto) {
 }
 
 void ObservationSystemGWAC::NotifyPosition(mpposition proto) {
-	double azi, ele;
-	double ra(proto->ra), dc(proto->dc);
+	double ora(nftele_->ra), odc(nftele_->dc), oaz(nftele_->az), oel(nftele_->el);
+	double ra(proto->ra), dc(proto->dc), azi, ele;
 	bool safe = safe_position(ra, dc, azi, ele);
 	TELESCOPE_STATE state = nftele_->state;
 	bool slewing = state == TELESCOPE_SLEWING;
 	bool parking = state == TELESCOPE_PARKING;
+
+	// 更新转台指向坐标
+	nftele_->ra = ra, nftele_->dc = dc;
+	nftele_->az = azi * D2R, nftele_->el = ele * D2R;
 
 	if (!safe) {// 超出限位
 		if (state != TELESCOPE_PARKING) {
@@ -74,8 +79,8 @@ void ObservationSystemGWAC::NotifyPosition(mpposition proto) {
 		}
 	}
 	else if(slewing || parking) {// 是否由动至静
-		double e1 = slewing ? fabs(nftele_->ra - ra) : fabs(nftele_->az - azi);
-		double e2 = slewing ? fabs(nftele_->dc - dc) : fabs(nftele_->el - ele);
+		double e1 = slewing ? fabs(ora - ra) : fabs(oaz - azi);
+		double e2 = slewing ? fabs(odc - dc) : fabs(oel - ele);
 		double t(0.003); // 到位阈值: 0.003度==10.8角秒
 
 		if (e1 > 180.0) e1 = 360.0 - e1;
@@ -89,10 +94,6 @@ void ObservationSystemGWAC::NotifyPosition(mpposition proto) {
 		}
 		else nftele_->UnstableArrive();
 	}
-
-	// 更新转台指向坐标
-	nftele_->ra = ra, nftele_->dc = dc;
-	nftele_->az = azi * D2R, nftele_->el = ele * D2R;
 }
 
 void ObservationSystemGWAC::NotifyCooler(apcooler proto) {
@@ -152,11 +153,30 @@ bool ObservationSystemGWAC::target_arrived() {
 	return false;
 }
 
-bool ObservationSystemGWAC::process_guide(apguide proto) {
-	if (!ObservationSystem::process_guide(proto)) return false;
-	int n;
-	const char *s = mntproto_->CompactGuide(proto->ra, proto->dc, n);
-	return tcpc_telescope_->Write(s, n);
+void ObservationSystemGWAC::process_guide(apguide proto) {
+	/* 导星条件1: 观测计划类型为mon == monitor */
+	if (!(plan_now_.use_count() && iequals(plan_now_->plan->obstype, "mon")))
+		return;
+	/* 导星条件2: 最后一次导星距离现在现在时间已超过2分钟 */
+	ptime now = second_clock::universal_time();
+	if ((now - lastguide_).total_seconds() < 120)
+		return;
+
+	double tguide(0.08);// 导星阈值. 0.08度=4.8角分==288角秒
+	double tmax(2.7);	// 最大导星量. 2.7度=9720角秒
+	double dra, ddc;	// 导星量
+	/*  */
+	if (valid_ra(proto->objra) && valid_dec(proto->objdc)) {
+
+	}
+	else {
+		dra = proto->ra;
+		ddc = proto->dc;
+	}
+
+//	int n;
+//	const char *s = mntproto_->CompactGuide(proto->ra, proto->dc, n);
+//	return tcpc_telescope_->Write(s, n);
 }
 
 bool ObservationSystemGWAC::process_fwhm(apfwhm proto) {
@@ -222,7 +242,7 @@ bool ObservationSystemGWAC::process_focusync() {
 void ObservationSystemGWAC::process_abortplan(int plan_sn) {
 	if (plan_wait_.use_count() && (plan_sn == -1 || (*plan_wait_) == plan_sn)) {
 		ObservationSystem::change_planstate(plan_wait_, OBSPLAN_DELETE);
-		cb_planstate_changed_(plan_wait_);
+		cb_plan_finished_(plan_wait_);
 		plan_wait_.reset();
 	}
 }

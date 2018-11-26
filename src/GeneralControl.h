@@ -252,10 +252,10 @@ protected:
 	 */
 	ExObsPlanPtr from_obsplan(ObsPlanPtr ptr);
 	/*!
-	 * @brief 回调函数, 当观测计划状态变化时触发
+	 * @brief 回调函数, 当观测计划终止时触发
 	 * @param ptr 观测计划指针
 	 */
-	void planstate_changed(ObsPlanPtr ptr);
+	void plan_finished(ObsPlanPtr ptr);
 	/*!
 	 * @brief 回调函数, 为GWAC系统申请新的观测计划
 	 * @param addr ObservationSystem对象地址

@@ -924,8 +924,8 @@ ObsSysPtr GeneralControl::find_obss(const string& gid, const string& uid, int os
 				obss->RegisterAcquireNewPlan(slot);
 			}
 			// 注册回调函数: 观测计划工作状态发生变更
-			const ObservationSystem::PlanStateChangedSlot& slot = boost::bind(&GeneralControl::planstate_changed, this, _1);
-			obss->RegisterPlanStateChanged(slot);
+			const ObservationSystem::PlanFinishedSlot& slot = boost::bind(&GeneralControl::plan_finished, this, _1);
+			obss->RegisterPlanFinished(slot);
 		}
 	}
 
@@ -1160,8 +1160,8 @@ ExObsPlanPtr GeneralControl::from_obsplan(ObsPlanPtr ptr) {
  * - 回调函数
  * - 当计划完成/中断/删除时, 解除与观测系统的关联
  */
-void GeneralControl::planstate_changed(ObsPlanPtr ptr) {
-	if (ptr->state == OBSPLAN_INT || ptr->state >= OBSPLAN_OVER) from_obsplan(ptr)->obss.reset();
+void GeneralControl::plan_finished(ObsPlanPtr ptr) {
+	if (ptr->state != OBSPLAN_WAIT && ptr->state != OBSPLAN_RUN) from_obsplan(ptr)->obss.reset();
 }
 
 void GeneralControl::acquire_new_gwac(const string& gid, const string& uid) {
