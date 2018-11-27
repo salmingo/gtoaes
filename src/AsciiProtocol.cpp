@@ -359,12 +359,26 @@ const char *AsciiProtocol::CompactFocus(apfocus proto, int &n) {
 	return output_compacted(output, n);
 }
 
+const char *AsciiProtocol::CompactFocus(int position, int &n) {
+	string output = APTYPE_FOCUS;
+	output += " ";
+	join_kv(output, "value", position);
+	return output_compacted(output, n);
+}
+
 const char *AsciiProtocol::CompactMirrorCover(apmcover proto, int &n) {
 	if (!proto.use_count() || proto->value == INT_MIN) return NULL;
 
 	string output;
 	compact_base(to_apbase(proto), output);
 	join_kv(output, "value", proto->value);
+	return output_compacted(output, n);
+}
+
+const char *AsciiProtocol::CompactMirrorCover(int state, int &n) {
+	string output = APTYPE_MCOVER;
+	output += " ";
+	join_kv(output, "value", state);
 	return output_compacted(output, n);
 }
 

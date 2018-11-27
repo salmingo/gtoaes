@@ -260,6 +260,8 @@ protected:
 	string	uid_;		//< 单元标志
 	int		timezone_;	//< 时区
 	double	minEle_;	//< 最小仰角, 量纲: 弧度
+	double	tslew_;		//< 指向到位阈值
+	double	tguide_;	//< 导星阈值
 	OBSERVATION_DURATION odtype_;	//< 观测周期类型
 	boost::posix_time::ptime tmLast_;		//< 时标, 记录: 系统创建时间, 最后一条网络连接断开时间
 	boost::posix_time::ptime lastflat_;		//< 时标: 最后一次平场重新指向时间
@@ -415,7 +417,7 @@ public:
 	 * true:  与任意硬件设备间存在网络连接
 	 * false: 未建立与任意硬件设备的网络连接
 	 */
-	bool HasAnyConnection();
+	virtual bool HasAnyConnection();
 	/* 处理GC转发的、来自客户端或数据库的信息 */
 	/*!
 	 * @brief 缓冲消息
@@ -559,7 +561,7 @@ protected:
 	 * @note
 	 * GWAC系统与通用系统稳定度要求不同
 	 */
-	virtual bool target_arrived() = 0;
+	bool slew_arrived();
 
 protected:
 ///////////////////////////////////////////////////////////////////////////////
@@ -683,7 +685,17 @@ protected:
 	 * @brief 导星
 	 * @param proto 通信协议
 	 */
-	virtual void process_guide(apguide proto) = 0;
+	void process_guide(apguide proto);
+	/*!
+	 * @brief 执行导星
+	 * @param dra  赤经导星量
+	 * @param ddec 赤纬导星量
+	 * @return
+	 * 导星结果
+	 * @note
+	 * 继承类中可能修改导星量. GWAC系统通信协议中, 最大导星量绝对值为9999角秒
+	 */
+	virtual bool process_guide(double &dra, double &ddec) = 0;
 	/*!
 	 * @brief 开关镜盖
 	 * @note

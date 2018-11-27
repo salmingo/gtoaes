@@ -26,9 +26,10 @@ ObservationSystem::ObservationSystem(const string& gid, const string& uid) {
 	uid_      = uid;
 	timezone_ = 8;
 	minEle_   = 20.0 * D2R;
+	tslew_    = AS2D * 10;
+	tguide_   = AS2D;
 	odtype_   = OD_DAY;
 	tmLast_   = second_clock::universal_time();
-	lastguide_= tmLast_;
 	data_     = boost::make_shared<ObservationSystemData>(gid, uid);
 	ats_      = boost::make_shared<ATimeSpace>();
 	ascproto_ = make_ascproto();
@@ -372,6 +373,20 @@ void ObservationSystem::switch_state() {
 	}
 }
 
+bool ObservationSystem::slew_arrived() {
+	double era  = fabs((nftele_->ra - (nftele_->ora + nftele_->dra)) * cos(nftele_->dc * D2R));
+	double edec = fabs(nftele_->dc - (nftele_->odc + nftele_->ddc));
+	if (era > 180.0) era = 360.0 - era;
+
+	if (era > tslew_ || edec > tslew_) {
+		_gLog.Write(LOG_WARN, NULL, "pointing error [%.4f, %.4f] of [%s:%s] exceeds limit",
+				era, edec, gid_.c_str(), uid_.c_str());
+		interrupt_plan(OBSPLAN_INT);
+		return false;
+	}
+	return true;
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 /*
  * 线程:
@@ -620,18 +635,8 @@ void ObservationSystem::on_close_camera(const long client, const long ec) {
 }
 
 void ObservationSystem::on_telescope_track(const long, const long) {
-	double tslew(AS2D * 5);	// 到位阈值: 5角秒
-	double era = fabs((nftele_->ra - (nftele_->ora + nftele_->dra)) * cos(nftele_->dc * D2R));
-	double edc = fabs(nftele_->dc - (nftele_->odc + nftele_->ddc));
-	if (era > 180.0) era = 360.0 - era;
-
-	if (era < tslew && edc < tslew) {// 指向到位
+	if (slew_arrived()) {// 指向到位
 		command_expose(plan_now_->plan->cid, data_->exposing ? EXPOSE_RESUME : EXPOSE_START);
-	}
-	else {
-		_gLog.Write(LOG_WARN, NULL, "pointing error [%.4f, %.4f] of [%s:%s] exceeds limit",
-				era * 3600.0, edc * 3600.0, gid_.c_str(), uid_.c_str());
-		interrupt_plan(OBSPLAN_INT);
 	}
 }
 
@@ -693,6 +698,30 @@ void ObservationSystem::on_flat_reslew(const long, const long) {
 	}
 }
 
+/*
+ * void on_new_plan() 处理新的观测计划
+ * 触发时间:
+ * - GeneralControl通过NotifyPlan通知可用的观测计划
+ * - ObservationSystem在完成计划观测/中断流程后立即检查是否有可执行计划
+ */
+void ObservationSystem::on_new_plan(const long, const long) {
+	if (plan_wait_.use_count() && interrupt_plan()) {
+		/* 计划还在等待区 */
+		plan_now_ = plan_wait_;
+		plan_wait_.reset();
+		change_planstate(plan_now_, OBSPLAN_RUN);
+		/* 开始执行计划 */
+		resolve_obsplan(); // 将曝光参数发给相机
+		if      (plan_now_->imgtype <= IMGTYPE_DARK) command_expose(plan_now_->plan->cid, EXPOSE_START);
+		else if (plan_now_->imgtype == IMGTYPE_FLAT) on_flat_reslew(0, 0);
+		else {
+			apappplan plan = plan_now_->plan;
+			nftele_->SetObject(plan->ra, plan->dec);
+			process_slewto(plan->ra, plan->dec, plan->epoch);
+		}
+	}
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 /* 处理由GeneralControl转发的控制协议 */
 /*
@@ -732,6 +761,7 @@ bool ObservationSystem::process_slewto(apslewto proto) {
 
 	_gLog.Write("[%s:%s] will slew to [%.4f, %.4f, %.1f]",
 			gid_.c_str(), uid_.c_str(), ra, dc, proto->epoch);
+	lastguide_ = ptime(not_a_date_time);
 	nftele_->SetObject(ra, dc);
 	return process_slewto(ra, dc, proto->epoch);
 }
@@ -759,11 +789,37 @@ bool ObservationSystem::process_park() {
 	return false;
 }
 
+void ObservationSystem::process_guide(apguide proto) {
+	if (nftele_->state != TELESCOPE_TRACKING) return; // 望远镜跟踪态允许导星
+	double ora(proto->objra), odc(proto->objdc); // 通信协议中的目标位置
+	double tsame(AS2D); // 坐标相同阈值: 1角秒
+	double era, edc;
+	/* 计算导星量 */
+	if (valid_ra(ora) && valid_dec(odc)) {// 由目标位置和天文定位位置计算导星量
+		if ((era = fabs(ora - nftele_->ora)) > 180.0) era = 360.0 - era;
+		edc = fabs(odc - nftele_->odc);
+		if (era > tsame || edc > tsame) return; // 目标位置不同, 禁止导星
+		// 计算导星量
+		era = ora - proto->ra;
+		edc = odc - proto->dc;
+	}
+	else {
+		era = proto->ra;
+		edc = proto->dc;
+	}
+
+	if ((fabs(era) > tguide_ || fabs(edc) > tguide_) && process_guide(era, edc)) {
+		nftele_->Guide(era, edc);
+		lastguide_ = second_clock::universal_time();
+		_gLog.Write("telescope [%s:%s] do guiding for [%.1f, %.1f][arcsec]",
+				gid_.c_str(), uid_.c_str(), era * 3600.0, edc * 3600.0);
+	}
+}
+
 /*
  * bool process_mcover() 开关镜盖
  */
 bool ObservationSystem::process_mcover(apmcover proto) {
-	if (!tcpc_telescope_.use_count()) return false;
 	MIRRORCOVER_COMMAND cmd = MIRRORCOVER_COMMAND(proto->value);
 	if (cmd == MCC_CLOSE && plan_now_.use_count() && plan_now_->imgtype >= IMGTYPE_FLAT)
 		return false;
@@ -782,7 +838,7 @@ bool ObservationSystem::process_focus(apfocus proto) {
 	if (camptr.use_count() && camptr->info->focus != proto->value) {
 		_gLog.Write("focus [%s:%s:%s] position wants to be %d",
 				gid_.c_str(), uid_.c_str(), cid.c_str(), proto->value);
-		return tcpc_telescope_.use_count();
+		return true;
 	}
 	return false;
 }
@@ -797,7 +853,7 @@ bool ObservationSystem::process_fwhm(apfwhm proto) {
 	if (camptr.use_count() && fabs(camptr->fwhm - proto->value) > 0.1) {
 		_gLog.Write("FWHM [%s:%s:%s] was %.2f", gid_.c_str(), uid_.c_str(), cid.c_str(), proto->value);
 		camptr->fwhm = proto->value;
-		return tcpc_telescope_.use_count();
+		return true;
 	}
 	return false;
 }
@@ -822,6 +878,7 @@ void ObservationSystem::process_takeimage(aptakeimg proto) {
 	if (imgtyp >= IMGTYPE_OBJECT) {
 		plan_now_->plan->ra = nftele_->ra;
 		plan_now_->plan->dec= nftele_->dc;
+		nftele_->Actual2Object();
 	}
 	// 执行观测计划
 	resolve_obsplan();
@@ -971,7 +1028,7 @@ void ObservationSystem::process_info_focus(apfocus proto) {
 
 		int n;
 		const char *s = ascproto_->CompactFocus(proto, n);
-		write_to_camera(s, n, cid.c_str());
+		camptr->tcptr->Write(s, n);
 	}
 }
 
@@ -988,7 +1045,7 @@ void ObservationSystem::process_info_mcover(apmcover proto) {
 
 		int n;
 		const char *s = ascproto_->CompactMirrorCover(proto, n);
-		write_to_camera(s, n, cid.c_str());
+		camptr->tcptr->Write(s, n);
 	}
 }
 
@@ -1034,30 +1091,5 @@ void ObservationSystem::process_info_camera(ObssCamPtr camptr, apcam proto) {
 		}
 		else if (prev == CAMCTL_WAIT_SYNC) data_->leave_waitsync();
 		else if (prev == CAMCTL_WAIT_FLAT) data_->leave_waitflat();
-	}
-}
-
-/*
- * void on_new_plan() 处理新的观测计划
- * 触发时间:
- * - GeneralControl通过NotifyPlan通知可用的观测计划
- * - ObservationSystem在完成计划观测/中断流程后立即检查是否有可执行计划
- */
-void ObservationSystem::on_new_plan(const long, const long) {
-	if (plan_wait_.use_count() && interrupt_plan()) {
-		/* 计划还在等待区 */
-		plan_now_ = plan_wait_;
-		plan_wait_.reset();
-		change_planstate(plan_now_, OBSPLAN_RUN);
-		/* 开始执行计划 */
-		resolve_obsplan(); // 将曝光参数发给相机
-		if      (plan_now_->imgtype <= IMGTYPE_DARK) command_expose(plan_now_->plan->cid, EXPOSE_START);
-		else if (plan_now_->imgtype == IMGTYPE_FLAT) on_flat_reslew(0, 0);
-		else {
-			apappplan plan = plan_now_->plan;
-			nftele_->SetObject(plan->ra, plan->dec);
-			if (target_arrived()) command_expose(plan->cid, EXPOSE_START);
-			else process_slewto(plan->ra, plan->dec, plan->epoch);
-		}
 	}
 }

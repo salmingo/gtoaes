@@ -73,6 +73,7 @@ struct param_config {// 软件配置参数
 	int portTele;		//< 通用望远镜网络服务端口
 	int portMount;		//< GWAC转台网络服务端口
 	int portCamera;		//< 面向相机网络服务端口
+	int portMountAnnex;	//< GWAC转台配套设备网络服务端口: 镜盖+调焦
 	int portCameraAnnex;//< 面向相机配套设备网络服务端口
 
 	bool enableNTP;		//< NTP启用标志
@@ -105,9 +106,10 @@ public:
 		ptree& node1 = pt.add("Server", "");
 		node1.add("Client",     portClient     = 4010);
 		node1.add("Telescope",  portTele       = 4011);
-		node1.add("GWACMount",  portMount      = 4012);
+		node1.add("Mount",      portMount      = 4012);
 		node1.add("Camera",     portCamera     = 4013);
-		node1.add("CameraAnnex",portCameraAnnex= 4014);
+		node1.add("MountAnnex", portMountAnnex = 4014);
+		node1.add("CameraAnnex",portCameraAnnex= 4015);
 
 		ptree& node2 = pt.add("NTP", "");
 		node2.add("Enable", enableNTP = true);
@@ -163,9 +165,10 @@ public:
 				if (boost::iequals(child.first, "Server")) {
 					portClient     = child.second.get("Client",     4010);
 					portTele       = child.second.get("Telescope",  4011);
-					portMount      = child.second.get("GWACMount",  4012);
+					portMount      = child.second.get("Mount",      4012);
 					portCamera     = child.second.get("Camera",     4013);
-					portCameraAnnex= child.second.get("CameraAnnex",4014);
+					portMountAnnex = child.second.get("MountAnnex", 4014);
+					portCameraAnnex= child.second.get("CameraAnnex",4015);
 				}
 				else if (boost::iequals(child.first, "NTP")) {
 					enableNTP  = child.second.get("Enable", true);

@@ -91,6 +91,12 @@ bool GeneralControl::create_all_server() {
 				param_->portCamera, ec);
 		return false;
 	}
+	if ((ec = create_server(&tcps_mount_annex_, param_->portMountAnnex))) {
+		_gLog.Write(LOG_FAULT, "GeneralControl::create_all_server",
+				"Failed to create server for mount-annex on port<%d>. ErrorCode<%d>",
+				param_->portMountAnnex, ec);
+		return false;
+	}
 	if ((ec = create_server(&tcps_camera_annex_, param_->portCameraAnnex))) {
 		_gLog.Write(LOG_FAULT, "GeneralControl::create_all_server",
 				"Failed to create server for camera-annex on port<%d>. ErrorCode<%d>",
@@ -133,6 +139,13 @@ void GeneralControl::network_accept(const TcpCPtr& client, const long server) {
 		const TCPClient::CBSlot& slot = boost::bind(&GeneralControl::receive_camera, this, _1, _2);
 		client->RegisterRead(slot);
 	}
+	else if (ptr == tcps_mount_annex_.get()) {// GWAC镜盖+调焦
+		mutex_lock lck(mtx_tcpc_mount_annex_);
+		tcpc_mount_annex_.push_back(client);
+		client->UseBuffer();
+		const TCPClient::CBSlot& slot = boost::bind(&GeneralControl::receive_mount_annex, this, _1, _2);
+		client->RegisterRead(slot);
+	}
 	else if (ptr == tcps_camera_annex_.get()) {// GWAC温控
 		mutex_lock lck(mtx_tcpc_camera_annex_);
 		tcpc_camera_annex_.push_back(client);
@@ -158,11 +171,15 @@ void GeneralControl::receive_camera(const long client, const long ec) {
 	PostMessage(ec ? MSG_CLOSE_CAMERA : MSG_RECEIVE_CAMERA, client);
 }
 
+void GeneralControl::receive_mount_annex(const long client, const long ec) {
+	PostMessage(ec ? MSG_CLOSE_MOUNT_ANNEX : MSG_RECEIVE_MOUNT_ANNEX, client);
+}
+
 void GeneralControl::receive_camera_annex(const long client, const long ec) {
 	PostMessage(ec ? MSG_CLOSE_CAMERA_ANNEX : MSG_RECEIVE_CAMERA_ANNEX, client);
 }
 
-void GeneralControl::receive_protocol_ascii(TCPClient* client, PEER_TYPE peer) {
+void GeneralControl::resolve_protocol_ascii(TCPClient* client, PEER_TYPE peer) {
 	char term[] = "\n";	   // 换行符作为信息结束标记
 	int len = strlen(term);// 结束符长度
 	int pos;      // 标志符位置
@@ -196,6 +213,38 @@ void GeneralControl::receive_protocol_ascii(TCPClient* client, PEER_TYPE peer) {
 			else if (peer == PEER_TELESCOPE)    process_protocol_telescope    (proto, client);
 			else if (peer == PEER_CAMERA)       process_protocol_camera       (proto, client);
 			else if (peer == PEER_CAMERA_ANNEX) process_protocol_camera_annex (proto, client);
+		}
+	}
+}
+
+void GeneralControl::resolve_protocol_mount(TCPClient* client, PEER_TYPE peer) {
+	char term[] = "\n";	   // 换行符作为信息结束标记
+	int len = strlen(term);// 结束符长度
+	int pos;      // 标志符位置
+	int toread;   // 信息长度
+	mpbase proto;
+
+	while (client->IsOpen() && (pos = client->Lookup(term, len)) >= 0) {
+		if ((toread = pos + len) > TCP_PACK_SIZE) {
+			string ip = client->GetSocket().remote_endpoint().address().to_string();
+			_gLog.Write(LOG_FAULT, "GeneralControl::resolve_protocol_mount",
+					"too long message from IP<%s>. peer type is %s", ip.c_str(),
+					peer == PEER_MOUNT ? "MOUNT" : "MOUNT-ANNEX");
+			client->Close();
+		}
+		else {
+			/* 读取协议内容 */
+			client->Read(bufrcv_.get(), toread);
+			bufrcv_[pos] = 0;
+
+			proto = mntproto_->Resolve(bufrcv_.get());
+			if (!proto.use_count()) {
+				_gLog.Write(LOG_FAULT, "GeneralControl::resolve_protocol_mount",
+						"illegal protocol. received: %s", bufrcv_.get());
+				client->Close();
+			}
+			else if (peer == PEER_MOUNT)       process_protocol_mount       (proto, client);
+			else if (peer == PEER_MOUNT_ANNEX) process_protocol_mount_annex (proto, client);
 		}
 	}
 }
@@ -269,8 +318,7 @@ void GeneralControl::process_protocol_telescope(apbase proto, TCPClient* client)
 }
 
 /*
- * @note
- * GWAC转台专用通信协议
+ * void process_protocol_mount() 处理GWAC转台通信协议
  */
 void GeneralControl::process_protocol_mount(mpbase proto, TCPClient* client) {
 	string gid = proto->gid;
@@ -289,10 +337,10 @@ void GeneralControl::process_protocol_mount(mpbase proto, TCPClient* client) {
 		// GWAC转台系统中, 多个转台复用一条网络连接, 因此需要由GeneralControl管理网络连接资源
 		obss->CoupleTelescope(cliptr);
 		// 依据协议类型处理通信协议
-		if      (iequals(type, "position")) obss->NotifyPosition (from_mpbase<mntproto_position> (proto));
-		else if (iequals(type, "utc"))      obss->NotifyUtc      (from_mpbase<mntproto_utc>      (proto));
-		else if (iequals(type, "ready"))    obss->NotifyReady    (from_mpbase<mntproto_ready>    (proto));
-		else if (iequals(type, "state"))    obss->NotifyState    (from_mpbase<mntproto_state>    (proto));
+		if      (iequals(type, MPTYPE_POSITION)) obss->NotifyPosition (from_mpbase<mntproto_position> (proto));
+		else if (iequals(type, MPTYPE_UTC))      obss->NotifyUtc      (from_mpbase<mntproto_utc>      (proto));
+		else if (iequals(type, MPTYPE_READY))    obss->NotifyReady    (from_mpbase<mntproto_ready>    (proto));
+		else if (iequals(type, MPTYPE_STATE))    obss->NotifyState    (from_mpbase<mntproto_state>    (proto));
 	}
 	else client->Close();
 }
@@ -329,6 +377,32 @@ void GeneralControl::process_protocol_camera(apbase proto, TCPClient* client) {
 }
 
 /*
+ * void process_protocol_mount_annex() 处理GWAC调焦+镜盖通信协议
+ */
+void GeneralControl::process_protocol_mount_annex(mpbase proto, TCPClient* client) {
+	string gid = proto->gid;
+	string uid = proto->uid;
+
+	ObsSysGWACPtr obss = from_obss<ObservationSystemGWAC>(find_obss(gid, uid, OST_GWAC));
+	if (obss.use_count()) {
+		string type = proto->type;
+		TcpCPtr cliptr;
+		{// 在缓冲区中查找对应的指针
+			mutex_lock lck(mtx_tcpc_mount_annex_);
+			TcpCVec::iterator it;
+			for (it = tcpc_mount_annex_.begin(); it != tcpc_mount_annex_.end() && client != (*it).get(); ++it);
+			cliptr = *it;
+		}
+		// GWAC转台系统中, 多个转台复用一条网络连接, 因此需要由GeneralControl管理网络连接资源
+		obss->CoupleMountAnnex(cliptr);
+		// 依据协议类型处理通信协议
+		if      (iequals(type, MPTYPE_FOCUS))  obss->NotifyFocus  (from_mpbase<mntproto_focus> (proto));
+		else if (iequals(type, MPTYPE_MCOVER)) obss->NotifyMCover (from_mpbase<mntproto_mcover>(proto));
+	}
+	else client->Close();
+}
+
+/*
  * @note
  * 适用于GWAC定制相机, 处理单独温控单元测量的温度数据.
  * 后随两条操作:
@@ -342,16 +416,6 @@ void GeneralControl::process_protocol_camera_annex(apbase proto, TCPClient* clie
 	string cid = cooler->cid;
 
 	if (!cid.empty()) {
-		// 向数据库发送温控信息
-		if (db_.unique()) {
-			char status[512];
-			if (db_->uploadTemperature(gid.c_str(), uid.c_str(), cid.c_str(),
-					cooler->voltage, cooler->current, cooler->hotend, cooler->coolget, cooler->coolset,
-					cooler->utc.c_str(), status)) {
-				// 调试时输出
-//				_gLog.Write(LOG_WARN, NULL, "failed to upload cooler onto database. %s", status);
-			}
-		}
 		// 向观测系统传递信息
 		ObsSysGWACPtr obss = from_obss<ObservationSystemGWAC>(find_obss(gid, uid, OST_GWAC));
 		if (obss.use_count()) obss->NotifyCooler(cooler);
@@ -678,13 +742,15 @@ void GeneralControl::register_message() {
 	const CBSlot& slot12 = boost::bind(&GeneralControl::on_receive_telescope,    this, _1, _2);
 	const CBSlot& slot13 = boost::bind(&GeneralControl::on_receive_mount,        this, _1, _2);
 	const CBSlot& slot14 = boost::bind(&GeneralControl::on_receive_camera,       this, _1, _2);
-	const CBSlot& slot15 = boost::bind(&GeneralControl::on_receive_camera_annex, this, _1, _2);
+	const CBSlot& slot15 = boost::bind(&GeneralControl::on_receive_mount_annex,  this, _1, _2);
+	const CBSlot& slot16 = boost::bind(&GeneralControl::on_receive_camera_annex, this, _1, _2);
 
 	const CBSlot& slot21 = boost::bind(&GeneralControl::on_close_client,       this, _1, _2);
 	const CBSlot& slot22 = boost::bind(&GeneralControl::on_close_telescope,    this, _1, _2);
 	const CBSlot& slot23 = boost::bind(&GeneralControl::on_close_mount,        this, _1, _2);
 	const CBSlot& slot24 = boost::bind(&GeneralControl::on_close_camera,       this, _1, _2);
-	const CBSlot& slot25 = boost::bind(&GeneralControl::on_close_camera_annex, this, _1, _2);
+	const CBSlot& slot25 = boost::bind(&GeneralControl::on_close_mount_annex,  this, _1, _2);
+	const CBSlot& slot26 = boost::bind(&GeneralControl::on_close_camera_annex, this, _1, _2);
 
 	const CBSlot& slot31 = boost::bind(&GeneralControl::on_acquire_plan,   this, _1, _2);
 
@@ -692,61 +758,41 @@ void GeneralControl::register_message() {
 	RegisterMessage(MSG_RECEIVE_TELESCOPE,     slot12);
 	RegisterMessage(MSG_RECEIVE_MOUNT,         slot13);
 	RegisterMessage(MSG_RECEIVE_CAMERA,        slot14);
-	RegisterMessage(MSG_RECEIVE_CAMERA_ANNEX,  slot15);
+	RegisterMessage(MSG_RECEIVE_MOUNT_ANNEX,   slot15);
+	RegisterMessage(MSG_RECEIVE_CAMERA_ANNEX,  slot16);
 
 	RegisterMessage(MSG_CLOSE_CLIENT,       slot21);
 	RegisterMessage(MSG_CLOSE_TELESCOPE,    slot22);
 	RegisterMessage(MSG_CLOSE_MOUNT,        slot23);
 	RegisterMessage(MSG_CLOSE_CAMERA,       slot24);
-	RegisterMessage(MSG_CLOSE_CAMERA_ANNEX, slot25);
+	RegisterMessage(MSG_CLOSE_MOUNT_ANNEX,  slot25);
+	RegisterMessage(MSG_CLOSE_CAMERA_ANNEX, slot26);
 
 	RegisterMessage(MSG_ACQUIRE_PLAN,       slot31);
 }
 
 void GeneralControl::on_receive_client(const long client, const long ec) {
-	receive_protocol_ascii((TCPClient*) client, PEER_CLIENT);
+	resolve_protocol_ascii((TCPClient*) client, PEER_CLIENT);
 }
 
 void GeneralControl::on_receive_telescope(const long client, const long ec) {
-	receive_protocol_ascii((TCPClient*) client, PEER_TELESCOPE);
+	resolve_protocol_ascii((TCPClient*) client, PEER_TELESCOPE);
 }
 
 void GeneralControl::on_receive_camera(const long client, const long ec) {
-	receive_protocol_ascii((TCPClient*) client, PEER_CAMERA);
+	resolve_protocol_ascii((TCPClient*) client, PEER_CAMERA);
 }
 
 void GeneralControl::on_receive_mount(const long client, const long ec) {
-	TCPClient* cliptr = (TCPClient*) client;
-	char term[] = "\n";	   // 换行符作为信息结束标记
-	int len = strlen(term);// 结束符长度
-	int pos;      // 标志符位置
-	int toread;   // 信息长度
-	mpbase proto;
+	resolve_protocol_mount((TCPClient*) client, PEER_MOUNT);
+}
 
-	while (cliptr->IsOpen() && (pos = cliptr->Lookup(term, len)) >= 0) {
-		if ((toread = pos + len) > TCP_PACK_SIZE) {
-			string ip = cliptr->GetSocket().remote_endpoint().address().to_string();
-			_gLog.Write(LOG_FAULT, "resolve_protocol_mount", "too long message from <%s>", ip.c_str());
-			cliptr->Close();
-		}
-		else {
-			/* 读取协议内容 */
-			cliptr->Read(bufrcv_.get(), toread);
-			bufrcv_[pos] = 0;
-
-			proto = mntproto_->Resolve(bufrcv_.get());
-			if (!proto.use_count()) {
-				_gLog.Write(LOG_FAULT, "GeneralControl::resolve_protocol_mount",
-						"illegal protocol. received: %s", bufrcv_.get());
-				cliptr->Close();
-			}
-			else process_protocol_mount(proto, cliptr);
-		}
-	}
+void GeneralControl::on_receive_mount_annex(const long client, const long ec) {
+	resolve_protocol_mount((TCPClient*) client, PEER_MOUNT_ANNEX);
 }
 
 void GeneralControl::on_receive_camera_annex(const long client, const long ec) {
-	receive_protocol_ascii((TCPClient*) client, PEER_CAMERA_ANNEX);
+	resolve_protocol_ascii((TCPClient*) client, PEER_CAMERA_ANNEX);
 }
 
 void GeneralControl::on_close_client(const long client, const long ec) {
@@ -811,6 +857,26 @@ void GeneralControl::on_close_camera(const long client, const long ec) {
 
 	for (it = tcpc_camera_.begin(); it != tcpc_camera_.end() && ptr != (*it).get(); ++it);
 	if (it != tcpc_camera_.end()) tcpc_camera_.erase(it);
+}
+
+void GeneralControl::on_close_mount_annex(const long client, const long ec) {
+	mutex_lock lck(mtx_tcpc_mount_annex_);
+	TCPClient* ptr = (TCPClient*) client;
+	TcpCVec::iterator it;
+
+	for (it = tcpc_mount_annex_.begin(); it != tcpc_mount_annex_.end() && ptr != (*it).get(); ++it);
+	if (it != tcpc_mount_annex_.end()) {
+		if ((*it).use_count() > 1) {
+			// 遍历观测系统, 解联关系
+			mutex_lock lck(mtx_obss_gwac_);
+			ObsSysVec::iterator it1;
+			for (it1 = obss_gwac_.begin(); it1 != obss_gwac_.end(); ++it1) {
+				from_obss<ObservationSystemGWAC>(*it1)->DecoupleMountAnnex(*it);
+			}
+		}
+		// 释放资源
+		tcpc_mount_annex_.erase(it);
+	}
 }
 
 void GeneralControl::on_close_camera_annex(const long client, const long ec) {
@@ -1050,13 +1116,6 @@ void GeneralControl::thread_status() {
 		/* 发送观测计划工作状态 */
 		if (plans_.size()) {}
 	}
-}
-
-long GeneralControl::next_noon() {
-	ptime now(second_clock::local_time());
-	ptime noon(now.date(), hours(12));
-	long secs = (noon - now).total_seconds();
-	return secs < 10 ? secs + 86400 : secs;
 }
 
 void GeneralControl::exit_ignore_plan() {

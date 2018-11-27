@@ -19,9 +19,33 @@ ObsSysGWACPtr make_obss_gwac(const string& gid, const string& uid) {
 ObservationSystemGWAC::ObservationSystemGWAC(const string& gid, const string& uid)
 	: ObservationSystem(gid, uid) {
 	mntproto_ = make_mount(gid, uid);
+	tslew_    = AS2D * 600;	// 600角秒
+	tguide_   = 0.08;		// 288角秒
 }
 
 ObservationSystemGWAC::~ObservationSystemGWAC() {
+}
+
+bool ObservationSystemGWAC::CoupleMountAnnex(TcpCPtr client) {
+	if (!tcpc_mount_annex_.use_count()) {
+		_gLog.Write("mount-annex [%s:%s] is on-line", gid_.c_str(), uid_.c_str());
+		tcpc_mount_annex_ = client;
+
+		return true;
+	}
+	return false;
+}
+
+void ObservationSystemGWAC::DecoupleMountAnnex(TcpCPtr client) {
+	if (tcpc_mount_annex_ == client) {
+		_gLog.Write(LOG_WARN, NULL, "mount-annex [%s:%s] is off-line", gid_.c_str(), uid_.c_str());
+		tmLast_        = second_clock::universal_time();
+		tcpc_mount_annex_.reset();
+	}
+}
+
+bool ObservationSystemGWAC::HasAnyConnection() {
+	return (tcpc_mount_annex_.use_count() || ObservationSystem::HasAnyConnection());
 }
 
 void ObservationSystemGWAC::NotifyReady(mpready proto) {
@@ -97,7 +121,35 @@ void ObservationSystemGWAC::NotifyPosition(mpposition proto) {
 }
 
 void ObservationSystemGWAC::NotifyCooler(apcooler proto) {
-	tmLast_ = second_clock::universal_time();
+//	tmLast_ = second_clock::universal_time();
+}
+
+void ObservationSystemGWAC::NotifyFocus(mpfocus proto) {
+	string cid = proto->cid;
+	int position = proto->position;
+	ObssCamPtr camptr = find_camera(cid);
+	if (camptr.use_count() && position != camptr->info->focus) {
+		_gLog.Write("focus [%s:%s:%s] position was [%d]", gid_.c_str(), uid_.c_str(),
+				cid.c_str(), position);
+
+		int n;
+		const char *s = ascproto_->CompactFocus(position, n);
+		write_to_camera(s, n, cid.c_str());
+	}
+}
+
+void ObservationSystemGWAC::NotifyMCover(mpmcover proto) {
+	string cid = proto->cid;
+	int state = proto->state;
+	ObssCamPtr camptr = find_camera(cid);
+	if (camptr.use_count() && state != camptr->info->mcstate) {
+		_gLog.Write("mirror-cover [%s:%s:%s] was %s", gid_.c_str(), uid_.c_str(),
+				cid.c_str(), MIRRORCOVER_STATE_STR[state]);
+
+		int n;
+		const char *s = ascproto_->CompactMirrorCover(state, n);
+		camptr->tcptr->Write(s, n);
+	}
 }
 
 bool ObservationSystemGWAC::safe_position(double ra, double dec, double &azi, double &ele) {
@@ -149,44 +201,44 @@ void ObservationSystemGWAC::resolve_obsplan() {
 	write_to_camera(s, n);
 }
 
-bool ObservationSystemGWAC::target_arrived() {
-	return false;
-}
-
-void ObservationSystemGWAC::process_guide(apguide proto) {
+bool ObservationSystemGWAC::process_guide(double &dra, double &ddec) {
 	/* 导星条件1: 观测计划类型为mon == monitor */
 	if (!(plan_now_.use_count() && iequals(plan_now_->plan->obstype, "mon")))
-		return;
-	/* 导星条件2: 最后一次导星距离现在现在时间已超过2分钟 */
-	ptime now = second_clock::universal_time();
-	if ((now - lastguide_).total_seconds() < 120)
-		return;
+		return false;
+	/* 导星条件2: 最后一次导星距离现在现在时间已超过5分钟 */
+	if (!lastguide_.is_special() && (second_clock::universal_time() - lastguide_).total_seconds() < 300)
+		return false;
 
-	double tguide(0.08);// 导星阈值. 0.08度=4.8角分==288角秒
-	double tmax(2.7);	// 最大导星量. 2.7度=9720角秒
-	double dra, ddc;	// 导星量
-	/*  */
-	if (valid_ra(proto->objra) && valid_dec(proto->objdc)) {
-
-	}
-	else {
-		dra = proto->ra;
-		ddc = proto->dc;
-	}
-
-//	int n;
-//	const char *s = mntproto_->CompactGuide(proto->ra, proto->dc, n);
-//	return tcpc_telescope_->Write(s, n);
+	// 暂停曝光
+	command_expose("", EXPOSE_PAUSE);
+	// 导星
+	double limit(2.777); // 9997角秒
+	if (dra > limit) dra = limit;
+	else if (dra < -limit) dra = -limit;
+	if (ddec > limit) ddec = limit;
+	else if (ddec < -limit) ddec = -limit;
+	// GWAC转台赤经轴导星方向与约定相反
+	int n;
+	const char *s = mntproto_->CompactGuide(-dra, ddec, n);
+	return tcpc_telescope_->Write(s, n);
 }
 
 bool ObservationSystemGWAC::process_fwhm(apfwhm proto) {
-	// 由数据库完成
-	return true;
+	if (tcpc_mount_annex_.use_count()) {
+		int n;
+		const char *s = mntproto_->CompactFwhm(proto->cid, proto->value, n);
+		return tcpc_mount_annex_->Write(s, n);
+	}
+	return false;
 }
 
 bool ObservationSystemGWAC::process_focus(apfocus proto) {
-	// 由数据库完成
-	return true;
+	if (tcpc_mount_annex_.use_count()) {
+		int n;
+		const char *s = mntproto_->CompactFocus(proto->cid, proto->value, n);
+		return tcpc_mount_annex_->Write(s, n);
+	}
+	return false;
 }
 
 bool ObservationSystemGWAC::process_abortslew() {
@@ -214,8 +266,24 @@ bool ObservationSystemGWAC::process_slewto(double ra, double dec, double epoch) 
 }
 
 bool ObservationSystemGWAC::process_mcover(apmcover proto) {
-	// 由数据库实现
-	return true;
+	if (tcpc_mount_annex_.use_count()) {
+		mutex_lock lck(mtx_camera_);
+		int n, cmd = proto->value;
+		string cid = proto->cid;
+		bool empty = cid.empty();
+		const char *s;
+
+		for (ObssCamVec::iterator it = cameras_.begin(); it != cameras_.end(); ++it) {
+			if (empty || iequals(cid, (*it)->cid)) {
+				s = mntproto_->CompactMCover((*it)->cid, cmd, n);
+				tcpc_mount_annex_->Write(s, n);
+				if (!empty) break;
+			}
+		}
+
+		return true;
+	}
+	return false;
 }
 
 bool ObservationSystemGWAC::process_findhome() {

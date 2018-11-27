@@ -786,10 +786,12 @@ public:
 	 * @brief 封装调焦指令和数据
 	 */
 	const char *CompactFocus(apfocus proto, int &n);
+	const char *CompactFocus(int position, int &n);
 	/**
 	 * @brief 封装镜盖指令和状态
 	 */
 	const char *CompactMirrorCover(apmcover proto, int &n);
+	const char *CompactMirrorCover(int state, int &n);
 	/**
 	 * @brief 封装手动曝光指令
 	 */

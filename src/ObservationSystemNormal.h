@@ -46,14 +46,6 @@ protected:
 	 * @brief 解析通用观测计划, 尤其是其中的曝光参数, 形成ascii_proto_object并发送给对应相机
 	 */
 	void resolve_obsplan();
-	/*!
-	 * @brief 检查望远镜是否指向到位
-	 * @return
-	 * 望远镜指向到位标志
-	 * @note
-	 * GWAC系统与通用系统稳定度要求不同
-	 */
-	bool target_arrived();
 
 protected:
 	/*!
@@ -63,10 +55,13 @@ protected:
 	 */
 	void receive_telescope(const long client, const long ec);
 	/*!
-	 * @brief 导星
-	 * @param proto 通信协议
+	 * @brief 执行导星
+	 * @param dra  赤经导星量
+	 * @param ddec 赤纬导星量
+	 * @return
+	 * 导星结果. true: 成功
 	 */
-	void process_guide(apguide proto);
+	bool process_guide(double &dra, double &ddec);
 	/*!
 	 * @brief 通过数据处理统计得到的FWHM, 通知望远镜调焦
 	 * @param proto 通信协议

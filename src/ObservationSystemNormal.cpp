@@ -5,6 +5,11 @@
  */
 
 #include "ObservationSystemNormal.h"
+#include "GLog.h"
+#include "ADefine.h"
+
+using namespace AstroUtil;
+using namespace boost;
 using namespace boost::posix_time;
 
 ObsSysNormalPtr make_obss_normal(const string& gid, const string& uid) {
@@ -13,7 +18,8 @@ ObsSysNormalPtr make_obss_normal(const string& gid, const string& uid) {
 
 ObservationSystemNormal::ObservationSystemNormal(const string& gid, const string& uid)
 	: ObservationSystem(gid, uid) {
-
+	tslew_    = AS2D * 5;	// 5角秒
+	tguide_   = 1.39E-4;	// 0.5角秒
 }
 
 ObservationSystemNormal::~ObservationSystemNormal() {
@@ -102,34 +108,25 @@ void ObservationSystemNormal::resolve_obsplan() {
 	}
 }
 
-bool ObservationSystemNormal::target_arrived() {
-	return false;
-}
-
 void ObservationSystemNormal::receive_telescope(const long client, const long ec) {
 	PostMessage(ec ? MSG_CLOSE_TELESCOPE : MSG_RECEIVE_TELESCOPE);
 }
 
-void ObservationSystemNormal::process_guide(apguide proto) {
-	/* 导星条件1: 最后一次导星距离现在现在时间已超过30秒 */
-	ptime now = second_clock::universal_time();
-	if ((now - lastguide_).total_seconds() < 30)
-		return;
-
-//	int n;
-//	const char *s = ascproto_->CompactGuide(proto, n);
-//	return tcpc_telescope_->Write(s, n);
+bool ObservationSystemNormal::process_guide(double &dra, double &ddec) {
+	int n;
+	const char *s = ascproto_->CompactGuide(dra, ddec, n);
+	return tcpc_telescope_->Write(s, n);
 }
 
 bool ObservationSystemNormal::process_fwhm(apfwhm proto) {
-	if (!ObservationSystem::process_fwhm(proto)) return false;
+	if (!ObservationSystem::process_fwhm(proto) || !tcpc_telescope_.use_count()) return false;
 	int n;
 	const char *s = ascproto_->CompactFWHM(proto, n);
 	return tcpc_telescope_->Write(s, n);
 }
 
 bool ObservationSystemNormal::process_focus(apfocus proto) {
-	if (!ObservationSystem::process_focus(proto)) return false;
+	if (!ObservationSystem::process_focus(proto) || !tcpc_telescope_.use_count()) return false;
 	int n;
 	const char *s = ascproto_->CompactFocus(proto, n);
 	return tcpc_telescope_->Write(s, n);
@@ -157,10 +154,22 @@ bool ObservationSystemNormal::process_slewto(double ra, double dec, double epoch
 }
 
 bool ObservationSystemNormal::process_mcover(apmcover proto) {
-	if (!ObservationSystem::process_mcover(proto)) return false;
-	int n;
-	const char *s = ascproto_->CompactMirrorCover(proto, n);
-	return tcpc_telescope_->Write(s, n);
+	if (!ObservationSystem::process_mcover(proto) || !tcpc_telescope_.use_count()) return false;
+
+	mutex_lock lck(mtx_camera_);
+	int n, cmd = proto->value;
+	string cid = proto->cid;
+	bool empty = cid.empty();
+	const char *s;
+	for (ObssCamVec::iterator it = cameras_.begin(); it != cameras_.end(); ++it) {
+		if (empty || iequals(cid, (*it)->cid)) {
+			if (empty) proto->cid = (*it)->cid;
+			s = ascproto_->CompactMirrorCover(proto, n);
+			tcpc_telescope_->Write(s, n);
+			if (!empty) break;
+		}
+	}
+	return true;
 }
 
 bool ObservationSystemNormal::process_findhome() {

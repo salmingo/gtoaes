@@ -73,11 +73,13 @@ protected:
 		MSG_RECEIVE_TELESCOPE,		//< 收到通用望远镜信息
 		MSG_RECEIVE_MOUNT,			//< 收到GWAC转台信息
 		MSG_RECEIVE_CAMERA,			//< 收到相机信息
+		MSG_RECEIVE_MOUNT_ANNEX,	//< 收到镜盖+调焦信息
 		MSG_RECEIVE_CAMERA_ANNEX,	//< 收到温控+真空信息(GWAC-GY相机: 2017年)
 		MSG_CLOSE_CLIENT,		//< 客户端断开网络连接
 		MSG_CLOSE_TELESCOPE,	//< 通用望远镜断开网络连接
 		MSG_CLOSE_MOUNT,		//< 转台断开网络连接
 		MSG_CLOSE_CAMERA,		//< 相机断开网络连接
+		MSG_CLOSE_MOUNT_ANNEX,	// < 镜盖+调焦断开网络连接
 		MSG_CLOSE_CAMERA_ANNEX,	//< 温控断开网络连接
 		MSG_ACQUIRE_PLAN,		//< 申请观测计划
 		MSG_LAST	//< 占位, 不使用
@@ -88,6 +90,7 @@ protected:
 		PEER_TELESCOPE,		//< 通用望远镜
 		PEER_MOUNT,			//< GWAC转台
 		PEER_CAMERA,		//< 相机
+		PEER_MOUNT_ANNEX,	//< 镜盖+调焦
 		PEER_CAMERA_ANNEX,	//< 温控+真空(GWAC-GY)
 		PEER_LAST		//< 占位, 不使用
 	};
@@ -120,18 +123,21 @@ protected:
 	TcpSPtr tcps_tele_;			//< 网络服务: 通用望远镜
 	TcpSPtr tcps_mount_;		//< 网络服务: 转台
 	TcpSPtr tcps_camera_;		//< 网络服务: 相机
+	TcpSPtr tcps_mount_annex_;	//< 网络服务: 镜盖+调焦(GWAC)
 	TcpSPtr tcps_camera_annex_;	//< 网络服务: 温控+真空(GWAC-GY)
 
 	TcpCVec tcpc_client_;		//< 网络连接: 客户端
 	TcpCVec tcpc_tele_;			//< 网络连接: 通用望远镜
 	TcpCVec tcpc_mount_;		//< 网络连接: GWAC转台
 	TcpCVec tcpc_camera_;		//< 网络连接: 相机
+	TcpCVec tcpc_mount_annex_;	//< 网络连接: 镜盖+调焦(GWAC)
 	TcpCVec tcpc_camera_annex_;	//< 网络连接: 温控+真空(GWAC-GY)
 
 	boost::mutex mtx_tcpc_client_;			//< 互斥锁: 客户端
 	boost::mutex mtx_tcpc_tele_;			//< 互斥锁: 通用望远镜
 	boost::mutex mtx_tcpc_mount_;			//< 互斥锁: GWAC转台
 	boost::mutex mtx_tcpc_camera_;			//< 互斥锁: 相机
+	boost::mutex mtx_tcpc_mount_annex_;		//< 互斥锁: 镜盖+调焦(GWAC)
 	boost::mutex mtx_tcpc_camera_annex_;	//< 互斥锁: 温控+真空(GWAC-GY)
 
 	boost::shared_array<char> bufrcv_;	//< 网络信息存储区: 消息队列中调用
@@ -204,12 +210,6 @@ protected:
 	 * @param obss 观测系统集合
 	 */
 	void database_upload(ObsSysVec& obss);
-	/*!
-	 * @brief 计算下一个正午与当前时间之间的秒数
-	 * @return
-	 * 秒数
-	 */
-	long next_noon();
 	/*!
 	 * @brief 退出程序时, 记录被抛弃的观测计划
 	 */
@@ -319,6 +319,12 @@ protected:
 	 */
 	void receive_camera(const long client, const long ec);
 	/*!
+	 * @brief 处理镜盖+调焦信息
+	 * @param client 网络资源
+	 * @param ec     错误代码. 0: 正确
+	 */
+	void receive_mount_annex(const long client, const long ec);
+	/*!
 	 * @brief 处理温控+真空信息
 	 * @param client 网络资源
 	 * @param ec     错误代码. 0: 正确
@@ -331,16 +337,27 @@ protected:
 	 * @note
 	 * 与转台无关远程主机类型包括:
 	 * - PEER_CLIENT
-	 * - PEER_DATABASE
+	 * - PEER_TELESCOPE
+	 * - PEER_CAMERA
+	 * - PEER_CAMERA_ANNEX
 	 */
-	void receive_protocol_ascii(TCPClient* client, PEER_TYPE peer);
+	void resolve_protocol_ascii(TCPClient* client, PEER_TYPE peer);
+	/*!
+	 * @brief 解析与GWAC转台、GWAC镜盖+调焦相关网络信息
+	 * @param client 网络资源
+	 * @param peer   远程主机类型
+	 * @note
+	 * 与转台无关远程主机类型包括:
+	 * - PEER_MOUNT
+	 * - PEER_MOUNT_ANNEX
+	 */
+	void resolve_protocol_mount(TCPClient* client, PEER_TYPE peer);
 
 protected:
 	// 功能
 	/*----------------- 处理收到的网络信息 -----------------*/
 	/*!
 	 * @brief 处理来自用户/数据库的网络信息
-	 * @param type   信息类型
 	 * @param proto  信息主体
 	 * @param peer   远程主机类型
 	 * @param client 网络资源
@@ -348,7 +365,6 @@ protected:
 	void process_protocol_client(apbase proto, TCPClient* client);
 	/*!
 	 * @brief 处理来自通用望远镜的网络信息
-	 * @param type   信息类型
 	 * @param proto  信息主体
 	 * @param client 网络资源
 	 */
@@ -361,14 +377,18 @@ protected:
 	void process_protocol_mount(mpbase proto, TCPClient* client);
 	/*!
 	 * @brief 处理来自相机的网络信息
-	 * @param type   信息类型
 	 * @param proto  信息主体
 	 * @param client 网络资源
 	 */
 	void process_protocol_camera(apbase proto, TCPClient* client);
 	/*!
+	 * @brief 处理来自GWAC镜盖+调焦的网络信息
+	 * @param proto  信息主体
+	 * @param client 网络资源
+	 */
+	void process_protocol_mount_annex(mpbase proto, TCPClient* client);
+	/*!
 	 * @brief 处理来自GWAC制冷+真空的网络信息
-	 * @param type   信息类型
 	 * @param proto  信息主体
 	 * @param client 网络资源
 	 */
@@ -451,6 +471,12 @@ protected:
 	 */
 	void on_receive_camera(const long client, const long ec);
 	/*!
+	 * @brief 响应消息MSG_RECEIVE_MOUNT_ANNEX
+	 * @param client 网络连接
+	 * @param ec     错误代码. 0: 正确; 其它: 错误
+	 */
+	void on_receive_mount_annex(const long client, const long ec);
+	/*!
 	 * @brief 响应消息MSG_RECEIVE_CAMERA_ANNEX
 	 * @param client 网络连接
 	 * @param ec     错误代码. 0: 正确; 其它: 错误
@@ -480,6 +506,12 @@ protected:
 	 * @param ec     错误代码. 0: 正确; 其它: 错误
 	 */
 	void on_close_camera(const long client, const long ec);
+	/*!
+	 * @brief 响应消息MSG_CLOSE_MOUNT_ANNEX
+	 * @param client 网络连接
+	 * @param ec     错误代码. 0: 正确; 其它: 错误
+	 */
+	void on_close_mount_annex(const long client, const long ec);
 	/*!
 	 * @brief 响应消息MSG_CLOSE_CAMERA_ANNEX
 	 * @param client 网络连接

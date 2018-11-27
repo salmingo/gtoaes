@@ -19,9 +19,29 @@ public:
 
 protected:
 	// 成员变量
-	MountPtr mntproto_;		//< GWAC转台编码协议解析接口
+	MountPtr mntproto_;			//< GWAC转台编码协议解析接口
+	TcpCPtr tcpc_mount_annex_;	//< 望远镜附件网络连接(GWAC镜盖+调焦)
 
 public:
+	/*!
+	 * @brief 关联GWAC转台附件网络连接与观测系统
+	 * @param client 网络连接
+	 * @return
+	 * 关联结果
+	 */
+	bool CoupleMountAnnex(TcpCPtr client);
+	/*!
+	 * @brief 解除GWAC转台附件网络连接与观测系统的关联
+	 * @param client 网络连接
+	 */
+	void DecoupleMountAnnex(TcpCPtr client);
+	/*!
+	 * @brief 检查是否存在与硬件设备的有效关联
+	 * @return
+	 * true:  与任意硬件设备间存在网络连接
+	 * false: 未建立与任意硬件设备的网络连接
+	 */
+	virtual bool HasAnyConnection();
 	/*
 	 * notify_xxx一般在主程序接口的消息队列里触发. 为避免notify_xxx耗时过长导致的主程序阻塞,
 	 * 在本类中以消息队列形式管理notify_xxx, 即为其生成消息
@@ -46,6 +66,8 @@ public:
 	 * @brief 通知制冷信息
 	 */
 	void NotifyCooler(apcooler proto);
+	void NotifyFocus(mpfocus proto);
+	void NotifyMCover(mpmcover proto);
 
 protected:
 	/*!
@@ -80,21 +102,16 @@ protected:
 	 * @brief 解析GWAC观测计划, 形成ascii_proto_object并发送给对应相机
 	 */
 	void resolve_obsplan();
-	/*!
-	 * @brief 检查望远镜是否指向到位
-	 * @return
-	 * 望远镜指向到位标志
-	 * @note
-	 * GWAC系统与通用系统稳定度要求不同
-	 */
-	bool target_arrived();
 
 protected:
 	/*!
-	 * @brief 导星
-	 * @param proto 通信协议
+	 * @brief 执行导星
+	 * @param dra  赤经导星量
+	 * @param ddec 赤纬导星量
+	 * @return
+	 * 导星结果
 	 */
-	void process_guide(apguide proto);
+	bool process_guide(double &dra, double &ddec);
 	/*!
 	 * @brief 通过数据处理统计得到的FWHM, 通知望远镜调焦
 	 * @param proto 通信协议
