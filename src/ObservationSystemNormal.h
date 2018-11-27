@@ -115,19 +115,6 @@ protected:
 	 * @param epoch 目标位置坐标系, 量纲: 历元
 	 */
 	bool process_homesync(aphomesync proto);
-	/*!
-	 * @brief 改变调焦器零点位置
-	 */
-	bool process_focusync();
-	/*!
-	 * @brief 继承类处理待执行计划
-	 * @param plan_sn 计划编号
-	 * @note
-	 * 若编号匹配:
-	 * - GWAC系统: 删除该计划
-	 * - 通用系统: 退还计划队列
-	 */
-	void process_abortplan(int plan_sn);
 };
 typedef boost::shared_ptr<ObservationSystemNormal> ObsSysNormalPtr;
 extern ObsSysNormalPtr make_obss_normal(const string& gid, const string& uid);

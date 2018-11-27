@@ -16,8 +16,9 @@ using namespace boost::posix_time;
 using AstroUtil::ATimeSpace;
 
 ObservationSystemCamera::ObservationSystemCamera(const string& id) {
-	cid = id;
+	cid     = id;
 	enabled = true;
+	fwhm    = 0.0;
 }
 
 ObservationSystem::ObservationSystem(const string& gid, const string& uid) {
@@ -205,11 +206,7 @@ void ObservationSystem::NotifyProtocol(apbase body) {
 
 void ObservationSystem::NotifyPlan(ObsPlanPtr plan) {
 	/* 修改等待区中计划, 退还给计划队列 */
-	if (change_planstate(plan_wait_, OBSPLAN_INT)) {
-		_gLog.Write("plan[%d] on [%s:%s] is %s", plan_wait_->plan->plan_sn,
-				gid_.c_str(), uid_.c_str(), OBSPLAN_STATUS_STR[plan_wait_->state]);
-		cb_plan_finished_(plan_wait_);
-	}
+	change_planstate(plan_wait_, OBSPLAN_INT);
 	/* 新的计划进入等待区 */
 	plan_wait_ = plan; // 计划先进入等待区
 	change_planstate(plan_wait_, OBSPLAN_WAIT); // 计划状态变更为等待
@@ -235,9 +232,9 @@ int ObservationSystem::PlanRelativePriority(apappplan plan, ptime& now) {
 	// 检查计划可执行性
 	string abbr;
 	IMAGE_TYPE imgtyp = check_imgtype(plan->imgtype, abbr);
-	if ((imgtyp >= IMGTYPE_FLAT && !tcpc_telescope_.use_count())				// 望远镜不在线
-		|| (imgtyp == IMGTYPE_FLAT && odtype_ != OD_FLAT)						// 非天光平场时间
-		|| (imgtyp == IMGTYPE_OBJECT && odtype_ != OD_NIGHT)					// 非夜间观测时间
+	if (   (imgtyp >= IMGTYPE_FLAT   && !tcpc_telescope_.use_count())	// 望远镜不在线
+		|| (imgtyp == IMGTYPE_FLAT   && odtype_ != OD_FLAT)				// 非天光平场时间
+		|| (imgtyp == IMGTYPE_OBJECT && odtype_ != OD_NIGHT)			// 非夜间观测时间
 		|| (imgtyp >= IMGTYPE_OBJECT && !safe_position(plan->ra, plan->dec))	// 非安全位置
 		)
 		return -4;
@@ -271,14 +268,17 @@ void ObservationSystem::flat_position(double &ra, double &dec, double &epoch) {
 	double fd = now.time_of_day().total_seconds() / DAYSEC;
 	double azi0 = (fd * 24 + timezone_) < 12.0 ? 180.0 : 0.0;
 	double azi, alt;
-
+	// 生成天顶坐标
 	ats_->SetMJD(now.date().modjulian_day() + fd);
-	epoch = ats_->Epoch();
 	azi = arc4random_uniform(180) + azi0;
 	alt = 80 + arc4random_uniform(6);
 	ats_->Horizon2Eq(azi * D2R, alt * D2R, ra, dec);
-	ra   = reduce((ats_->LocalMeanSiderealTime() - ra) * R2D, 360.0);
-	dec *= R2D;
+	ra   = ats_->LocalMeanSiderealTime() - ra;
+	// 转换为J2000系
+	ats_->EqReTransfer(ra, dec, ra, dec);
+	ra   *= R2D;
+	dec  *= R2D;
+	epoch = 2000.0;
 }
 
 bool ObservationSystem::safe_position(double ra, double dec) {
@@ -307,9 +307,6 @@ bool ObservationSystem::interrupt_plan(OBSPLAN_STATUS state) {
 	bool immediate = !data_->exposing;
 
 	if (change_planstate(plan_now_, state)) {
-		_gLog.Write("plan[%d] on [%s:%s] is %s", plan_now_->plan->plan_sn,
-				gid_.c_str(), uid_.c_str(), OBSPLAN_STATUS_STR[plan_now_->state]);
-
 		command_expose("", EXPOSE_STOP);
 		if (immediate) {
 			// plan_sn == INT_MAX为手动曝光模式
@@ -322,10 +319,17 @@ bool ObservationSystem::interrupt_plan(OBSPLAN_STATUS state) {
 }
 
 bool ObservationSystem::change_planstate(ObsPlanPtr plan, OBSPLAN_STATUS state) {
-	OBSPLAN_STATUS old = plan->state;
-	if (plan.use_count() && old != state) {
-		if (!change_planstate(plan, old, state)) plan->state = state;
-		if (state == OBSPLAN_RUN) plan->CoupleOBSS(gid_, uid_);
+	if (plan.use_count() && plan->state != state) {
+		// 更改计划状态
+		if (change_planstate(plan, plan->state, state)) state = plan->state;
+		else plan->state = state;
+		_gLog.Write("plan[%d] on [%s:%s] was %s", plan->plan->plan_sn,
+				gid_.c_str(), uid_.c_str(), OBSPLAN_STATUS_STR[plan->state]);
+		if (plan->plan->plan_sn != INT_MAX) {// 处理变更后状态
+			if      (state == OBSPLAN_RUN)  plan->CoupleOBSS(gid_, uid_);
+			else if (state != OBSPLAN_WAIT) cb_plan_finished_(plan);
+		}
+
 		return true;
 	}
 	return false;
@@ -339,7 +343,7 @@ void ObservationSystem::write_to_camera(const char *s, const int n, const char *
 	bool empty = !cid || iequals(cid, "");
 	for (ObssCamVec::iterator it = cameras_.begin(); it != cameras_.end(); ++it) {
 		if (empty || iequals((*it)->cid, cid)) {
-			(*it)->tcptr->Write(s, n);
+			if ((*it)->enabled) (*it)->tcptr->Write(s, n);
 			if (!empty) break;
 		}
 	}
@@ -354,7 +358,7 @@ void ObservationSystem::command_expose(const string &cid, EXPOSE_COMMAND cmd) {
 void ObservationSystem::switch_state() {
 	OBSS_STATUS state;
 
-	if (cameras_.size()) state = data_->automode ? OBSS_RUN : OBSS_STOP;
+	if (cameras_.size() && data_->enabled) state = data_->automode ? OBSS_RUN : OBSS_STOP;
 	else state = OBSS_ERROR;
 	if (data_->state != state) {
 		data_->state = state;
@@ -363,7 +367,7 @@ void ObservationSystem::switch_state() {
 			thrd_idle_.reset(new thread(boost::bind(&ObservationSystem::thread_idle, this)));
 		else {
 			interrupt_thread(thrd_idle_);
-			interrupt_plan(OBSPLAN_ABANDON);
+			interrupt_plan(OBSPLAN_INT);
 		}
 	}
 }
@@ -490,7 +494,7 @@ void ObservationSystem::register_message() {
 	const CBSlot& slot02 = boost::bind(&ObservationSystem::on_receive_camera,     this, _1, _2);
 	const CBSlot& slot03 = boost::bind(&ObservationSystem::on_close_telescope,    this, _1, _2);
 	const CBSlot& slot04 = boost::bind(&ObservationSystem::on_close_camera,       this, _1, _2);
-	const CBSlot& slot05 = boost::bind(&ObservationSystem::on_telescope_tracking, this, _1, _2);
+	const CBSlot& slot05 = boost::bind(&ObservationSystem::on_telescope_track,    this, _1, _2);
 	const CBSlot& slot06 = boost::bind(&ObservationSystem::on_out_safelimit,      this, _1, _2);
 	const CBSlot& slot07 = boost::bind(&ObservationSystem::on_new_protocol,       this, _1, _2);
 	const CBSlot& slot08 = boost::bind(&ObservationSystem::on_new_plan,           this, _1, _2);
@@ -500,7 +504,7 @@ void ObservationSystem::register_message() {
 	RegisterMessage(MSG_RECEIVE_CAMERA,     slot02);
 	RegisterMessage(MSG_CLOSE_TELESCOPE,    slot03);
 	RegisterMessage(MSG_CLOSE_CAMERA,       slot04);
-	RegisterMessage(MSG_TELESCOPE_TRACKING, slot05);
+	RegisterMessage(MSG_TELESCOPE_TRACK,    slot05);
 	RegisterMessage(MSG_OUT_SAFELIMIT,      slot06);
 	RegisterMessage(MSG_NEW_PROTOCOL,       slot07);
 	RegisterMessage(MSG_NEW_PLAN,           slot08);
@@ -601,13 +605,11 @@ void ObservationSystem::on_close_camera(const long client, const long ec) {
 			bool leave_exposing(false), leave_waitflat(false);
 			if (info->state > CAMCTL_IDLE) {
 				leave_exposing = data_->leave_expoing();
-				leave_waitflat = info->state == CAMCTL_WAIT_FLAT && data_->leave_waitflat();
+				leave_waitflat = (info->state == CAMCTL_WAIT_FLAT && data_->leave_waitflat())
+						|| (info->state == CAMCTL_WAIT_SYNC && data_->leave_waitsync());
 			}
 			if (leave_exposing) {
-				_gLog.Write("plan [%d] on [%s:%s] is %s", plan_now_->plan->plan_sn,
-						gid_.c_str(), uid_.c_str(), OBSPLAN_STATUS_STR[OBSPLAN_OVER]);
 				change_planstate(plan_now_, OBSPLAN_OVER);
-				cb_plan_finished_(plan_now_);
 				plan_now_.reset();
 			}
 			else if (leave_waitflat) PostMessage(MSG_FLAT_RESLEW);
@@ -617,9 +619,20 @@ void ObservationSystem::on_close_camera(const long client, const long ec) {
 	}
 }
 
-void ObservationSystem::on_telescope_tracking(const long, const long) {
-	/* 检查指向是否到位 */
+void ObservationSystem::on_telescope_track(const long, const long) {
+	double tslew(AS2D * 5);	// 到位阈值: 5角秒
+	double era = fabs((nftele_->ra - (nftele_->ora + nftele_->dra)) * cos(nftele_->dc * D2R));
+	double edc = fabs(nftele_->dc - (nftele_->odc + nftele_->ddc));
+	if (era > 180.0) era = 360.0 - era;
 
+	if (era < tslew && edc < tslew) {// 指向到位
+		command_expose(plan_now_->plan->cid, data_->exposing ? EXPOSE_RESUME : EXPOSE_START);
+	}
+	else {
+		_gLog.Write(LOG_WARN, NULL, "pointing error [%.4f, %.4f] of [%s:%s] exceeds limit",
+				era * 3600.0, edc * 3600.0, gid_.c_str(), uid_.c_str());
+		interrupt_plan(OBSPLAN_INT);
+	}
 }
 
 void ObservationSystem::on_out_safelimit(const long, const long) {
@@ -651,177 +664,198 @@ void ObservationSystem::on_new_protocol(const long, const long) {
 	else if (iequals(type, APTYPE_MCOVER))   process_mcover     (from_apbase<ascii_proto_mcover>      (proto));
 	else if (iequals(type, APTYPE_FINDHOME)) process_findhome   ();
 	else if (iequals(type, APTYPE_HOMESYNC)) process_homesync   (from_apbase<ascii_proto_home_sync>   (proto));
-	else if (iequals(type, APTYPE_FOCSYNC))  process_focusync   ();
 	else if (iequals(type, APTYPE_ENABLE))   process_enable     (from_apbase<ascii_proto_enable>      (proto));
 }
 
 void ObservationSystem::on_flat_reslew(const long, const long) {
-	double ra, dec, epoch;
-	int n;
-	const char *s;
+	bool reslew(true); // 重新指向标志
+	// 平场采集失败时相机返回WAIT_SYNC. 所有相机都失败时, 每4分钟一次重新指向
+	if (data_->waitsync && data_->waitsync == data_->exposing) {
+		reslew = (second_clock::universal_time() - lastflat_).total_seconds() > 240;
+	}
 
-	flat_position(ra, dec, epoch);
-	s = ascproto_->CompactSlewto(ra, dec, epoch, n);
-	/*
-	 * - 设置控制参数
-	 * - 指向
-	 * - 通知相机指向位置
-	 */
-	nftele_->SetObject(ra, dec);
-	process_slewto(ra, dec, epoch);
-	write_to_camera(s, n);
+	if (!reslew) command_expose("", EXPOSE_RESUME);
+	else {// 重新指向
+		double ra, dec, epoch;
+		int n;
+		const char *s;
+
+		lastflat_ = second_clock::universal_time();
+		flat_position(ra, dec, epoch);
+		// 通知相机位置
+		s = ascproto_->CompactSlewto(ra, dec, epoch, n);
+		write_to_camera(s, n);
+		// 通知望远镜指向
+		_gLog.Write("flat-field re-slew [%s:%s] to [%.4f, %.4f]",
+				gid_.c_str(), uid_.c_str(), ra, dec);
+		nftele_->SetObject(ra, dec);
+		process_slewto(ra, dec, epoch);
+	}
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 /* 处理由GeneralControl转发的控制协议 */
-/*!
- * @brief 望远镜搜索零点
- * @note
- * 在观测计划执行过程中可能拒绝该指令
+/*
+ * bool process_findhome() 望远镜搜索零点
  */
 bool ObservationSystem::process_findhome() {
-	return (tcpc_telescope_.use_count() && !plan_now_.use_count());
+	if (tcpc_telescope_.use_count() && !plan_now_.use_count()) {
+		_gLog.Write("telescope [%s:%s] try to find home", gid_.c_str(), uid_.c_str());
+		return true;
+	}
+	return false;
 }
 
-/*!
- * @brief 改变望远镜零点位置
- * @note
- * 该指令将触发暂停观测计划及望远镜重新指向
+/*
+ * bool process_homesync() 改变望远镜零点位置
+ * - 该指令可能触发暂停观测计划及望远镜重新指向
  */
 bool ObservationSystem::process_homesync(aphomesync proto) {
 	if (tcpc_telescope_.use_count()) {
+		_gLog.Write("telescope [%s:%s] try to sync home. Telescope: [%.4f, %.4f] <== Sky: [%.4f, %.4f]",
+				gid_.c_str(), uid_.c_str(), nftele_->ra, nftele_->dc, proto->ra, proto->dc);
 		nftele_->ResetOffset();
 		return true;
 	}
 	return false;
 }
 
-/*!
+/*
  * bool process_slewto() 指向目标位置
  * - 执行计划时拒绝响应
  * - 检查位置是否安全
  */
 bool ObservationSystem::process_slewto(apslewto proto) {
-	if (!tcpc_telescope_.use_count() || plan_now_.use_count() || !safe_position(proto->ra, proto->dc))
+	double ra(proto->ra), dc(proto->dc);
+	if (!(tcpc_telescope_.use_count() && safe_position(ra, dc)) || plan_now_.use_count())
 		return false;
-	nftele_->BeginMove();
-	return process_slewto(proto->ra, proto->dc, proto->epoch);
+
+	_gLog.Write("[%s:%s] will slew to [%.4f, %.4f, %.1f]",
+			gid_.c_str(), uid_.c_str(), ra, dc, proto->epoch);
+	nftele_->SetObject(ra, dc);
+	return process_slewto(ra, dc, proto->epoch);
 }
 
-/*!
- * @brief 中止指向和跟踪过程
- * @note
- * 该指令将触发停止观测计划
+/*
+ * bool process_abortslew 中止指向和跟踪过程
+ * - 该指令将触发停止观测计划
  */
 bool ObservationSystem::process_abortslew() {
+	_gLog.Write("telescope [%s:%s] try to abort slew", gid_.c_str(), uid_.c_str());
 	interrupt_plan();
-	return (nftele_->state == TELESCOPE_SLEWING);
+	return (tcpc_telescope_.use_count()
+			&& (nftele_->state == TELESCOPE_SLEWING || nftele_->state == TELESCOPE_PARKING));
 }
 
-/*!
+/*
  * bool process_park() 复位
  */
 bool ObservationSystem::process_park() {
 	if (tcpc_telescope_.use_count() && nftele_->state != TELESCOPE_PARKING && nftele_->state != TELESCOPE_PARKED) {
-		_gLog.Write("Parking [%s:%s]", gid_.c_str(), uid_.c_str());
+		_gLog.Write("parking [%s:%s]", gid_.c_str(), uid_.c_str());
 		interrupt_plan();
-		nftele_->BeginMove();
 		return true;
 	}
 	return false;
 }
 
-/*!
- * @brief 开关镜盖
- * @note
- * 关闭镜盖指令可能触发停止观测计划
+/*
+ * bool process_mcover() 开关镜盖
  */
 bool ObservationSystem::process_mcover(apmcover proto) {
-	return tcpc_telescope_.use_count();
+	if (!tcpc_telescope_.use_count()) return false;
+	MIRRORCOVER_COMMAND cmd = MIRRORCOVER_COMMAND(proto->value);
+	if (cmd == MCC_CLOSE && plan_now_.use_count() && plan_now_->imgtype >= IMGTYPE_FLAT)
+		return false;
+	_gLog.Write("%s mirror-cover [%s:%s:%s]", cmd == MCC_OPEN ? "open" : "close",
+			gid_.c_str(), uid_.c_str(), proto->cid.empty() ? "All" : proto->cid.c_str());
+	return true;;
 }
 
-/*!
- * @brief 改变调焦器零点位置
- */
-bool ObservationSystem::process_focusync() {
-	return tcpc_telescope_.use_count();
-}
-
-/*!
- * @brief 通知望远镜改变焦点位置
- * @param proto 通信协议
+/*
+ * bool process_focus() 通知望远镜改变焦点位置
  */
 bool ObservationSystem::process_focus(apfocus proto) {
-	return tcpc_telescope_.use_count();
+	string cid = proto->cid;
+	ObssCamPtr camptr = find_camera(cid);
+
+	if (camptr.use_count() && camptr->info->focus != proto->value) {
+		_gLog.Write("focus [%s:%s:%s] position wants to be %d",
+				gid_.c_str(), uid_.c_str(), cid.c_str(), proto->value);
+		return tcpc_telescope_.use_count();
+	}
+	return false;
 }
 
-/*!
- * @brief 通过数据处理统计得到的FWHM, 通知望远镜调焦
- * @param proto 通信协议
+/*
+ * bool process_fwhm() 通过数据处理统计得到的FWHM, 通知望远镜调焦
  */
 bool ObservationSystem::process_fwhm(apfwhm proto) {
-	return tcpc_telescope_.use_count();
+	string cid = proto->cid;
+	ObssCamPtr camptr = find_camera(cid);
+
+	if (camptr.use_count() && fabs(camptr->fwhm - proto->value) > 0.1) {
+		_gLog.Write("FWHM [%s:%s:%s] was %.2f", gid_.c_str(), uid_.c_str(), cid.c_str(), proto->value);
+		camptr->fwhm = proto->value;
+		return tcpc_telescope_.use_count();
+	}
+	return false;
 }
 
 /*
  * void process_takeimage() 手动曝光
+ * - 系统状态 == OBSS_STOP, 手动模式
  */
 void ObservationSystem::process_takeimage(aptakeimg proto) {
-	string abbr;
-	IMAGE_TYPE imgtyp = check_imgtype(proto->imgtype, abbr);
-	if (!cameras_.size() || data_->exposing || plan_now_.use_count()
-			|| imgtyp == IMGTYPE_ERROR
-			|| (imgtyp >= IMGTYPE_FLAT && nftele_->state == TELESCOPE_ERROR)) return;
-	// 构建观测计划
-	plan_now_ = boost::make_shared<ObservationPlan>(proto);
+	if (data_->state != OBSS_STOP || data_->exposing || plan_now_.use_count()) return;
+	ObsPlanPtr plan = boost::make_shared<ObservationPlan>(proto);
+	IMAGE_TYPE imgtyp = plan->imgtype;
+	if (imgtyp == IMGTYPE_ERROR || (imgtyp >= IMGTYPE_FLAT && nftele_->state == TELESCOPE_ERROR)) return;
+
+	// 将指令构建为观测计划
+	_gLog.Write("take image on [%s:%s]. image type is %s",
+			gid_.c_str(), uid_.c_str(), plan->plan->imgtype.c_str());
+	plan_now_ = plan;
 	plan_now_->plan->gid = gid_;
 	plan_now_->plan->uid = uid_;
 	plan_now_->plan->cid = proto->cid;
-	// 构建待发送信息结构体
-	apobject obj = boost::make_shared<ascii_proto_object>(*(plan_now_->plan));
-	obj->filter = proto->filter;
-	obj->expdur = proto->expdur;
-	obj->frmcnt = proto->frmcnt;
 	if (imgtyp >= IMGTYPE_OBJECT) {
-		obj->ra = nftele_->ra;
-		obj->dec= nftele_->dc;
+		plan_now_->plan->ra = nftele_->ra;
+		plan_now_->plan->dec= nftele_->dc;
 	}
-	// 构建发送给相机的格式化信息
-	int n;
-	const char *s = ascproto_->CompactObject(obj, n);
-	write_to_camera(s, n, proto->cid.c_str());
-	if (imgtyp != IMGTYPE_FLAT) {
-		s = ascproto_->CompactExpose(EXPOSE_START, n);
-		write_to_camera(s, n, proto->cid.c_str());
-	}
-	else PostMessage(MSG_FLAT_RESLEW);
+	// 执行观测计划
+	resolve_obsplan();
+	if (imgtyp == IMGTYPE_FLAT) PostMessage(MSG_FLAT_RESLEW);
+	else command_expose(proto->cid, EXPOSE_START);
 }
 
 /*
  * void process_abortimage() 中止曝光
- * - cid == NULL: 中止观测计划
- * - cid != NULL: 中止相机曝光
+ * - 联动中止观测计划
  */
 void ObservationSystem::process_abortimage(const string &cid) {
 	command_expose(cid, EXPOSE_STOP);
 }
 
-/*!
- * @brief 删除观测计划
- * @note
- * 该指令将触发停止观测计划
+/*
+ * void process_abortplan() 删除观测计划
+ * - 删除待执行计划
+ * - 删除在执行计划
  */
 void ObservationSystem::process_abortplan(apabtplan proto) {
 	int plan_sn = proto->plan_sn;
-
-	process_abortplan(plan_sn);
+	if (plan_wait_.use_count() && (plan_sn < 0 || (*plan_wait_) == plan_sn)) {
+		change_planstate(plan_wait_, OBSPLAN_DELETE);
+		plan_wait_.reset();
+	}
 	if (plan_now_.use_count() && (plan_sn == -1 || (*plan_now_) == plan_sn)) {
 		interrupt_plan(OBSPLAN_DELETE);
 	}
 }
 
-/*!
- * @brief 启动自动化天文观测流程
+/*
+ * void process_start() 启动自动化天文观测流程
+ * - 响应处理观测计划
  */
 void ObservationSystem::process_start(apstart proto) {
 	if (!data_->automode) {
@@ -832,140 +866,174 @@ void ObservationSystem::process_start(apstart proto) {
 	}
 }
 
+/*
+ * void process_stop() 停止自动化天文观测流程
+ * - 响应处理手动观测需求
+ */
 void ObservationSystem::process_stop(apstop proto) {
 	if (data_->automode) {
-		_gLog.Write("Observation System [%s:%s] enter MANUAL mode", gid_.c_str(), uid_.c_str());
+		_gLog.Write("Observation System [%s:%s] leave AUTO mode", gid_.c_str(), uid_.c_str());
 		data_->automode = false;
 		switch_state();
 	}
 }
 
-/*!
- * @brief 启用指定相机或观测系统
- * @param proto 通信协议
+/*
+ * void process_enable() 启用指定相机或观测系统
  */
 void ObservationSystem::process_enable(apenable proto) {
 	string cid = proto->cid;
 	bool empty = cid.empty();
 
-	if (empty && !data_->enabled) {
-		_gLog.Write("Observation System [%s:%s] is enabled", gid_.c_str(), uid_.c_str());
-		data_->enabled = true;
+	if (empty) {
+		if (!data_->enabled) {
+			_gLog.Write("Observation System [%s:%s] is enabled", gid_.c_str(), uid_.c_str());
+			data_->enabled = true;
+			switch_state();
+		}
 	}
-	else if (!empty && cameras_.size()) {
-		mutex_lock lck(mtx_camera_);
-		ObssCamVec::iterator it;
-		for (it = cameras_.begin(); it != cameras_.end() && (**it) != cid; ++it);
-		if (!(it == cameras_.end() || (*it)->enabled)) {
-			_gLog.Write("Camera [%s:%s:%s] is enabled", gid_.c_str(), uid_.c_str(), cid.c_str());
-			(*it)->enabled = true;
+	else {
+		ObssCamPtr camptr = find_camera(cid);
+		if (camptr.use_count() && !camptr->enabled) {
+			_gLog.Write("camera [%s:%s:%s] is enabled", gid_.c_str(), uid_.c_str(), cid.c_str());
+			camptr->enabled = true;
 		}
 	}
 }
 
+/*
+ * void process_disable() 禁用指定相机或观测系统
+ * - 禁用系统联动触发停止观测计划
+ * - 禁用相机联动触发停止曝光
+ */
 void ObservationSystem::process_disable(apdisable proto) {
 	string cid = proto->cid;
 	bool empty = cid.empty();
 
-	if (empty && data_->enabled) {
-		_gLog.Write("Observation System [%s:%s] is disabled", gid_.c_str(), uid_.c_str());
-		data_->enabled = false;
-		interrupt_plan();
+	if (empty) {
+		if (data_->enabled) {
+			_gLog.Write("Observation System [%s:%s] is disabled", gid_.c_str(), uid_.c_str());
+			data_->enabled = false;
+			switch_state();
+		}
 	}
-	else if (!empty && cameras_.size()) {
-		process_abortimage(cid); // 中止曝光
-
-		mutex_lock lck(mtx_camera_);
-		ObssCamVec::iterator it;
-		for (it = cameras_.begin(); it != cameras_.end() && (**it) != cid; ++it);
-		if (it != cameras_.end() && (*it)->enabled) {
+	else {
+		ObssCamPtr camptr = find_camera(cid);
+		if (camptr.use_count() && camptr->enabled) {
 			_gLog.Write("Camera [%s:%s:%s] is disabled", gid_.c_str(), uid_.c_str(), cid.c_str());
-			(*it)->enabled = false;
+			if (camptr->info->state > CAMCTL_IDLE) command_expose(cid, EXPOSE_STOP);
+			camptr->enabled = false;
 		}
 	}
 }
+
 ///////////////////////////////////////////////////////////////////////////////
-/*!
- * @brief 处理望远镜状态信息
- * @param proto 通信协议
+/*
+ * void process_info_telescope() 处理通用望远镜工作状态
+ * - 超出限位触发复位
  */
 void ObservationSystem::process_info_telescope(aptele proto) {
 	double ra(proto->ra), dc(proto->dc);
-	TELESCOPE_STATE state = proto->state;
+	TELESCOPE_STATE prev = nftele_->state;
+	TELESCOPE_STATE now  = TELESCOPE_STATE(proto->state);
 	// 更新望远镜指向坐标
 	*nftele_ = *proto;
 
 	if (proto->ele * D2R <= minEle_) {
-		if (state != TELESCOPE_PARKING) {
-			_gLog.Write(LOG_WARN, NULL, "telescope [%s:%s] position [%.4f, %.4f] is out of safe limit",
+		if (now != TELESCOPE_PARKING) {
+			_gLog.Write(LOG_WARN, NULL, "telescope [%s:%s] position [%.4f, %.4f] was out of safe limit",
 					gid_.c_str(), uid_.c_str(), ra, dc);
 			PostMessage(MSG_OUT_SAFELIMIT);
 		}
 	}
-	else if (state == TELESCOPE_TRACKING || state == TELESCOPE_PARKED) {
+	else if (now == TELESCOPE_TRACKING) {
 		if (nftele_->StableArrive()) {
-			_gLog.Write("telescope [%s:%s] arrived at [%.4f, %.4f]",
-					gid_.c_str(), uid_.c_str(), ra, dc);
-			if (state == TELESCOPE_TRACKING) PostMessage(MSG_TELESCOPE_TRACKING);
+			_gLog.Write("telescope [%s:%s] arrived at [%.4f, %.4f]", gid_.c_str(), uid_.c_str(), ra, dc);
+			if (plan_now_.use_count()) PostMessage(MSG_TELESCOPE_TRACK);
 		}
+	}
+	else if (now != prev && now == TELESCOPE_PARKED) {
+		_gLog.Write("telescope [%s:%s] was parked", gid_.c_str(), uid_.c_str());
 	}
 }
 
-/*!
- * @brief 处理调焦器状态信息
- * @param proto 通信协议
+/*
+ * void process_info_focus() 处理焦点位置
+ * - 将焦点位置发送给相机控制
+ * - 焦点位置写入FITS头
  */
 void ObservationSystem::process_info_focus(apfocus proto) {
+	string cid = proto->cid;
+	ObssCamPtr camptr = find_camera(cid);
+	if (camptr.use_count() && proto->state == FOCUS_FREEZE && proto->value != camptr->info->focus) {
+		_gLog.Write("focus [%s:%s:%s] position arrived at [%d]", gid_.c_str(), uid_.c_str(),
+				cid.c_str(), proto->value);
 
+		int n;
+		const char *s = ascproto_->CompactFocus(proto, n);
+		write_to_camera(s, n, cid.c_str());
+	}
 }
 
-/*!
- * @brief 处理镜盖状态信息
- * @param proto 通信协议
+/*
+ * void process_info_mcover() 处理镜盖状态信息
+ * - 暂不关联图像类型判断是否产生影响
  */
 void ObservationSystem::process_info_mcover(apmcover proto) {
+	string cid = proto->cid;
+	ObssCamPtr camptr = find_camera(cid);
+	if (camptr.use_count() && proto->value != camptr->info->mcstate) {
+		_gLog.Write("mirror-cover [%s:%s:%s] was %s", gid_.c_str(), uid_.c_str(),
+				cid.c_str(), MIRRORCOVER_STATE_STR[proto->value]);
 
+		int n;
+		const char *s = ascproto_->CompactMirrorCover(proto, n);
+		write_to_camera(s, n, cid.c_str());
+	}
 }
 
+/*
+ * void process_info_camera() 处理单台相机的工作状态信息
+ * - 联动检查所有相机工作状态是否一致, 以驱动观测计划工作流程
+ * - 一些异常处理: gtoaes崩溃后丢失观测计划; 相机控制端手动控制曝光
+ */
 void ObservationSystem::process_info_camera(ObssCamPtr camptr, apcam proto) {
-	CAMCTL_STATUS old_stat = CAMCTL_STATUS(camptr->info->state);
-	CAMCTL_STATUS new_stat = CAMCTL_STATUS(proto->state);
+	CAMCTL_STATUS prev = CAMCTL_STATUS(camptr->info->state);
+	CAMCTL_STATUS now  = CAMCTL_STATUS(proto->state);
 	camptr->info = proto;
 
-	if (old_stat != new_stat && plan_now_.use_count()) {
-		switch(new_stat) {
-		case CAMCTL_IDLE:
-			if (old_stat > CAMCTL_IDLE) {
-				/* 记录断点 */
-				if (plan_now_->state == OBSPLAN_INT) {
-					apobject ptbreak = plan_now_->GetBreakPoint(camptr->cid);
-					if (ptbreak.use_count()) ptbreak->frmno = proto->frmno;
-				}
-				/* 处理观测计划 */
-				if (data_->leave_expoing()) {
-					if (plan_now_->state == OBSPLAN_RUN) {
-						_gLog.Write("plan [%d] on [%s:%s] is %s", plan_now_->plan->plan_sn,
-								gid_.c_str(), uid_.c_str(), OBSPLAN_STATUS_STR[OBSPLAN_OVER]);
-						change_planstate(plan_now_, OBSPLAN_OVER);
-						cb_plan_finished_(plan_now_);
-					}
-					plan_now_.reset();
-					PostMessage(MSG_NEW_PLAN);
-				}
-			}
-			break;
-		case CAMCTL_EXPOSE:
-			if (old_stat == CAMCTL_IDLE) data_->enter_exposing();
-			break;
-		case CAMCTL_WAIT_FLAT:// 相机完成一次曝光后即暂停并返回WAIT_FLAT状态
-			if (data_->enter_waitflat()) {
-				PostMessage(MSG_FLAT_RESLEW);
-				data_->waitflat = 0;
-			}
-			break;
-		default:
-			break;
+	/*
+	 * plan_now_判真原因:
+	 * - 相机控制软件端人为控制
+	 * - 服务器异常退出后重新启动
+	 */
+	bool valid_plan = plan_now_.use_count();
+	if (now > CAMCTL_IDLE && prev <= CAMCTL_IDLE) {// 进入曝光态
+		data_->enter_exposing();
+	}
+	else if (now <= CAMCTL_IDLE & prev > CAMCTL_IDLE) {// 离开曝光态
+		/* 记录断点 */
+		if (valid_plan && plan_now_->state == OBSPLAN_INT && plan_now_->plan->plan_sn != INT_MAX) {
+			apobject ptbreak = plan_now_->GetBreakPoint(camptr->cid);
+			if (ptbreak.use_count()) ptbreak->frmno = proto->frmno;
 		}
+		/* 处理观测计划 */
+		if (data_->leave_expoing() && valid_plan) {
+			// 观测计划正常结束
+			if (plan_now_->state == OBSPLAN_RUN) change_planstate(plan_now_, OBSPLAN_OVER);
+			plan_now_.reset();
+			if (data_->state == OBSS_RUN) PostMessage(MSG_NEW_PLAN);
+		}
+	}
+	else if (prev != now) {// 处理平场
+		if (now == CAMCTL_WAIT_SYNC) {
+			if (data_->enter_waitsync() && valid_plan) PostMessage(MSG_FLAT_RESLEW);
+		}
+		else if (now == CAMCTL_WAIT_FLAT) {
+			if (data_->enter_waitflat() && valid_plan) PostMessage(MSG_FLAT_RESLEW);
+		}
+		else if (prev == CAMCTL_WAIT_SYNC) data_->leave_waitsync();
+		else if (prev == CAMCTL_WAIT_FLAT) data_->leave_waitflat();
 	}
 }
 
@@ -976,27 +1044,20 @@ void ObservationSystem::process_info_camera(ObssCamPtr camptr, apcam proto) {
  * - ObservationSystem在完成计划观测/中断流程后立即检查是否有可执行计划
  */
 void ObservationSystem::on_new_plan(const long, const long) {
-	/* 计划还在等待区 */
-	if (plan_wait_.use_count() && (!plan_now_.use_count() || interrupt_plan())) {
+	if (plan_wait_.use_count() && interrupt_plan()) {
+		/* 计划还在等待区 */
 		plan_now_ = plan_wait_;
 		plan_wait_.reset();
-
 		change_planstate(plan_now_, OBSPLAN_RUN);
-		_gLog.Write("plan[%d] on [%s:%s] is %s", plan_now_->plan->plan_sn,
-				gid_.c_str(), uid_.c_str(), OBSPLAN_STATUS_STR[plan_now_->state]);
-	}
-	/* 开始执行计划 */
-	if (plan_now_.use_count() && plan_now_->state == OBSPLAN_RUN) {
+		/* 开始执行计划 */
 		resolve_obsplan(); // 将曝光参数发给相机
-		if (plan_now_->imgtype <= IMGTYPE_DARK) command_expose(plan_now_->plan->cid, EXPOSE_START);
-		else if (plan_now_->imgtype >= IMGTYPE_OBJECT) {
+		if      (plan_now_->imgtype <= IMGTYPE_DARK) command_expose(plan_now_->plan->cid, EXPOSE_START);
+		else if (plan_now_->imgtype == IMGTYPE_FLAT) on_flat_reslew(0, 0);
+		else {
 			apappplan plan = plan_now_->plan;
 			nftele_->SetObject(plan->ra, plan->dec);
 			if (target_arrived()) command_expose(plan->cid, EXPOSE_START);
 			else process_slewto(plan->ra, plan->dec, plan->epoch);
-		}
-		else {// plan_now_->imgtype == IMGTYPE_FLAT
-			on_flat_reslew(0, 0);
 		}
 	}
 }

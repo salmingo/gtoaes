@@ -51,7 +51,6 @@ typedef list<pair_key_val> likv;	//< pair_key_val列表
 #define APTYPE_TELE		"telescope"
 #define APTYPE_FWHM		"fwhm"
 #define APTYPE_FOCUS	"focus"
-#define APTYPE_FOCSYNC	"focus_sync"
 #define APTYPE_MCOVER	"mcover"
 #define APTYPE_TAKIMG	"take_image"
 #define APTYPE_ABTIMG	"abort_image"
@@ -374,7 +373,7 @@ public:
 typedef boost::shared_ptr<ascii_proto_fwhm> apfwhm;
 
 struct ascii_proto_focus : public ascii_proto_base {// 焦点位置
-	int state;	//< 调角器工作状态. 0: 未知; 1: 调焦中; 2: 未调焦
+	int state;	//< 调角器工作状态. 0: 未知; 1: 静止; 2: 调焦
 	int value;	//< 焦点位置, 量纲: 微米
 
 public:
@@ -385,14 +384,6 @@ public:
 	}
 };
 typedef boost::shared_ptr<ascii_proto_focus> apfocus;
-
-struct ascii_proto_focus_sync : public ascii_proto_base {// 同步焦点位置
-public:
-	ascii_proto_focus_sync() {
-		type = APTYPE_FOCSYNC;
-	}
-};
-typedef boost::shared_ptr<ascii_proto_focus_sync> apfocusync;
 
 struct ascii_proto_mcover : public ascii_proto_base {// 开关镜盖
 	int value;	//< 复用字
@@ -796,11 +787,6 @@ public:
 	 */
 	const char *CompactFocus(apfocus proto, int &n);
 	/**
-	 * @brief 封装同步调焦器零点指令
-	 */
-	const char *CompactFocusSync(apfocusync proto, int &n);
-	const char *CompactFocusSync(int &n);
-	/**
 	 * @brief 封装镜盖指令和状态
 	 */
 	const char *CompactMirrorCover(apmcover proto, int &n);
@@ -956,10 +942,6 @@ protected:
 	 * @brief 调焦器位置
 	 */
 	apbase resolve_focus(likv &kvs);
-	/**
-	 * @brief 同步调焦器零点, 修正调焦器零点
-	 */
-	apbase resolve_focusync(likv &kvs);
 	/**
 	 * @brief 镜盖指令与状态
 	 */

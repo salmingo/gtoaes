@@ -89,7 +89,7 @@ void ObservationSystemGWAC::NotifyPosition(mpposition proto) {
 				_gLog.Write("telescope [%s:%s] arrived at [%.4f, %.4f]",
 						gid_.c_str(), uid_.c_str(), ra, dc);
 				nftele_->state = slewing ? TELESCOPE_TRACKING : TELESCOPE_PARKED;
-				if (nftele_->state == TELESCOPE_TRACKING) PostMessage(MSG_TELESCOPE_TRACKING);
+				if (nftele_->state == TELESCOPE_TRACKING) PostMessage(MSG_TELESCOPE_TRACK);
 			}
 		}
 		else nftele_->UnstableArrive();
@@ -234,17 +234,4 @@ bool ObservationSystemGWAC::process_homesync(aphomesync proto) {
 	int n;
 	const char* s = mntproto_->CompactHomesync(proto->ra, proto->dc, n);
 	return tcpc_telescope_->Write(s, n);
-}
-
-bool ObservationSystemGWAC::process_focusync() {
-	// 由数据库实现
-	return true;
-}
-
-void ObservationSystemGWAC::process_abortplan(int plan_sn) {
-	if (plan_wait_.use_count() && (plan_sn == -1 || (*plan_wait_) == plan_sn)) {
-		ObservationSystem::change_planstate(plan_wait_, OBSPLAN_DELETE);
-		cb_plan_finished_(plan_wait_);
-		plan_wait_.reset();
-	}
 }

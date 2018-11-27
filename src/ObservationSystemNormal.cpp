@@ -176,18 +176,3 @@ bool ObservationSystemNormal::process_homesync(aphomesync proto) {
 	const char *s = ascproto_->CompactHomeSync(proto, n);
 	return tcpc_telescope_->Write(s, n);
 }
-
-bool ObservationSystemNormal::process_focusync() {
-	if (!ObservationSystem::process_focusync()) return false;
-	int n;
-	const char *s = ascproto_->CompactFocusSync(n);
-	return tcpc_telescope_->Write(s, n);
-}
-
-void ObservationSystemNormal::process_abortplan(int plan_sn) {
-	if (plan_wait_.use_count() && (plan_sn == -1 || (*plan_wait_) == plan_sn)) {
-		ObservationSystem::change_planstate(plan_wait_, OBSPLAN_CAT);
-		cb_plan_finished_(plan_wait_);
-		plan_wait_.reset();
-	}
-}

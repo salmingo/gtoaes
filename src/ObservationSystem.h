@@ -29,17 +29,17 @@ struct InformationTelescope {
 	double az, el;		//< 指向坐标, 量纲: 角度. 地平系
 	double ora, odc;	//< 目标坐标, 量纲: 角度. 赤道系
 	double dra, ddc;	//< 导星量, 量纲: 角度. 赤道系
-	int moving;			//< 望远镜到达稳定态的控制量
+	int slewing;		//< 望远镜到达稳定态的控制量
 
 public:
-	InformationTelescope& operator=(aptele x) {
-		state   = (TELESCOPE_STATE) x->state;
-		errcode = x->ec;
-		utc     = x->utc;
-		ra      = x->ra;
-		dc      = x->dc;
-		az      = x->azi;
-		el      = x->ele;
+	InformationTelescope& operator=(ascii_proto_telescope &x) {
+		state   = (TELESCOPE_STATE) x.state;
+		errcode = x.ec;
+		utc     = x.utc;
+		ra      = x.ra;
+		dc      = x.dc;
+		az      = x.azi;
+		el      = x.ele;
 
 		return *this;
 	}
@@ -52,6 +52,7 @@ public:
 	void SetObject(double r, double d) {
 		ora = r, odc = d;
 		dra = ddc = 0.0;
+		BeginSlew();
 	}
 
 	/*!
@@ -83,8 +84,8 @@ public:
 	 * @note
 	 * 指向过程包括: 指向, 复位, 导星
 	 */
-	void BeginMove() {
-		moving = 3;
+	void BeginSlew() {
+		slewing = 3;
 	}
 
 	/*!
@@ -93,11 +94,11 @@ public:
 	 * 稳定态标志
 	 */
 	bool StableArrive() {
-		return (moving && --moving == 0);
+		return (slewing && --slewing == 0);
 	}
 
 	void UnstableArrive() {
-		if (moving < 3) ++moving;
+		if (slewing < 3) ++slewing;
 	}
 };
 typedef InformationTelescope NFTele;
@@ -111,6 +112,7 @@ struct ObservationSystemCamera {// 相机标志与网络连接
 	bool    enabled;	//< 启用标志
 	TcpCPtr tcptr;		//< 网络连接
 	apcam   info;		//< 工作状态
+	double  fwhm;		//< 半高全宽
 
 public:
 	ObservationSystemCamera(const string& id);
@@ -150,6 +152,7 @@ struct ObservationSystemData {//< 观测系统数据
 	OBSS_STATUS	state;		//< 系统工作状态
 	/* 相机统计状态 */
 	int			exposing;	//< 开始曝光的相机数量
+	int			waitsync;	//< 等待平场重新曝光的相机数量
 	int			waitflat;	//< 等待平场重新定位的相机数量
 
 public:
@@ -159,6 +162,7 @@ public:
 		automode= false;
 		state   = OBSS_ERROR;
 		exposing= 0;
+		waitsync= 0;
 		waitflat= 0;
 	}
 
@@ -184,11 +188,26 @@ public:
 	 * 所有相机都进入等待平场状态
 	 */
 	bool enter_waitflat() {
-		return (++waitflat == exposing);
+		return ((++waitflat + waitsync) == exposing);
 	}
 
 	bool leave_waitflat() {
-		return (waitflat && --waitflat == 0);
+		if (waitflat) --waitflat;
+		return (!(waitflat || waitsync));
+	}
+
+	/*!
+	 * @brief 检查是否所有相机都进入等待平场状态
+	 * @return
+	 * 所有相机都进入等待平场状态
+	 */
+	bool enter_waitsync() {
+		return ((++waitsync + waitflat) == exposing);
+	}
+
+	bool leave_waitsync() {
+		if (waitsync) --waitsync;
+		return (!(waitflat || waitsync));
 	}
 };
 typedef ObservationSystemData ObssData;
@@ -223,7 +242,7 @@ protected:
 		MSG_RECEIVE_CAMERA,		//< 收到相机信息
 		MSG_CLOSE_TELESCOPE,	//< 通用望远镜断开连接
 		MSG_CLOSE_CAMERA,		//< 相机断开网络连接
-		MSG_TELESCOPE_TRACKING,	//< 望远镜进入跟踪状态
+		MSG_TELESCOPE_TRACK,	//< 望远镜进入跟踪状态
 		MSG_OUT_SAFELIMIT,		//< 望远镜超出限位范围
 		MSG_NEW_PROTOCOL,		//< 新的通信协议需要观测系统处理
 		MSG_NEW_PLAN,			//< 新的观测计划需要执行
@@ -243,6 +262,7 @@ protected:
 	double	minEle_;	//< 最小仰角, 量纲: 弧度
 	OBSERVATION_DURATION odtype_;	//< 观测周期类型
 	boost::posix_time::ptime tmLast_;		//< 时标, 记录: 系统创建时间, 最后一条网络连接断开时间
+	boost::posix_time::ptime lastflat_;		//< 时标: 最后一次平场重新指向时间
 	boost::posix_time::ptime lastguide_;	//< 时标: 最后一次导星的UTC时间
 
 //////////////////////////////////////////////////////////////////////
@@ -595,9 +615,9 @@ protected:
 	 */
 	void on_close_camera(const long client, const long ec);
 	/*!
-	 * @brief 响应消息MSG_TELESCOPE_TRACKING
+	 * @brief 响应消息MSG_TELESCOPE_TRACK
 	 */
-	void on_telescope_tracking(const long, const long);
+	void on_telescope_track(const long, const long);
 	/*!
 	 * @brief 响应消息MSG_OUT_SAFELIMIT
 	 */
@@ -672,10 +692,6 @@ protected:
 	virtual bool process_mcover(apmcover proto);
 
 	/*!
-	 * @brief 改变调焦器零点位置
-	 */
-	virtual bool process_focusync();
-	/*!
 	 * @brief 通知望远镜改变焦点位置
 	 * @param proto 通信协议
 	 */
@@ -705,15 +721,6 @@ protected:
 	 * 该指令将触发停止观测计划
 	 */
 	void process_abortplan(apabtplan proto);
-	/*!
-	 * @brief 继承类处理待执行计划
-	 * @param plan_sn 计划编号
-	 * @note
-	 * 若编号匹配:
-	 * - GWAC系统: 删除该计划
-	 * - 通用系统: 退还计划队列
-	 */
-	virtual void process_abortplan(int plan_sn = -1) = 0;
 	/*!
 	 * @brief 启动自动化天文观测流程
 	 */

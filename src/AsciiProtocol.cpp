@@ -359,18 +359,6 @@ const char *AsciiProtocol::CompactFocus(apfocus proto, int &n) {
 	return output_compacted(output, n);
 }
 
-const char *AsciiProtocol::CompactFocusSync(apfocusync proto, int &n) {
-	if (!proto.use_count()) return NULL;
-
-	string output;
-	compact_base(to_apbase(proto), output);
-	return output_compacted(output, n);
-}
-
-const char *AsciiProtocol::CompactFocusSync(int &n) {
-	return output_compacted(APTYPE_FOCSYNC, n);
-}
-
 const char *AsciiProtocol::CompactMirrorCover(apmcover proto, int &n) {
 	if (!proto.use_count() || proto->value == INT_MIN) return NULL;
 
@@ -664,7 +652,6 @@ apbase AsciiProtocol::Resolve(const char *rcvd) {
 		else if (iequals(type, APTYPE_FINDHOME)) proto = resolve_findhome(kvs);
 		else if (iequals(type, APTYPE_FWHM))     proto = resolve_fwhm(kvs);
 		else if (iequals(type, APTYPE_FOCUS))    proto = resolve_focus(kvs);
-		else if (iequals(type, APTYPE_FOCSYNC))  proto = resolve_focusync(kvs);
 	}
 	else if (ch == 'o') {
 		if      (iequals(type, APTYPE_OBJECT))   proto = resolve_object(kvs);
@@ -876,26 +863,25 @@ apbase AsciiProtocol::resolve_focus(likv &kvs) {
 	for (likv::iterator it = kvs.begin(); it != kvs.end(); ++it) {// 遍历键值对
 		keyword = (*it).keyword;
 		// 识别关键字
-		if (iequals(keyword, "value"))  proto->value = std::stoi((*it).value);
+		if      (iequals(keyword, "state"))  proto->state = std::stoi((*it).value);
+		else if (iequals(keyword, "value"))  proto->value = std::stoi((*it).value);
 	}
 
-	return to_apbase(proto);
-}
-
-apbase AsciiProtocol::resolve_focusync(likv &kvs) {
-	apfocusync proto = boost::make_shared<ascii_proto_focus_sync>();
 	return to_apbase(proto);
 }
 
 apbase AsciiProtocol::resolve_mcover(likv &kvs) {
 	apmcover proto = boost::make_shared<ascii_proto_mcover>();
 	string keyword;
+	MIRRORCOVER_STATE value;
 
 	for (likv::iterator it = kvs.begin(); it != kvs.end(); ++it) {// 遍历键值对
 		keyword = (*it).keyword;
 		// 识别关键字
-		if (iequals(keyword, "value"))  proto->value = std::stoi((*it).value);
+		if (iequals(keyword, "value")) value = MIRRORCOVER_STATE(std::stoi((*it).value));
 	}
+	if (value < MC_ERROR || value > MC_CLOSED) proto.reset();
+	else proto->value = value;
 
 	return to_apbase(proto);
 }

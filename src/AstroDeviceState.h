@@ -19,13 +19,25 @@ enum TELESCOPE_STATE {// 转台状态
 	TELESCOPE_TRACKING		//< 跟踪
 };
 
+enum MIRRORCOVER_COMMAND {// 镜盖指令
+	MCC_CLOSE,	//< 关闭镜盖
+	MCC_OPEN	//< 打开镜盖
+};
+
 enum MIRRORCOVER_STATE {// 镜盖状态
 	MC_ERROR,		// 错误
 	MC_OPENING,		// 正在打开
 	MC_OPEN,		// 已打开
 	MC_CLOSING,		// 正在关闭
-	MC_CLOSED,		// 已关闭
-	MC_UNKNOWN		// 未知
+	MC_CLOSED		// 已关闭
+};
+
+static const char *MIRRORCOVER_STATE_STR[] = {
+	"Error",
+	"Opening",
+	"Opened",
+	"Closing",
+	"Closed"
 };
 
 enum FOCUSER_STATE {// 调焦器状态
@@ -64,7 +76,6 @@ enum CAMCTL_STATUS {// 相机工作状态
 
 enum OBSS_STATUS {// 观测系统状态
 	OBSS_ERROR,		//< 错误
-	OBSS_INIT,		//< 正在完成初始化
 	OBSS_RUN,		//< 准备就绪, 可以处理指令及观测计划
 	OBSS_STOP		//< 停用
 };
