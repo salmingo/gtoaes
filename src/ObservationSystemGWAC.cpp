@@ -61,13 +61,13 @@ void ObservationSystemGWAC::NotifyUtc(mputc proto) {
 	nftele_->utc = proto->utc;
 	if (++count == 1000) {// 检查望远镜时钟是否正确. 每1000周期检查一次
 		count = 0;
-		ptime now = microsec_clock::universal_time();
 		try {
 			/*
 			 * 计算转台控制机时钟漂移
 			 * - ss > 0: 时钟过慢
 			 * - ss < 0: 时钟过快
 			 */
+			ptime now = microsec_clock::universal_time();
 			ptime utc = from_iso_extended_string(proto->utc);
 			ptime::time_duration_type::tick_type ss = (now - utc).total_milliseconds();
 			if (ss > 5000 || ss < -5000) {
@@ -220,7 +220,8 @@ bool ObservationSystemGWAC::process_guide(double &dra, double &ddec) {
 	// GWAC转台赤经轴导星方向与约定相反
 	int n;
 	const char *s = mntproto_->CompactGuide(-dra, ddec, n);
-	return tcpc_telescope_->Write(s, n);
+	if (tcpc_telescope_->Write(s, n)) nftele_->state = TELESCOPE_SLEWING;
+	return (nftele_->state == TELESCOPE_SLEWING);
 }
 
 bool ObservationSystemGWAC::process_fwhm(apfwhm proto) {
@@ -251,18 +252,19 @@ bool ObservationSystemGWAC::process_abortslew() {
 
 bool ObservationSystemGWAC::process_park() {
 	if (!ObservationSystem::process_park()) return false;
-	nftele_->state = TELESCOPE_PARKING;
 
 	int n;
 	const char *s = mntproto_->CompactPark(n);
-	return tcpc_telescope_->Write(s, n);
+	if (tcpc_telescope_->Write(s, n)) nftele_->state = TELESCOPE_PARKING;
+	return (nftele_->state == TELESCOPE_PARKING);
 }
 
 bool ObservationSystemGWAC::process_slewto(double ra, double dec, double epoch) {
 	if (!tcpc_telescope_.use_count()) return false;
 	int n;
 	const char *s = mntproto_->CompactSlew(ra, dec, n);
-	return tcpc_telescope_->Write(s, n);
+	if (tcpc_telescope_->Write(s, n)) nftele_->state = TELESCOPE_SLEWING;
+	return (nftele_->state == TELESCOPE_SLEWING);
 }
 
 bool ObservationSystemGWAC::process_mcover(apmcover proto) {
