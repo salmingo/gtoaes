@@ -52,8 +52,8 @@ GLog _gLogPlan(gLogPlanDir, gLogPlanPrefix);
 int main(int argc, char** argv) {
 	if (argc >= 2) {// 处理命令行参数
 		if (strcmp(argv[1], "-d") == 0) {
-//			param_config param;
-//			param.InitFile("gtoaes.xml");
+			param_config param;
+			param.InitFile("gtoaes.xml");
 		}
 		else _gLog.Write("Usage: gtoaes <-d>\n");
 	}

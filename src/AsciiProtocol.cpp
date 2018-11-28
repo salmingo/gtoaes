@@ -406,8 +406,7 @@ const char *AsciiProtocol::CompactAbortImage(apabortimg proto, int &n) {
 }
 
 const char *AsciiProtocol::CompactAppendPlan(apappplan proto, int &n) {
-	if (!proto.use_count() || !(proto->expdur.size() && proto->frmcnt.size()))
-		return NULL;
+	if (!proto.use_count()) return NULL;
 
 	int size, i;
 	string output, tmp;
@@ -650,6 +649,7 @@ apbase AsciiProtocol::Resolve(const char *rcvd) {
 		if      (iequals(type, APTYPE_ABTSLEW))  proto = resolve_abortslew(kvs);
 		else if (iequals(type, APTYPE_ABTIMG))   proto = resolve_abortimg(kvs);
 		else if (iequals(type, APTYPE_APPGWAC) || iequals(type, APTYPE_APPPLAN))  proto = resolve_append_plan(kvs);
+		else if (iequals(type, APTYPE_ABTPLAN))  proto = resolve_abort_plan(kvs);
 	}
 	else if (ch == 'c') {
 		if      (iequals(type, APTYPE_COOLER))   proto = resolve_cooler(kvs);
@@ -675,10 +675,6 @@ apbase AsciiProtocol::Resolve(const char *rcvd) {
 		if      (iequals(type, APTYPE_PARK))     proto = resolve_park(kvs);
 		else if (iequals(type, APTYPE_PLAN))     proto = resolve_plan(kvs);
 	}
-	else if (ch == 'r') {
-		if      (iequals(type, APTYPE_REG))      proto = resolve_register(kvs);
-		else if (iequals(type, APTYPE_ABTPLAN))  proto = resolve_abort_plan(kvs);
-	}
 	else if (ch == 's') {
 		if      (iequals(type, APTYPE_SLEWTO))   proto = resolve_slewto(kvs);
 		else if (iequals(type, APTYPE_START))    proto = resolve_start(kvs);
@@ -688,12 +684,13 @@ apbase AsciiProtocol::Resolve(const char *rcvd) {
 		if      (iequals(type, APTYPE_TELE))     proto = resolve_telescope(kvs);
 		else if (iequals(type, APTYPE_TAKIMG))   proto = resolve_takeimg(kvs);
 	}
-	else if (iequals(type, APTYPE_GUIDE))        proto = resolve_guide(kvs);
-	else if (iequals(type, APTYPE_HOMESYNC))     proto = resolve_homesync(kvs);
-	else if (iequals(type, APTYPE_MCOVER))       proto = resolve_mcover(kvs);
-	else if (iequals(type, APTYPE_DISABLE))      proto = resolve_disable(kvs);
-	else if (iequals(type, APTYPE_UNREG))        proto = resolve_unregister(kvs);
-	else if (iequals(type, APTYPE_VACUUM))       proto = resolve_vacuum(kvs);
+	else if (iequals(type, APTYPE_GUIDE))    proto = resolve_guide(kvs);
+	else if (iequals(type, APTYPE_REG))      proto = resolve_register(kvs);
+	else if (iequals(type, APTYPE_UNREG))    proto = resolve_unregister(kvs);
+	else if (iequals(type, APTYPE_HOMESYNC)) proto = resolve_homesync(kvs);
+	else if (iequals(type, APTYPE_MCOVER))   proto = resolve_mcover(kvs);
+	else if (iequals(type, APTYPE_DISABLE))  proto = resolve_disable(kvs);
+	else if (iequals(type, APTYPE_VACUUM))   proto = resolve_vacuum(kvs);
 
 	if (proto.use_count()) {
 		proto->type = type;
@@ -1190,8 +1187,7 @@ apbase AsciiProtocol::resolve_append_plan(likv &kvs) {
 		else if (iequals(keyword, "grid_id"))    proto->grid_id    = (*it).value;
 	}
 	/* 基本参数检查 */
-	if (proto->imgtype.empty() || !(proto->expdur.size() && proto->frmcnt.size()))
-		proto.reset();
+	if (proto->imgtype.empty()) proto.reset();
 
 	return to_apbase(proto);
 }

@@ -260,7 +260,7 @@ ObssCamPtr ObservationSystem::find_camera(const string &cid) {
 
 /*
  * 为平场生成天顶附近随机位置
- * - 天顶距阈值: [5, 10]度. 阈值>5度: 规避地平式天顶盲区
+ * - 天顶距阈值: (5, 10]度. 阈值>5度: 规避地平式天顶盲区
  * - 方位角阈值: 上午[180, 360), 下午[0, 180)
  */
 void ObservationSystem::flat_position(double &ra, double &dec, double &epoch) {
@@ -271,8 +271,8 @@ void ObservationSystem::flat_position(double &ra, double &dec, double &epoch) {
 	double azi, alt;
 	// 生成天顶坐标
 	ats_->SetMJD(now.date().modjulian_day() + fd);
-	azi = arc4random_uniform(180) + azi0;
-	alt = 80 + arc4random_uniform(6);
+	azi = drand48() * 180.0 + azi0;
+	alt = 80 + drand48() * 5.0;
 	ats_->Horizon2Eq(azi * D2R, alt * D2R, ra, dec);
 	ra   = ats_->LocalMeanSiderealTime() - ra;
 	// 转换为J2000系

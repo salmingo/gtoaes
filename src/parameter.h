@@ -112,12 +112,12 @@ public:
 		node1.add("CameraAnnex",portCameraAnnex= 4015);
 
 		ptree& node2 = pt.add("NTP", "");
-		node2.add("Enable", enableNTP = true);
+		node2.add("Enable", enableNTP = false);
 		node2.add("IP",     hostNTP = "172.28.1.3");
 		node2.add("MaximumDifference", maxDiffNTP = 100);
 
 		ptree& node3 = pt.add("Database", "");
-		node3.add("Enable", enableDB = true);
+		node3.add("Enable", enableDB = false);
 		node3.add("URL",    urlDB    = "http://172.28.8.8:8080/gwebend/");
 
 		ptree& node4 = pt.add("ObservationSytemTrait", "");
