@@ -24,9 +24,6 @@ enum ObservationSystemType {// 观测系统类型
 
 struct ObservationSystemTrait {// 观测系统关键特征
 	string gid;		//< 在网络系统中的组标志
-	int obsmode;	//< 计划调度模式
-					//< 1: 替换模式. 高优先级替换在执行计划, 取消在执行计划
-					//< 2: 插入模式. 高优先级替换在执行计划, 在执行计划进入缓存队列
 	int ostype;		//< 观测系统类型, 用于通知相机的文件存储格式
 					//< 1: GWAC
 					//< 2: NORMAL
@@ -40,7 +37,6 @@ public:
 	ObservationSystemTrait & operator=(const ObservationSystemTrait &other) {
 		if (this != &other) {
 			gid			= other.gid;
-			obsmode		= other.obsmode;
 			ostype		= other.ostype;
 			sitename	= other.sitename;
 			lgt			= other.lgt;
@@ -128,19 +124,36 @@ public:
 		node4.add("latitude",  trait->lat       = 40.395933333333333);
 		node4.add("altitude",  trait->alt       = 900);
 		node4.add("timezone",  trait->timezone  = 8);
-		node4.add("obsmode",   trait->obsmode   = 1);
-		node4.add("<xmlcomment>", "obsmode #1: Replace current plan");
-		node4.add("<xmlcomment>", "obsmode #2: Append the new plan then do scheduling");
 		node4.add("ostype",    trait->ostype    = 1);
 		node4.add("<xmlcomment>", "ostype #1: GWAC");
 		node4.add("<xmlcomment>", "ostype #2: Normal");
 		obsst.push_back(trait);
 
-		ptree& node5 = pt.add("MountLimit", "");
+		ptree& node5 = pt.add("ObservationSytemTrait", "");
+		trait = boost::make_shared<ObssTrait>();
+		node5.add("group_id",  trait->gid       = "002");
+		node5.add("sitename",  trait->sitename  = "Xinglong");
+		node5.add("longitude", trait->lgt       = 117.57454166666667);
+		node5.add("latitude",  trait->lat       = 40.395933333333333);
+		node5.add("altitude",  trait->alt       = 900);
+		node5.add("timezone",  trait->timezone  = 8);
+		node5.add("ostype",    trait->ostype    = 2);
+		node5.add("<xmlcomment>", "ostype #1: GWAC");
+		node5.add("<xmlcomment>", "ostype #2: Normal");
+		obsst.push_back(trait);
+
+		ptree& node6 = pt.add("MountLimit", "");
 		MountLimitPtr limit = boost::make_shared<MountLimit>();
-		node5.add("<xmlattr>.GroupID",  limit->gid   = "001");
-		node5.add("<xmlattr>.UnitID",   limit->uid   = "");
-		node5.add("<xmlattr>.Value",    limit->value = 10.0);
+		node6.add("<xmlattr>.GroupID",  limit->gid   = "001");
+		node6.add("<xmlattr>.UnitID",   limit->uid   = "");
+		node6.add("<xmlattr>.Value",    limit->value = 20.0);
+		mntlimit.push_back(limit);
+
+		ptree& node7 = pt.add("MountLimit", "");
+		limit = boost::make_shared<MountLimit>();
+		node7.add("<xmlattr>.GroupID",  limit->gid   = "002");
+		node7.add("<xmlattr>.UnitID",   limit->uid   = "");
+		node7.add("<xmlattr>.Value",    limit->value = 10.0);
 		mntlimit.push_back(limit);
 
 		boost::property_tree::xml_writer_settings<std::string> settings(' ', 4);
@@ -187,7 +200,6 @@ public:
 					trait->lat      = child.second.get("latitude",    0.0);
 					trait->alt      = child.second.get("altitude",  100.0);
 					trait->timezone = child.second.get("timezone",      8);
-					trait->obsmode  = child.second.get("obsmode",       1);
 					trait->ostype   = child.second.get("ostype",        1);
 					obsst.push_back(trait);
 				}

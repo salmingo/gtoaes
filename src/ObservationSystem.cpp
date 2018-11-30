@@ -55,12 +55,14 @@ bool ObservationSystem::StartService() {
 
 void ObservationSystem::StopService() {
 	if (data_->running) {
-		_gLog.Write("Observation System [%s:%s] stop running", gid_.c_str(), uid_.c_str());
 		interrupt_thread(thrd_client_);
 		interrupt_thread(thrd_idle_);
 		interrupt_thread(thrd_time_);
+		tcpc_telescope_.reset();
+		cameras_.clear();
 		Stop();
 		data_->running = false;
+		_gLog.Write("Observation System [%s:%s] stop running", gid_.c_str(), uid_.c_str());
 	}
 }
 

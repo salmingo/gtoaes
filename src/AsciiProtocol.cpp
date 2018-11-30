@@ -131,9 +131,15 @@ const char *AsciiProtocol::CompactRegister(apreg proto, int &n) {
 	string output;
 	compact_base(to_apbase(proto), output);
 
-	if (proto->result != INT_MIN) join_kv(output, "result",   proto->result);
 	if (proto->ostype != INT_MIN) join_kv(output, "ostype",   proto->ostype);
 
+	return output_compacted(output, n);
+}
+
+const char *AsciiProtocol::CompactRegister(int ostype, int &n) {
+	string output = APTYPE_REG;
+	output += " ";
+	join_kv(output, "ostype", ostype);
 	return output_compacted(output, n);
 }
 
@@ -710,8 +716,7 @@ apbase AsciiProtocol::resolve_register(likv &kvs) {
 	for (likv::iterator it = kvs.begin(); it != kvs.end(); ++it) {// 遍历键值对
 		keyword = (*it).keyword;
 		// 识别关键字
-		if      (iequals(keyword, "ostype"))  proto->ostype = std::stoi((*it).value);
-		else if (iequals(keyword, "result"))  proto->result = std::stoi((*it).value);
+		if (iequals(keyword, "ostype"))  proto->ostype = std::stoi((*it).value);
 	}
 
 	return to_apbase(proto);

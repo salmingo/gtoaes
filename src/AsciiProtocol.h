@@ -65,13 +65,11 @@ typedef list<pair_key_val> likv;	//< pair_key_val列表
 
 /*--------------------------------- 声明通信协议 ---------------------------------*/
 struct ascii_proto_reg : public ascii_proto_base {// 注册设备/用户
-	int result;	//< 注册结果. 0: 成功; != 0: 失败, 及错误字
 	int ostype;	//< 观测系统类型. 通知相机观测系统类型, 区别创建目录及文件名和文件头
 
 public:
 	ascii_proto_reg() {
 		type = APTYPE_REG;
-		result = INT_MIN;
 		ostype = INT_MIN;
 	}
 };
@@ -711,6 +709,7 @@ public:
 	 * @brief 封装设备注册和注册结果
 	 */
 	const char *CompactRegister(apreg proto, int &n);
+	const char *CompactRegister(int ostype, int &n);
 	/*!
 	 * @brief 封装设备注销和注销结果
 	 */

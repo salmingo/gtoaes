@@ -116,6 +116,10 @@ struct ObservationSystemCamera {// 相机标志与网络连接
 
 public:
 	ObservationSystemCamera(const string& id);
+	virtual ~ObservationSystemCamera() {
+		tcptr.reset();
+		info.reset();
+	}
 
 	bool operator==(const string& id) {
 		return cid == id;
