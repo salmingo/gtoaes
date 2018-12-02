@@ -75,6 +75,7 @@ int main(int argc, char** argv) {
 			_gLog.Write("Daemon goes running");
 			ios.run();
 			gc.StopService();
+			_gLog.Write("Daemon stop running");
 		}
 		else {
 			_gLog.Write(LOG_FAULT, NULL, "Fail to launch %s", DAEMON_NAME);

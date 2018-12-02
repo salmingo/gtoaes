@@ -761,7 +761,7 @@ bool ObservationSystem::process_slewto(apslewto proto) {
 	if (!(tcpc_telescope_.use_count() && safe_position(ra, dc)) || plan_now_.use_count())
 		return false;
 
-	_gLog.Write("[%s:%s] will slew to [%.4f, %.4f, %.1f]",
+	_gLog.Write("telescope [%s:%s] will slew to [%.4f, %.4f][degree], [%.1f]",
 			gid_.c_str(), uid_.c_str(), ra, dc, proto->epoch);
 	lastguide_ = ptime(not_a_date_time);
 	nftele_->SetObject(ra, dc);
@@ -784,7 +784,7 @@ bool ObservationSystem::process_abortslew() {
  */
 bool ObservationSystem::process_park() {
 	if (tcpc_telescope_.use_count() && nftele_->state != TELESCOPE_PARKING && nftele_->state != TELESCOPE_PARKED) {
-		_gLog.Write("parking [%s:%s]", gid_.c_str(), uid_.c_str());
+		_gLog.Write("parking telescope [%s:%s]", gid_.c_str(), uid_.c_str());
 		interrupt_plan();
 		return true;
 	}
@@ -825,7 +825,7 @@ bool ObservationSystem::process_mcover(apmcover proto) {
 	MIRRORCOVER_COMMAND cmd = MIRRORCOVER_COMMAND(proto->value);
 	if (cmd == MCC_CLOSE && plan_now_.use_count() && plan_now_->imgtype >= IMGTYPE_FLAT)
 		return false;
-	_gLog.Write("%s mirror-cover [%s:%s:%s]", cmd == MCC_OPEN ? "open" : "close",
+	_gLog.Write("%s mirror-cover camera [%s:%s:%s]", cmd == MCC_OPEN ? "open" : "close",
 			gid_.c_str(), uid_.c_str(), proto->cid.empty() ? "All" : proto->cid.c_str());
 	return true;;
 }
@@ -1007,7 +1007,7 @@ void ObservationSystem::process_info_telescope(aptele proto) {
 	}
 	else if (now == TELESCOPE_TRACKING) {
 		if (nftele_->StableArrive()) {
-			_gLog.Write("telescope [%s:%s] arrived at [%.4f, %.4f]", gid_.c_str(), uid_.c_str(), ra, dc);
+			_gLog.Write("telescope [%s:%s] arrived at [%.4f, %.4f][degree]", gid_.c_str(), uid_.c_str(), ra, dc);
 			if (plan_now_.use_count()) PostMessage(MSG_TELESCOPE_TRACK);
 		}
 	}

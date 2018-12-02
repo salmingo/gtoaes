@@ -48,11 +48,23 @@ bool GeneralControl::StartService() {
 }
 
 void GeneralControl::StopService() {
-	Stop();
 	interrupt_thread(thrd_monitor_plan_);
 	interrupt_thread(thrd_monitor_obss_);
 	interrupt_thread(thrd_status_);
 	exit_ignore_plan();
+	//<< 显式释放数组
+	tcpc_client_.clear();
+	tcpc_tele_.clear();
+	tcpc_mount_.clear();
+	tcpc_camera_.clear();
+	tcpc_mount_annex_.clear();
+	tcpc_camera_annex_.clear();
+	obss_gwac_.clear();
+	obss_normal_.clear();
+	plan_pair_.clear();
+	plans_.clear();
+	//>> 显式释放数组
+	Stop();
 }
 
 //////////////////////////////////////////////////////////////////////////////

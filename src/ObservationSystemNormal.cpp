@@ -18,7 +18,7 @@ ObsSysNormalPtr make_obss_normal(const string& gid, const string& uid) {
 
 ObservationSystemNormal::ObservationSystemNormal(const string& gid, const string& uid)
 	: ObservationSystem(gid, uid) {
-	tslew_    = AS2D * 5;	// 5角秒
+	tslew_    = AS2D * 30;	// 30角秒
 	tguide_   = 1.39E-4;	// 0.5角秒
 }
 

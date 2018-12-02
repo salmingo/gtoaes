@@ -71,6 +71,7 @@ public:
 	void Guide(double dr, double dd) {
 		dra += dr;
 		ddc += dd;
+		BeginSlew();
 	}
 
 	/*!
@@ -79,6 +80,7 @@ public:
 	void ResetOffset() {
 		dra = ddc = 0.0;
 	}
+
 	/*!
 	 * @brief 开始指向过程
 	 * @note
