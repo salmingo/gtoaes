@@ -52,19 +52,8 @@ void GeneralControl::StopService() {
 	interrupt_thread(thrd_monitor_obss_);
 	interrupt_thread(thrd_status_);
 	exit_ignore_plan();
-	//<< 显式释放数组
-	tcpc_client_.clear();
-	tcpc_tele_.clear();
-	tcpc_mount_.clear();
-	tcpc_camera_.clear();
-	tcpc_mount_annex_.clear();
-	tcpc_camera_annex_.clear();
-	obss_gwac_.clear();
-	obss_normal_.clear();
-	plan_pair_.clear();
-	plans_.clear();
-	//>> 显式释放数组
-	Stop();
+	exit_close_obss(obss_gwac_);
+	exit_close_obss(obss_normal_);
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -1133,6 +1122,13 @@ void GeneralControl::thread_status() {
 void GeneralControl::exit_ignore_plan() {
 	for (ExObsPlanVec::iterator it = plans_.begin(); it != plans_.end(); ++it) {
 		write_plan_log(*it);
+	}
+}
+
+void GeneralControl::exit_close_obss(ObsSysVec &obss) {
+	for (ObsSysVec::iterator it = obss.begin(); it != obss.end(); ++it) {
+		(*it)->StopService();
+		(*it).reset();
 	}
 }
 

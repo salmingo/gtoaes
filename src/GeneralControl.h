@@ -115,16 +115,37 @@ protected:
 
 protected:
 	// 成员变量
+	boost::mutex mtx_tcpc_client_;			//< 互斥锁: 客户端
+	boost::mutex mtx_tcpc_tele_;			//< 互斥锁: 通用望远镜
+	boost::mutex mtx_tcpc_mount_;			//< 互斥锁: GWAC转台
+	boost::mutex mtx_tcpc_camera_;			//< 互斥锁: 相机
+	boost::mutex mtx_tcpc_mount_annex_;		//< 互斥锁: 镜盖+调焦(GWAC)
+	boost::mutex mtx_tcpc_camera_annex_;	//< 互斥锁: 温控+真空(GWAC-GY)
+	boost::mutex mtx_obss_gwac_;			//< 互斥锁, GWAC观测系统
+	boost::mutex mtx_obss_normal_;			//< 互斥锁, 通用观测系统
+	boost::mutex mtx_db_;					//< 数据库互斥锁
+	boost::mutex mtx_plans_;				//< 互斥锁: 观测计划
+	boost::mutex mtx_acqplan_;				//< 互斥锁: 观测计划申请参数
+
+//////////////////////////////////////////////////////////////////////
 	boost::shared_ptr<param_config> param_;	//< 配置参数
 	NTPPtr ntp_;		//< NTP时钟同步接口
 
+	/*---------------- GWAC观测计划 ----------------*/
+	PairPlanVec     plan_pair_;			//< 配对观测计划
+	ExObsPlanVec    plans_;				//< 观测计划集合
+	AcquirePlanQue  que_acqplan_;		//< 观测计划申请参数队列
+	threadptr       thrd_monitor_plan_;	//< 线程: 检查观测计划有效性
+
+	/*---------------- 观测系统 ----------------*/
+	ObsSysVec     obss_gwac_;			//< GWAC观测系统集合
+	ObsSysVec     obss_normal_;			//< 通用观测系统集合
+	threadptr     thrd_monitor_obss_;	//< 线程: 监测观测系统有效性
+
 	/*----------------- 网络资源 -----------------*/
-	TcpSPtr tcps_client_;		//< 网络服务: 客户端
-	TcpSPtr tcps_tele_;			//< 网络服务: 通用望远镜
-	TcpSPtr tcps_mount_;		//< 网络服务: 转台
-	TcpSPtr tcps_camera_;		//< 网络服务: 相机
-	TcpSPtr tcps_mount_annex_;	//< 网络服务: 镜盖+调焦(GWAC)
-	TcpSPtr tcps_camera_annex_;	//< 网络服务: 温控+真空(GWAC-GY)
+	boost::shared_array<char> bufrcv_;	//< 网络信息存储区: 消息队列中调用
+	AscProtoPtr ascproto_;	//< 通用协议解析接口
+	MountPtr mntproto_;		//< GWAC转台协议解析接口
 
 	TcpCVec tcpc_client_;		//< 网络连接: 客户端
 	TcpCVec tcpc_tele_;			//< 网络连接: 通用望远镜
@@ -133,36 +154,16 @@ protected:
 	TcpCVec tcpc_mount_annex_;	//< 网络连接: 镜盖+调焦(GWAC)
 	TcpCVec tcpc_camera_annex_;	//< 网络连接: 温控+真空(GWAC-GY)
 
-	boost::mutex mtx_tcpc_client_;			//< 互斥锁: 客户端
-	boost::mutex mtx_tcpc_tele_;			//< 互斥锁: 通用望远镜
-	boost::mutex mtx_tcpc_mount_;			//< 互斥锁: GWAC转台
-	boost::mutex mtx_tcpc_camera_;			//< 互斥锁: 相机
-	boost::mutex mtx_tcpc_mount_annex_;		//< 互斥锁: 镜盖+调焦(GWAC)
-	boost::mutex mtx_tcpc_camera_annex_;	//< 互斥锁: 温控+真空(GWAC-GY)
-
-	boost::shared_array<char> bufrcv_;	//< 网络信息存储区: 消息队列中调用
-	AscProtoPtr ascproto_;	//< 通用协议解析接口
-	MountPtr mntproto_;		//< GWAC转台协议解析接口
-
-	/*---------------- 观测系统 ----------------*/
-	ObsSysVec     obss_gwac_;			//< GWAC观测系统集合
-	ObsSysVec     obss_normal_;			//< 通用观测系统集合
-	boost::mutex  mtx_obss_gwac_;		//< 互斥锁, GWAC观测系统
-	boost::mutex  mtx_obss_normal_;		//< 互斥锁, 通用观测系统
-	threadptr     thrd_monitor_obss_;	//< 线程: 监测观测系统有效性
+	TcpSPtr tcps_client_;		//< 网络服务: 客户端
+	TcpSPtr tcps_tele_;			//< 网络服务: 通用望远镜
+	TcpSPtr tcps_mount_;		//< 网络服务: 转台
+	TcpSPtr tcps_camera_;		//< 网络服务: 相机
+	TcpSPtr tcps_mount_annex_;	//< 网络服务: 镜盖+调焦(GWAC)
+	TcpSPtr tcps_camera_annex_;	//< 网络服务: 温控+真空(GWAC-GY)
 
 	/*---------------- 数据库 ----------------*/
 	boost::shared_ptr<DataTransfer> db_;//< 数据库访问接口
-	boost::mutex mtx_db_;		//< 数据库互斥锁
-	threadptr    thrd_status_;	//< 定时向数据库传送观测系统和观测计划工作状态
-
-	/*---------------- GWAC观测计划 ----------------*/
-	PairPlanVec     plan_pair_;	//< 配对观测计划
-	ExObsPlanVec    plans_;		//< 观测计划集合
-	boost::mutex    mtx_plans_;	//< 互斥锁: 观测计划
-	threadptr       thrd_monitor_plan_;	//< 线程: 检查观测计划有效性
-	AcquirePlanQue  que_acqplan_;	//< 观测计划申请参数队列
-	boost::mutex    mtx_acqplan_;	//< 互斥锁: 观测计划申请参数
+	threadptr    thrd_status_;			//< 定时向数据库传送观测系统和观测计划工作状态
 
 public:
 	// 接口
@@ -214,6 +215,11 @@ protected:
 	 * @brief 退出程序时, 记录被抛弃的观测计划
 	 */
 	void exit_ignore_plan();
+	/*!
+	 * @brief 退出程序时, 显式关闭观测系统
+	 * @param obss 观测系统集合
+	 */
+	void exit_close_obss(ObsSysVec &obss);
 	/*!
 	 * @brief 为通信协议ascii_proto_append_plan创建观测计划, 并入库管理
 	 * @param plan 适用于GWAC系统的通信协议

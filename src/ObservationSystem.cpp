@@ -58,9 +58,6 @@ void ObservationSystem::StopService() {
 		interrupt_thread(thrd_client_);
 		interrupt_thread(thrd_idle_);
 		interrupt_thread(thrd_time_);
-		tcpc_telescope_.reset();
-		cameras_.clear();
-		Stop();
 		data_->running = false;
 		_gLog.Write("Observation System [%s:%s] stop running", gid_.c_str(), uid_.c_str());
 	}
@@ -81,7 +78,7 @@ void ObservationSystem::SetGeosite(const string& name, const double lgt, const d
 }
 
 void ObservationSystem::SetElevationLimit(double value) {
-	_gLog.Write("Elevation limit of Observation System [%s:%s] is %.1f",
+	_gLog.Write("Elevation limit of Observation System [%s:%s] is %.1f[degree]",
 			gid_.c_str(), uid_.c_str(), value);
 	minEle_ = value * D2R;
 }
@@ -141,6 +138,7 @@ bool ObservationSystem::DecoupleClient(TcpCPtr client) {
 	TcpCVec::iterator it;
 	for (it = tcpc_client_.begin(); it != tcpc_client_.end() && (*it) != client; ++it);
 	if (it != tcpc_client_.end()) {
+		(*it).reset();
 		tcpc_client_.erase(it);
 		if (!tcpc_client_.size()) interrupt_thread(thrd_client_); // 停用客户端线程
 		return true;
@@ -825,7 +823,7 @@ bool ObservationSystem::process_mcover(apmcover proto) {
 	MIRRORCOVER_COMMAND cmd = MIRRORCOVER_COMMAND(proto->value);
 	if (cmd == MCC_CLOSE && plan_now_.use_count() && plan_now_->imgtype >= IMGTYPE_FLAT)
 		return false;
-	_gLog.Write("%s mirror-cover camera [%s:%s:%s]", cmd == MCC_OPEN ? "open" : "close",
+	_gLog.Write("%s mirror-cover for camera [%s:%s:%s]", cmd == MCC_OPEN ? "open" : "close",
 			gid_.c_str(), uid_.c_str(), proto->cid.empty() ? "All" : proto->cid.c_str());
 	return true;;
 }
@@ -838,7 +836,7 @@ bool ObservationSystem::process_focus(apfocus proto) {
 	ObssCamPtr camptr = find_camera(cid);
 
 	if (camptr.use_count() && camptr->info->focus != proto->value) {
-		_gLog.Write("focus [%s:%s:%s] position wants to be %d",
+		_gLog.Write("focus [%s:%s:%s] position will goto %d",
 				gid_.c_str(), uid_.c_str(), cid.c_str(), proto->value);
 		return true;
 	}

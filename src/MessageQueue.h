@@ -62,8 +62,8 @@ protected:
 protected:
 	// 成员变量
 	msgqptr mq_;			//< 消息队列
-	threadptr thrdmsg_;	//< 消息响应线程
 	cbfarray funcs_;		//< 回调函数
+	threadptr thrdmsg_;		//< 消息响应线程
 
 public:
 	// 接口

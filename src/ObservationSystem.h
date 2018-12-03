@@ -256,52 +256,47 @@ protected:
 		MSG_LAST	//< 占位, 不使用
 	};
 
-	typedef boost::container::deque<apbase> apque;		//< ASCII通信协议队列
+	typedef boost::container::deque<apbase> apque;				//< ASCII通信协议队列
 	typedef boost::container::stable_vector<TcpCPtr> TcpCVec;	//< 网络连接存储区
 
 protected:
+	boost::mutex mtx_queap_;	//< 互斥锁: 通信协议队列
+	boost::mutex mtx_client_;	//< 互斥锁: 客户端
+	boost::mutex mtx_camera_;	//< 互斥锁: 相机
+	boost::mutex mtx_ats_;		//< 互斥锁: ats_
 //////////////////////////////////////////////////////////////////////
 	/* 成员变量 */
-	string	gid_;		//< 组标志
-	string	uid_;		//< 单元标志
-	int		timezone_;	//< 时区
-	double	minEle_;	//< 最小仰角, 量纲: 弧度
-	double	tslew_;		//< 指向到位阈值
-	double	tguide_;	//< 导星阈值
-	OBSERVATION_DURATION odtype_;	//< 观测周期类型
+	string	gid_;			//< 组标志
+	string	uid_;			//< 单元标志
+	int		timezone_;		//< 时区
+	double	minEle_;		//< 最小仰角, 量纲: 弧度
+	double	tslew_;			//< 指向到位阈值
+	double	tguide_;		//< 导星阈值
+	OBSERVATION_DURATION odtype_;			//< 观测周期类型
 	boost::posix_time::ptime tmLast_;		//< 时标, 记录: 系统创建时间, 最后一条网络连接断开时间
 	boost::posix_time::ptime lastflat_;		//< 时标: 最后一次平场重新指向时间
 	boost::posix_time::ptime lastguide_;	//< 时标: 最后一次导星的UTC时间
-
-//////////////////////////////////////////////////////////////////////
 	boost::shared_ptr<AstroUtil::ATimeSpace> ats_;	//< 天文时-空转换接口
-	boost::mutex mtx_ats_;	//< 互斥锁: ats_
+
 //////////////////////////////////////////////////////////////////////
 	ObssDataPtr data_;		//< 观测系统共享性数据
 	ObsPlanPtr	plan_now_;	//< 当前执行计划
 	ObsPlanPtr	plan_wait_;	//< 等待执行计划
 	NFTelePtr	nftele_;	//< 望远镜工作状态
-	ObssCamVec	cameras_;	//< 相机访问接口
-
-//////////////////////////////////////////////////////////////////////
-	/* 网络资源 */
-	boost::shared_array<char> bufrcv_;	//< 网络信息存储区
-	AscProtoPtr ascproto_;		//< 通用ASCII编码协议解析接口
-
-	TcpCVec tcpc_client_;		//< 客户端网络连接
-	TcpCPtr tcpc_telescope_;	//< 望远镜网络连接(通用望远镜或GWAC转台)
-
-	boost::mutex mtx_client_;	//< 互斥锁: 客户端
-	boost::mutex mtx_camera_;	//< 互斥锁: 相机
-
-	/* 缓存GeneralControl转发信息 */
-	apque que_ap_;	//< 缓存由GC转发的用户/数据库信息
-	boost::mutex mtx_queap_;	//< 互斥锁: 通信协议队列
 
 //////////////////////////////////////////////////////////////////////
 	/* 回调函数 */
 	PlanFinished cb_plan_finished_;	//< 观测计划状态发生变更
 	AcquireNewPlan  cb_acqnewplan_;	//< 申请新的观测计划
+
+//////////////////////////////////////////////////////////////////////
+	/* 网络资源 */
+	boost::shared_array<char> bufrcv_;	//< 网络信息存储区
+	AscProtoPtr ascproto_;				//< 通用ASCII编码协议解析接口
+	apque que_ap_;						//< 缓存由GC转发的用户/数据库信息
+	TcpCVec tcpc_client_;				//< 客户端网络连接
+	TcpCPtr tcpc_telescope_;			//< 望远镜网络连接(通用望远镜或GWAC转台)
+	ObssCamVec cameras_;				//< 相机访问接口
 
 //////////////////////////////////////////////////////////////////////
 	/* 线程 */
