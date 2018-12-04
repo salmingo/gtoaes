@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<version>0.8</version>
+<date>20181204T083704</date>
+<Server>
+    <Client>4010</Client>
+    <Telescope>4011</Telescope>
+    <Mount>4012</Mount>
+    <Camera>4013</Camera>
+    <MountAnnex>4014</MountAnnex>
+    <CameraAnnex>4015</CameraAnnex>
+</Server>
+<NTP>
+    <Enable>false</Enable>
+    <IP>172.28.1.3</IP>
+    <MaximumDifference>100</MaximumDifference>
+</NTP>
+<Database>
+    <Enable>false</Enable>
+    <URL>http://172.28.8.8:8080/gwebend/</URL>
+</Database>
+<ObservationSytemTrait>
+    <group_id>001</group_id>
+    <sitename>Xinglong</sitename>
+    <longitude>117.57454166666668</longitude>
+    <latitude>40.395933333333332</latitude>
+    <altitude>900</altitude>
+    <timezone>8</timezone>
+    <ostype>1</ostype>
+    <!--ostype #1: GWAC-->
+    <!--ostype #2: Normal-->
+</ObservationSytemTrait>
+<ObservationSytemTrait>
+    <group_id>002</group_id>
+    <sitename>Xinglong</sitename>
+    <longitude>117.57454166666668</longitude>
+    <latitude>40.395933333333332</latitude>
+    <altitude>900</altitude>
+    <timezone>8</timezone>
+    <ostype>2</ostype>
+    <!--ostype #1: GWAC-->
+    <!--ostype #2: Normal-->
+</ObservationSytemTrait>
+<MountLimit GroupID="001" UnitID="" Value="20"/>
+<MountLimit GroupID="002" UnitID="" Value="10"/>

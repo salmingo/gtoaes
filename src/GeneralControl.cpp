@@ -1113,9 +1113,6 @@ void GeneralControl::thread_status() {
 			mutex_lock lck(mtx_obss_normal_);
 			database_upload(obss_normal_);
 		}
-
-		/* 发送观测计划工作状态 */
-		if (plans_.size()) {}
 	}
 }
 
