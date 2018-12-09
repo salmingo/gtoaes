@@ -63,12 +63,12 @@ typedef boost::shared_ptr<mntproto_utc> mputc;
 
 struct mntproto_position : public mntproto_base {// 转台位置
 	double ra;	//< 赤经, 量纲: 角度
-	double dc;	//< 赤纬, 量纲: 角度
+	double dec;	//< 赤纬, 量纲: 角度
 
 public:
 	mntproto_position() {
 		type = MPTYPE_POSITION;
-		ra = dc = 1E30;
+		ra = dec = 1E30;
 	}
 };
 typedef boost::shared_ptr<mntproto_position> mpposition;

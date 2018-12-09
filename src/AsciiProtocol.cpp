@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include "AsciiProtocol.h"
 
+using namespace std;
 using namespace boost;
 
 //////////////////////////////////////////////////////////////////////////////
@@ -234,13 +235,13 @@ const char *AsciiProtocol::CompactFindHome(int &n) {
 
 const char *AsciiProtocol::CompactHomeSync(aphomesync proto, int &n) {
 	if (!proto.use_count()
-			|| !(valid_ra(proto->ra) && valid_dec(proto->dc)))
+			|| !(valid_ra(proto->ra) && valid_dec(proto->dec)))
 		return NULL;
 
 	string output;
 	compact_base(to_apbase(proto), output);
 	join_kv(output, "ra",       proto->ra);
-	join_kv(output, "dec",      proto->dc);
+	join_kv(output, "dec",      proto->dec);
 	join_kv(output, "epoch",    proto->epoch);
 
 	return output_compacted(output, n);
@@ -256,13 +257,13 @@ const char *AsciiProtocol::CompactHomeSync(double ra, double dec, int &n) {
 
 const char *AsciiProtocol::CompactSlewto(apslewto proto, int &n) {
 	if (!proto.use_count()
-			|| !(valid_ra(proto->ra) && valid_dec(proto->dc)))
+			|| !(valid_ra(proto->ra) && valid_dec(proto->dec)))
 		return NULL;
 
 	string output;
 	compact_base(to_apbase(proto), output);
 	join_kv(output, "ra",       proto->ra);
-	join_kv(output, "dec",      proto->dc);
+	join_kv(output, "dec",      proto->dec);
 	join_kv(output, "epoch",    proto->epoch);
 
 	return output_compacted(output, n);
@@ -292,18 +293,18 @@ const char *AsciiProtocol::CompactPark(int &n) {
 
 const char *AsciiProtocol::CompactGuide(apguide proto, int &n) {
 	if (!proto.use_count()
-			|| !(valid_ra(proto->ra) && valid_dec(proto->dc)))
+			|| !(valid_ra(proto->ra) && valid_dec(proto->dec)))
 		return NULL;
 
 	string output;
 	compact_base(to_apbase(proto), output);
 	// 真实指向位置或位置偏差
 	join_kv(output, "ra",       proto->ra);
-	join_kv(output, "dec",      proto->dc);
+	join_kv(output, "dec",      proto->dec);
 	// 当(ra,dec)和目标位置同时有效时, (ra,dec)指代真实位置而不是位置偏差
-	if (valid_ra(proto->objra) && valid_dec(proto->objdc)) {
+	if (valid_ra(proto->objra) && valid_dec(proto->objdec)) {
 		join_kv(output, "objra",    proto->objra);
-		join_kv(output, "objdec",   proto->objdc);
+		join_kv(output, "objdec",   proto->objdec);
 	}
 
 	return output_compacted(output, n);
@@ -336,9 +337,9 @@ const char *AsciiProtocol::CompactTelescope(aptele proto, int &n) {
 	string output;
 	compact_base(to_apbase(proto), output);
 	join_kv(output, "state",    proto->state);
-	join_kv(output, "ec",       proto->ec);
+	join_kv(output, "errcode",  proto->errcode);
 	join_kv(output, "ra",       proto->ra);
-	join_kv(output, "dec",      proto->dc);
+	join_kv(output, "dec",      proto->dec);
 	join_kv(output, "azi",      proto->azi);
 	join_kv(output, "ele",      proto->ele);
 
@@ -443,35 +444,20 @@ const char *AsciiProtocol::CompactAppendPlan(apappplan proto, int &n) {
 	if ((size = proto->filter.size())) {
 		tmp = proto->filter[0];
 		for (i = 1; i < size; ++i) {
-			tmp += "|" + proto->filter[i];
+			tmp += "; " + proto->filter[i];
 		}
 		join_kv(output, "filter", tmp);
 	}
 
-	tmp = std::to_string(proto->expdur[0]);
-	for (i = 1, size = proto->expdur.size(); i < size; ++i) {
-		tmp += "|" + std::to_string(proto->expdur[i]);
-	}
-	join_kv(output, "expdur", tmp);
-
-	if ((size = proto->delay.size())) {
-		tmp = std::to_string(proto->delay[0]);
-		for (i = 1, size = proto->delay.size(); i < size; ++i) {
-			tmp += "|" + std::to_string(proto->delay[i]);
-		}
-		join_kv(output, "delay", tmp);
-	}
-
-	tmp = std::to_string(proto->frmcnt[0]);
-	for (i = 1, size = proto->frmcnt.size(); i < size; ++i) {
-		tmp += "|" + std::to_string(proto->frmcnt[i]);
-	}
-	join_kv(output, "frmcnt", tmp);
-
+	join_kv(output, "expdur",      proto->expdur);
+	join_kv(output, "delay",       proto->delay);
+	join_kv(output, "frmcnt",      proto->frmcnt);
+	join_kv(output, "loopcnt",     proto->loopcnt);
 	join_kv(output, "priority",    proto->priority);
 	if (!proto->begin_time.empty()) join_kv(output, "begin_time",  proto->begin_time);
 	if (!proto->end_time.empty())   join_kv(output, "end_time",    proto->end_time);
 	if (proto->pair_id >= 0)        join_kv(output, "pair_id",     proto->pair_id);
+
 	return output_compacted(output, n);
 }
 
@@ -533,7 +519,10 @@ const char *AsciiProtocol::CompactObject(apobject proto, int &n) {
 	join_kv(output, "expdur",      proto->expdur);
 	join_kv(output, "delay",       proto->delay);
 	join_kv(output, "frmcnt",      proto->frmcnt);
+	join_kv(output, "loopcnt",     proto->loopcnt);
+	join_kv(output, "ifilter",     proto->ifilter);
 	join_kv(output, "frmno",       proto->frmno);
+	join_kv(output, "loopno",      proto->loopno);
 	join_kv(output, "priority",    proto->priority);
 	join_kv(output, "begin_time",  proto->begin_time);
 	join_kv(output, "end_time",    proto->end_time);
@@ -567,9 +556,10 @@ const char *AsciiProtocol::CompactCamera(apcam proto, int &n) {
 	join_kv(output, "expdur",    proto->expdur);
 	join_kv(output, "delay",     proto->delay);
 	join_kv(output, "frmcnt",    proto->frmcnt);
-	join_kv(output, "loopno",    proto->loopno);
-	join_kv(output, "expno",     proto->expno);
+	join_kv(output, "loopcnt",   proto->loopcnt);
+	join_kv(output, "ifilter",   proto->ifilter);
 	join_kv(output, "frmno",     proto->frmno);
+	join_kv(output, "loopno",    proto->loopno);
 	return output_compacted(output, n);
 }
 
@@ -716,7 +706,7 @@ apbase AsciiProtocol::resolve_register(likv &kvs) {
 	for (likv::iterator it = kvs.begin(); it != kvs.end(); ++it) {// 遍历键值对
 		keyword = (*it).keyword;
 		// 识别关键字
-		if (iequals(keyword, "ostype"))  proto->ostype = std::stoi((*it).value);
+		if (iequals(keyword, "ostype"))  proto->ostype = stoi((*it).value);
 	}
 
 	return to_apbase(proto);
@@ -765,14 +755,14 @@ apbase AsciiProtocol::resolve_obss(likv &kvs) {
 	for (likv::iterator it = kvs.begin(); it != kvs.end(); ++it) {// 遍历键值对
 		keyword = (*it).keyword;
 		// 识别关键字
-		if      (iequals(keyword, "state"))   proto->state   = std::stoi((*it).value);
-		else if (iequals(keyword, "op_sn"))   proto->op_sn   = std::stoi((*it).value);
+		if      (iequals(keyword, "state"))   proto->state   = stoi((*it).value);
+		else if (iequals(keyword, "op_sn"))   proto->op_sn   = stoi((*it).value);
 		else if (iequals(keyword, "op_time")) proto->op_time = (*it).value;
-		else if (iequals(keyword, "mount"))   proto->mount   = std::stoi((*it).value);
+		else if (iequals(keyword, "mount"))   proto->mount   = stoi((*it).value);
 		else if (keyword.find(precid) == 0) {// 相机工作状态. 关键字 cam#xxx
 			ascii_proto_obss::camera_state cs;
 			cs.cid   = keyword.substr(nprecid);
-			cs.state = std::stoi((*it).value);
+			cs.state = stoi((*it).value);
 
 			proto->camera.push_back(cs);
 		}
@@ -792,9 +782,9 @@ apbase AsciiProtocol::resolve_homesync(likv &kvs) {
 	for (likv::iterator it = kvs.begin(); it != kvs.end(); ++it) {// 遍历键值对
 		keyword = (*it).keyword;
 		// 识别关键字
-		if      (iequals(keyword, "ra"))     proto->ra    = std::stod((*it).value);
-		else if (iequals(keyword, "dec"))    proto->dc    = std::stod((*it).value);
-		else if (iequals(keyword, "epoch"))  proto->epoch = std::stod((*it).value);
+		if      (iequals(keyword, "ra"))     proto->ra    = stod((*it).value);
+		else if (iequals(keyword, "dec"))    proto->dec    = stod((*it).value);
+		else if (iequals(keyword, "epoch"))  proto->epoch = stod((*it).value);
 	}
 
 	return to_apbase(proto);
@@ -807,9 +797,9 @@ apbase AsciiProtocol::resolve_slewto(likv &kvs) {
 	for (likv::iterator it = kvs.begin(); it != kvs.end(); ++it) {// 遍历键值对
 		keyword = (*it).keyword;
 		// 识别关键字
-		if      (iequals(keyword, "ra"))     proto->ra    = std::stod((*it).value);
-		else if (iequals(keyword, "dec"))    proto->dc    = std::stod((*it).value);
-		else if (iequals(keyword, "epoch"))  proto->epoch = std::stod((*it).value);
+		if      (iequals(keyword, "ra"))     proto->ra    = stod((*it).value);
+		else if (iequals(keyword, "dec"))    proto->dec    = stod((*it).value);
+		else if (iequals(keyword, "epoch"))  proto->epoch = stod((*it).value);
 	}
 
 	return to_apbase(proto);
@@ -827,10 +817,10 @@ apbase AsciiProtocol::resolve_guide(likv &kvs) {
 	for (likv::iterator it = kvs.begin(); it != kvs.end(); ++it) {// 遍历键值对
 		keyword = (*it).keyword;
 		// 识别关键字
-		if      (iequals(keyword, "ra"))       proto->ra    = std::stod((*it).value);
-		else if (iequals(keyword, "dec"))      proto->dc    = std::stod((*it).value);
-		else if (iequals(keyword, "objra"))    proto->objra = std::stod((*it).value);
-		else if (iequals(keyword, "objdec"))   proto->objdc = std::stod((*it).value);
+		if      (iequals(keyword, "ra"))       proto->ra     = stod((*it).value);
+		else if (iequals(keyword, "dec"))      proto->dec    = stod((*it).value);
+		else if (iequals(keyword, "objra"))    proto->objra  = stod((*it).value);
+		else if (iequals(keyword, "objdec"))   proto->objdec = stod((*it).value);
 	}
 
 	return to_apbase(proto);
@@ -848,12 +838,12 @@ apbase AsciiProtocol::resolve_telescope(likv &kvs) {
 	for (likv::iterator it = kvs.begin(); it != kvs.end(); ++it) {// 遍历键值对
 		keyword = (*it).keyword;
 		// 识别关键字
-		if      (iequals(keyword, "state"))    proto->state = std::stoi((*it).value);
-		else if (iequals(keyword, "ec"))       proto->ec    = std::stoi((*it).value);
-		else if (iequals(keyword, "ra"))       proto->ra    = std::stod((*it).value);
-		else if (iequals(keyword, "dec"))      proto->dc    = std::stod((*it).value);
-		else if (iequals(keyword, "azi"))      proto->azi   = std::stod((*it).value);
-		else if (iequals(keyword, "ele"))      proto->ele   = std::stod((*it).value);
+		if      (iequals(keyword, "state"))    proto->state   = stoi((*it).value);
+		else if (iequals(keyword, "errcode"))  proto->errcode = stoi((*it).value);
+		else if (iequals(keyword, "ra"))       proto->ra      = stod((*it).value);
+		else if (iequals(keyword, "dec"))      proto->dec      = stod((*it).value);
+		else if (iequals(keyword, "azi"))      proto->azi     = stod((*it).value);
+		else if (iequals(keyword, "ele"))      proto->ele     = stod((*it).value);
 	}
 
 	return to_apbase(proto);
@@ -866,7 +856,7 @@ apbase AsciiProtocol::resolve_fwhm(likv &kvs) {
 	for (likv::iterator it = kvs.begin(); it != kvs.end(); ++it) {// 遍历键值对
 		keyword = (*it).keyword;
 		// 识别关键字
-		if (iequals(keyword, "value"))  proto->value = std::stod((*it).value);
+		if (iequals(keyword, "value"))  proto->value = stod((*it).value);
 	}
 
 	return to_apbase(proto);
@@ -879,8 +869,8 @@ apbase AsciiProtocol::resolve_focus(likv &kvs) {
 	for (likv::iterator it = kvs.begin(); it != kvs.end(); ++it) {// 遍历键值对
 		keyword = (*it).keyword;
 		// 识别关键字
-		if      (iequals(keyword, "state"))  proto->state = std::stoi((*it).value);
-		else if (iequals(keyword, "value"))  proto->value = std::stoi((*it).value);
+		if      (iequals(keyword, "state"))  proto->state = stoi((*it).value);
+		else if (iequals(keyword, "value"))  proto->value = stoi((*it).value);
 	}
 
 	return to_apbase(proto);
@@ -888,16 +878,21 @@ apbase AsciiProtocol::resolve_focus(likv &kvs) {
 
 apbase AsciiProtocol::resolve_mcover(likv &kvs) {
 	apmcover proto = boost::make_shared<ascii_proto_mcover>();
-	string keyword;
-	MIRRORCOVER_STATE value;
+	string keyword, value;
+	int val;
 
 	for (likv::iterator it = kvs.begin(); it != kvs.end(); ++it) {// 遍历键值对
 		keyword = (*it).keyword;
 		// 识别关键字
-		if (iequals(keyword, "value")) value = MIRRORCOVER_STATE(std::stoi((*it).value));
+		if (iequals(keyword, "value")) {
+			value = (*it).value;
+			if (isdigit(value[0])) val = stoi((*it).value);
+			else if (iequals(value, "open"))  val = MCC_OPEN;
+			else if (iequals(value, "close")) val = MCC_CLOSE;
+		}
 	}
-	if (value < MC_ERROR || value > MC_CLOSED) proto.reset();
-	else proto->value = value;
+	if (val < MC_ERROR || val > MC_CLOSED) proto.reset();
+	else proto->value = val;
 
 	return to_apbase(proto);
 }
@@ -913,8 +908,8 @@ apbase AsciiProtocol::resolve_takeimg(likv &kvs) {
 			proto->objname = (*it).value;
 		else if (iequals(keyword, "imgtype"))  proto->imgtype = (*it).value;
 		else if (iequals(keyword, "filter"))   proto->filter  = (*it).value;
-		else if (iequals(keyword, "expdur"))   proto->expdur  = std::stod((*it).value);
-		else if (iequals(keyword, "frmcnt"))   proto->frmcnt  = std::stoi((*it).value);
+		else if (iequals(keyword, "expdur"))   proto->expdur  = stod((*it).value);
+		else if (iequals(keyword, "frmcnt"))   proto->frmcnt  = stoi((*it).value);
 	}
 
 	return to_apbase(proto);
@@ -937,38 +932,45 @@ apbase AsciiProtocol::resolve_object(likv &kvs) {
 			if      (iequals(keyword, "objname"))   proto->objname   = (*it).value;
 			else if (iequals(keyword, "observer"))  proto->observer  = (*it).value;
 			else if (iequals(keyword, "obstype"))   proto->obstype   = (*it).value;
-			else if (iequals(keyword, "objra"))     proto->objra     = std::stod((*it).value);
-			else if (iequals(keyword, "objdec"))    proto->objdec    = std::stod((*it).value);
-			else if (iequals(keyword, "objepoch"))  proto->objepoch  = std::stod((*it).value);
+			else if (iequals(keyword, "objra"))     proto->objra     = stod((*it).value);
+			else if (iequals(keyword, "objdec"))    proto->objdec    = stod((*it).value);
+			else if (iequals(keyword, "objepoch"))  proto->objepoch  = stod((*it).value);
 			else if (iequals(keyword, "objerror"))  proto->objerror  = (*it).value;
 		}
 		else if (ch == 'p') {
-			if      (iequals(keyword, "priority"))  proto->priority  = std::stoi((*it).value);
-			else if (iequals(keyword, "plan_sn"))   proto->plan_sn   = std::stoi((*it).value);
+			if      (iequals(keyword, "priority"))  proto->priority  = stoi((*it).value);
+			else if (iequals(keyword, "plan_sn"))   proto->plan_sn   = stoi((*it).value);
 			else if (iequals(keyword, "plan_time")) proto->plan_time = (*it).value;
 			else if (iequals(keyword, "plan_type")) proto->plan_type = (*it).value;
-			else if (iequals(keyword, "pair_id"))   proto->pair_id   = std::stoi((*it).value);
+			else if (iequals(keyword, "pair_id"))   proto->pair_id   = stoi((*it).value);
 		}
 		else if (ch == 'd') {
-			if      (iequals(keyword, "dec"))       proto->dec      = std::stod((*it).value);
-			else if (iequals(keyword, "delay"))     proto->delay    = std::stod((*it).value);
+			if      (iequals(keyword, "dec"))       proto->dec      = stod((*it).value);
+			else if (iequals(keyword, "delay"))     proto->delay    = stod((*it).value);
 		}
 		else if (ch == 'e') {
-			if      (iequals(keyword, "epoch"))     proto->epoch    = std::stod((*it).value);
-			else if (iequals(keyword, "expdur"))    proto->expdur   = std::stoi((*it).value);
+			if      (iequals(keyword, "epoch"))     proto->epoch    = stod((*it).value);
+			else if (iequals(keyword, "expdur"))    proto->expdur   = stoi((*it).value);
 			else if (iequals(keyword, "end_time"))  proto->end_time = (*it).value;
 		}
 		else if (ch == 'f') {
 			if      (iequals(keyword, "filter"))    proto->filter   = (*it).value;
-			if      (iequals(keyword, "frmcnt"))    proto->frmcnt   = std::stoi((*it).value);
-			else if (iequals(keyword, "frmno"))     proto->frmno    = std::stoi((*it).value);
+			if      (iequals(keyword, "frmcnt"))    proto->frmcnt   = stoi((*it).value);
+			else if (iequals(keyword, "frmno"))     proto->frmno    = stoi((*it).value);
 			else if (iequals(keyword, "field_id"))  proto->field_id = (*it).value;
 		}
 		else if (ch == 'r') {
-			if      (iequals(keyword, "ra"))        proto->ra       = std::stod((*it).value);
+			if      (iequals(keyword, "ra"))        proto->ra       = stod((*it).value);
 			else if (iequals(keyword, "runname"))   proto->runname  = (*it).value;
 		}
-		else if (iequals(keyword, "imgtype"))     proto->imgtype    = (*it).value;
+		else if (ch == 'i') {
+			if      (iequals(keyword, "imgtype"))   proto->imgtype = (*it).value;
+			else if (iequals(keyword, "ifilter"))   proto->ifilter = stoi((*it).value);
+		}
+		else if (ch == 'l') {
+			if      (iequals(keyword, "loopcnt"))   proto->loopcnt = stoi((*it).value);
+			else if (iequals(keyword, "loopno"))    proto->loopno  = stoi((*it).value);
+		}
 		else if (iequals(keyword, "begin_time"))  proto->begin_time = (*it).value;
 		else if (iequals(keyword, "grid_id"))     proto->grid_id    = (*it).value;
 	}
@@ -983,7 +985,7 @@ apbase AsciiProtocol::resolve_expose(likv &kvs) {
 	for (likv::iterator it = kvs.begin(); it != kvs.end(); ++it) {// 遍历键值对
 		keyword = (*it).keyword;
 		// 识别关键字
-		if (iequals(keyword, "command")) proto->command = std::stoi((*it).value);
+		if (iequals(keyword, "command")) proto->command = stoi((*it).value);
 	}
 
 	return to_apbase(proto);
@@ -996,21 +998,22 @@ apbase AsciiProtocol::resolve_camera(likv &kvs) {
 	for (likv::iterator it = kvs.begin(); it != kvs.end(); ++it) {// 遍历键值对
 		keyword = (*it).keyword;
 		// 识别关键字
-		if      (iequals(keyword, "state"))     proto->state     = std::stoi((*it).value);
-		else if (iequals(keyword, "ec"))        proto->errcode   = std::stoi((*it).value);
-		else if (iequals(keyword, "mcstate"))   proto->mcstate   = std::stoi((*it).value);
-		else if (iequals(keyword, "focus"))     proto->focus     = std::stoi((*it).value);
-		else if (iequals(keyword, "coolget"))   proto->coolget   = std::stod((*it).value);
+		if      (iequals(keyword, "state"))     proto->state     = stoi((*it).value);
+		else if (iequals(keyword, "errcode"))   proto->errcode   = stoi((*it).value);
+		else if (iequals(keyword, "mcstate"))   proto->mcstate   = stoi((*it).value);
+		else if (iequals(keyword, "focus"))     proto->focus     = stoi((*it).value);
+		else if (iequals(keyword, "coolget"))   proto->coolget   = stod((*it).value);
 		else if (iequals(keyword, "objname"))   proto->objname   = (*it).value;
 		else if (iequals(keyword, "filename"))  proto->filename  = (*it).value;
 		else if (iequals(keyword, "imgtype"))   proto->imgtype   = (*it).value;
 		else if (iequals(keyword, "filter"))    proto->filter    = (*it).value;
-		else if (iequals(keyword, "expdur"))    proto->expdur    = std::stod((*it).value);
-		else if (iequals(keyword, "delay"))     proto->delay     = std::stod((*it).value);
-		else if (iequals(keyword, "frmcnt"))    proto->frmcnt    = std::stoi((*it).value);
-		else if (iequals(keyword, "loopno"))    proto->loopno    = std::stoi((*it).value);
-		else if (iequals(keyword, "expno"))     proto->expno     = std::stoi((*it).value);
-		else if (iequals(keyword, "frmno"))     proto->frmno     = std::stoi((*it).value);
+		else if (iequals(keyword, "expdur"))    proto->expdur    = stod((*it).value);
+		else if (iequals(keyword, "delay"))     proto->delay     = stod((*it).value);
+		else if (iequals(keyword, "frmcnt"))    proto->frmcnt    = stoi((*it).value);
+		else if (iequals(keyword, "loopcnt"))   proto->loopcnt   = stoi((*it).value);
+		else if (iequals(keyword, "ifilter"))   proto->ifilter   = stoi((*it).value);
+		else if (iequals(keyword, "frmno"))     proto->frmno     = stoi((*it).value);
+		else if (iequals(keyword, "loopno"))    proto->loopno    = stoi((*it).value);
 	}
 
 	return to_apbase(proto);
@@ -1023,11 +1026,11 @@ apbase AsciiProtocol::resolve_cooler(likv &kvs) {
 	for (likv::iterator it = kvs.begin(); it != kvs.end(); ++it) {// 遍历键值对
 		keyword = (*it).keyword;
 		// 识别关键字
-		if      (iequals(keyword, "voltage"))  proto->voltage = std::stod((*it).value);
-		else if (iequals(keyword, "current"))  proto->current = std::stod((*it).value);
-		else if (iequals(keyword, "hotend"))   proto->hotend  = std::stod((*it).value);
-		else if (iequals(keyword, "coolget"))  proto->coolget = std::stod((*it).value);
-		else if (iequals(keyword, "coolset"))  proto->coolset = std::stod((*it).value);
+		if      (iequals(keyword, "voltage"))  proto->voltage = stod((*it).value);
+		else if (iequals(keyword, "current"))  proto->current = stod((*it).value);
+		else if (iequals(keyword, "hotend"))   proto->hotend  = stod((*it).value);
+		else if (iequals(keyword, "coolget"))  proto->coolget = stod((*it).value);
+		else if (iequals(keyword, "coolset"))  proto->coolset = stod((*it).value);
 	}
 
 	return to_apbase(proto);
@@ -1040,8 +1043,8 @@ apbase AsciiProtocol::resolve_vacuum(likv &kvs) {
 	for (likv::iterator it = kvs.begin(); it != kvs.end(); ++it) {// 遍历键值对
 		keyword = (*it).keyword;
 		// 识别关键字
-		if      (iequals(keyword, "voltage"))  proto->voltage  = std::stod((*it).value);
-		else if (iequals(keyword, "current"))  proto->current  = std::stod((*it).value);
+		if      (iequals(keyword, "voltage"))  proto->voltage  = stod((*it).value);
+		else if (iequals(keyword, "current"))  proto->current  = stod((*it).value);
 		else if (iequals(keyword, "pressure")) proto->pressure = (*it).value;
 	}
 
@@ -1060,7 +1063,7 @@ apbase AsciiProtocol::resolve_fileinfo(likv &kvs) {
 		else if (iequals(keyword, "tmobs"))    proto->tmobs    = (*it).value;
 		else if (iequals(keyword, "subpath"))  proto->subpath  = (*it).value;
 		else if (iequals(keyword, "filename")) proto->filename = (*it).value;
-		else if (iequals(keyword, "filesize")) proto->filesize = std::stoi((*it).value);
+		else if (iequals(keyword, "filesize")) proto->filesize = stoi((*it).value);
 	}
 
 	return to_apbase(proto);
@@ -1073,7 +1076,7 @@ apbase AsciiProtocol::resolve_filestat(likv &kvs) {
 	for (likv::iterator it = kvs.begin(); it != kvs.end(); ++it) {// 遍历键值对
 		keyword = (*it).keyword;
 		// 识别关键字
-		if (iequals(keyword, "status")) proto->status = std::stoi((*it).value);
+		if (iequals(keyword, "status")) proto->status = stoi((*it).value);
 	}
 
 	return to_apbase(proto);
@@ -1086,8 +1089,8 @@ apbase AsciiProtocol::resolve_plan(likv &kvs) {
 	for (likv::iterator it = kvs.begin(); it != kvs.end(); ++it) {// 遍历键值对
 		keyword = (*it).keyword;
 		// 识别关键字
-		if      (iequals(keyword, "plan_sn")) proto->plan_sn = std::stoi((*it).value);
-		else if (iequals(keyword, "state"))   proto->state   = std::stoi((*it).value);
+		if      (iequals(keyword, "plan_sn")) proto->plan_sn = stoi((*it).value);
+		else if (iequals(keyword, "state"))   proto->state   = stoi((*it).value);
 	}
 
 	return to_apbase(proto);
@@ -1100,7 +1103,7 @@ apbase AsciiProtocol::resolve_check_plan(likv &kvs) {
 	for (likv::iterator it = kvs.begin(); it != kvs.end(); ++it) {// 遍历键值对
 		keyword = (*it).keyword;
 		// 识别关键字
-		if (iequals(keyword, "plan_sn")) proto->plan_sn = std::stoi((*it).value);
+		if (iequals(keyword, "plan_sn")) proto->plan_sn = stoi((*it).value);
 	}
 
 	return to_apbase(proto);
@@ -1113,7 +1116,7 @@ apbase AsciiProtocol::resolve_abort_plan(likv &kvs) {
 	for (likv::iterator it = kvs.begin(); it != kvs.end(); ++it) {// 遍历键值对
 		keyword = (*it).keyword;
 		// 识别关键字
-		if (iequals(keyword, "plan_sn")) proto->plan_sn = std::stoi((*it).value);
+		if (iequals(keyword, "plan_sn")) proto->plan_sn = stoi((*it).value);
 	}
 
 	return to_apbase(proto);
@@ -1121,50 +1124,39 @@ apbase AsciiProtocol::resolve_abort_plan(likv &kvs) {
 
 apbase AsciiProtocol::resolve_append_plan(likv &kvs) {
 	apappplan proto = boost::make_shared<ascii_proto_append_plan>();
-	string keyword;
+	string keyword, value;
 	char ch;
-	const char seps[] = "|; ";
+	const char seps[] = ";";
 
 	for (likv::iterator it = kvs.begin(); it != kvs.end(); ++it) {// 遍历键值对
 		keyword = (*it).keyword;
 		ch = keyword[0];
 		// 识别关键字
 		if (ch == 'p') {
-			if      (iequals(keyword, "plan_sn"))   proto->plan_sn   = std::stoi((*it).value);
+			if      (iequals(keyword, "plan_sn"))   proto->plan_sn   = stoi((*it).value);
 			else if (iequals(keyword, "plan_time")) proto->plan_time = (*it).value;
 			else if (iequals(keyword, "plan_type")) proto->plan_type = (*it).value;
-			else if (iequals(keyword, "priority"))  proto->priority  = std::stoi((*it).value);
-			else if (iequals(keyword, "pair_id"))   proto->pair_id   = std::stoi((*it).value);
+			else if (iequals(keyword, "priority"))  proto->priority  = stoi((*it).value);
+			else if (iequals(keyword, "pair_id"))   proto->pair_id   = stoi((*it).value);
 		}
 		else if (ch == 'o') {
 			if      (iequals(keyword, "observer"))   proto->observer  = (*it).value;
 			else if (iequals(keyword, "obstype"))    proto->obstype   = (*it).value;
-			else if (iequals(keyword, "objname") || iequals(keyword, "obj_id"))    proto->objname   = (*it).value;
 			else if (iequals(keyword, "objerror"))   proto->objerror  = (*it).value;
-			else if (iequals(keyword, "objra"))     proto->objra      = std::stod((*it).value);
-			else if (iequals(keyword, "objdec"))    proto->objdec     = std::stod((*it).value);
-			else if (iequals(keyword, "objepoch"))  proto->objepoch   = std::stod((*it).value);
+			else if (iequals(keyword, "objra"))      proto->objra     = stod((*it).value);
+			else if (iequals(keyword, "objdec"))     proto->objdec    = stod((*it).value);
+			else if (iequals(keyword, "objepoch"))   proto->objepoch  = stod((*it).value);
+			else if (iequals(keyword, "objname") || iequals(keyword, "obj_id"))
+				proto->objname   = (*it).value;
 		}
 		else if (ch == 'e') {
-			if      (iequals(keyword, "epoch"))    proto->epoch    = std::stod((*it).value);
+			if      (iequals(keyword, "epoch"))    proto->epoch    = stod((*it).value);
 			else if (iequals(keyword, "end_time")) proto->end_time = (*it).value;
-			else if (iequals(keyword, "expdur")) {// 曝光时间
-				listring tokens;
-				algorithm::split(tokens, (*it).value, is_any_of(seps), token_compress_on);
-				for (listring::iterator it1 = tokens.begin(); it1 != tokens.end(); ++it1) {
-					proto->expdur.push_back(std::stod(*it1));
-				}
-			}
+			else if (iequals(keyword, "expdur"))   proto->expdur   = stod((*it).value);
 		}
 		else if (ch == 'd') {
-			if      (iequals(keyword, "dec"))   proto->dec = std::stod((*it).value);
-			else if (iequals(keyword, "delay")) {// 延时时间
-				listring tokens;
-				algorithm::split(tokens, (*it).value, is_any_of(seps), token_compress_on);
-				for (listring::iterator it1 = tokens.begin(); it1 != tokens.end(); ++it1) {
-					proto->delay.push_back(std::stod(*it1));
-				}
-			}
+			if      (iequals(keyword, "dec"))   proto->dec   = stod((*it).value);
+			else if (iequals(keyword, "delay")) proto->delay = stod((*it).value);
 		}
 		else if (ch == 'f') {
 			if      (iequals(keyword, "filter")) {// 滤光片
@@ -1174,20 +1166,15 @@ apbase AsciiProtocol::resolve_append_plan(likv &kvs) {
 					proto->filter.push_back(*it1);
 				}
 			}
-			else if (iequals(keyword, "frmcnt")) {// 曝光总帧数
-				listring tokens;
-				algorithm::split(tokens, (*it).value, is_any_of(seps), token_compress_on);
-				for (listring::iterator it1 = tokens.begin(); it1 != tokens.end(); ++it1) {
-					proto->frmcnt.push_back(std::stoi(*it1));
-				}
-			}
+			else if (iequals(keyword, "frmcnt"))   proto->frmcnt   = stoi((*it).value);
 			else if (iequals(keyword, "field_id")) proto->field_id = (*it).value;
 		}
 		else if (ch == 'r') {
-			if      (iequals(keyword, "ra"))      proto->ra      = std::stod((*it).value);
+			if      (iequals(keyword, "ra"))      proto->ra      = stod((*it).value);
 			else if (iequals(keyword, "runname")) proto->runname = (*it).value;
 		}
 		else if (iequals(keyword, "imgtype"))    proto->imgtype    = (*it).value;
+		else if (iequals(keyword, "loopcnt"))    proto->loopcnt    = stoi((*it).value);
 		else if (iequals(keyword, "begin_time")) proto->begin_time = (*it).value;
 		else if (iequals(keyword, "grid_id"))    proto->grid_id    = (*it).value;
 	}

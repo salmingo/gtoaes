@@ -83,35 +83,35 @@ void ObservationSystemGWAC::NotifyUtc(mputc proto) {
 }
 
 void ObservationSystemGWAC::NotifyPosition(mpposition proto) {
-	double ora(nftele_->ra), odc(nftele_->dc), oaz(nftele_->az), oel(nftele_->el);
-	double ra(proto->ra), dc(proto->dc), azi, ele;
-	bool safe = safe_position(ra, dc, azi, ele);
+	double ora(nftele_->ra), odec(nftele_->dec), oazi(nftele_->azi), oele(nftele_->ele);
+	double ra(proto->ra), dec(proto->dec), azi, ele;
+	bool safe = safe_position(ra, dec, azi, ele);
 	TELESCOPE_STATE state = nftele_->state;
 	bool slewing = state == TELESCOPE_SLEWING;
 	bool parking = state == TELESCOPE_PARKING;
 
 	// 更新转台指向坐标
-	nftele_->ra = ra, nftele_->dc = dc;
-	nftele_->az = azi * D2R, nftele_->el = ele * D2R;
+	nftele_->ra = ra, nftele_->dec = dec;
+	nftele_->azi = azi * D2R, nftele_->ele = ele * D2R;
 
 	if (!safe) {// 超出限位
 		if (state != TELESCOPE_PARKING) {
 			_gLog.Write(LOG_WARN, NULL, "telescope [%s:%s] position [%.4f, %.4f] is out of safe limit",
-					gid_.c_str(), uid_.c_str(), ra, dc);
+					gid_.c_str(), uid_.c_str(), ra, dec);
 			nftele_->state = TELESCOPE_PARKING;
 			PostMessage(MSG_OUT_SAFELIMIT);
 		}
 	}
 	else if(slewing || parking) {// 是否由动至静
-		double e1 = slewing ? fabs(ora - ra) : fabs(oaz - azi);
-		double e2 = slewing ? fabs(odc - dc) : fabs(oel - ele);
+		double e1 = slewing ? fabs(ora - ra) : fabs(oazi - azi);
+		double e2 = slewing ? fabs(odec - dec) : fabs(oele - ele);
 		double t(0.003); // 到位阈值: 0.003度==10.8角秒
 
 		if (e1 > 180.0) e1 = 360.0 - e1;
 		if (e1 < t && e2 < t) {// 指向到位, 但此时不确定指向是否正确
 			if (nftele_->StableArrive()) {
 				_gLog.Write("telescope [%s:%s] arrived at [%.4f, %.4f]",
-						gid_.c_str(), uid_.c_str(), ra, dc);
+						gid_.c_str(), uid_.c_str(), ra, dec);
 				nftele_->state = slewing ? TELESCOPE_TRACKING : TELESCOPE_PARKED;
 				if (nftele_->state == TELESCOPE_TRACKING) PostMessage(MSG_TELESCOPE_TRACK);
 			}
@@ -192,9 +192,9 @@ void ObservationSystemGWAC::resolve_obsplan() {
 	int n;
 
 	// 构建ascii_proto_object成员变量
-	proto->expdur = plan->expdur[0];
-	proto->frmcnt = plan->frmcnt[0];
-	if (plan->delay.size()) proto->delay = plan->delay[0];
+	proto->expdur = plan->expdur;
+	proto->frmcnt = plan->frmcnt;
+	proto->delay  = plan->delay;
 
 	// 构建并发送格式化字符串
 	s = ascproto_->CompactObject(proto, n);
@@ -277,8 +277,10 @@ bool ObservationSystemGWAC::process_mcover(apmcover proto) {
 
 		for (ObssCamVec::iterator it = cameras_.begin(); it != cameras_.end(); ++it) {
 			if (empty || iequals(cid, (*it)->cid)) {
-				s = mntproto_->CompactMCover((*it)->cid, cmd, n);
-				tcpc_mount_annex_->Write(s, n);
+				if ((*it)->enabled) {
+					s = mntproto_->CompactMCover((*it)->cid, cmd, n);
+					tcpc_mount_annex_->Write(s, n);
+				}
 				if (!empty) break;
 			}
 		}
@@ -302,6 +304,6 @@ bool ObservationSystemGWAC::process_findhome() {
 bool ObservationSystemGWAC::process_homesync(aphomesync proto) {
 	if (!ObservationSystem::process_homesync(proto)) return true;
 	int n;
-	const char* s = mntproto_->CompactHomesync(proto->ra, proto->dc, n);
+	const char* s = mntproto_->CompactHomesync(proto->ra, proto->dec, n);
 	return tcpc_telescope_->Write(s, n);
 }

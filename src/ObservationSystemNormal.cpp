@@ -79,25 +79,15 @@ void ObservationSystemNormal::resolve_obsplan() {
 
 		apappplan plan = plan_now_->plan;
 		vector<string> &filter = plan->filter;
-		vector<double> &expdur = plan->expdur;
-		vector<double> &delay  = plan->delay;
-		vector<int>    &frmcnt = plan->frmcnt;
-		int nfilter(filter.size()), nexpdur(expdur.size()), ndelay(delay.size()), nfrmcnt(frmcnt.size());
-		int ifilter(0), iexpdur(0), idelay(0), ifrmcnt(0);
+		int nfilter(filter.size()), ifilter(0);
 		ObssCamVec::iterator it;
 
 		for (it = cameras_.begin(); it != cameras_.end(); ++it) {
+			if (!(*it)->enabled) continue;
 			apobject object = boost::make_shared<ascii_proto_object>(*plan); // 为各个相机分别生成参数
 			object->cid    = (*it)->cid;
-			object->expdur = expdur[iexpdur];
-			object->frmcnt = frmcnt[ifrmcnt];
 			if (nfilter) object->filter = filter[ifilter];
-			if (ndelay)  object->delay  = delay[idelay];
-
-			if (++iexpdur >= nexpdur) iexpdur = 0;
-			if (++ifrmcnt >= nfrmcnt) ifrmcnt = 0;
 			if (nfilter && ++ifilter >= nfilter) ifilter = 0;
-			if (ndelay && ++idelay  >= ndelay)   idelay  = 0;
 
 			// 构建并发送格式化字符串
 			s = ascproto_->CompactObject(object, n);
@@ -163,9 +153,11 @@ bool ObservationSystemNormal::process_mcover(apmcover proto) {
 	const char *s;
 	for (ObssCamVec::iterator it = cameras_.begin(); it != cameras_.end(); ++it) {
 		if (empty || iequals(cid, (*it)->cid)) {
-			if (empty) proto->cid = (*it)->cid;
-			s = ascproto_->CompactMirrorCover(proto, n);
-			tcpc_telescope_->Write(s, n);
+			if ((*it)->enabled) {
+				if (empty) proto->cid = (*it)->cid;
+				s = ascproto_->CompactMirrorCover(proto, n);
+				tcpc_telescope_->Write(s, n);
+			}
 			if (!empty) break;
 		}
 	}

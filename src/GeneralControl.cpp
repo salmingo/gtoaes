@@ -263,7 +263,7 @@ void GeneralControl::process_protocol_client(apbase proto, TCPClient* client) {
 	if      (iequals(type, APTYPE_APPPLAN)) process_protocol_append_plan (from_apbase<ascii_proto_append_plan> (proto));
 	else if (iequals(type, APTYPE_APPGWAC)) process_protocol_append_gwac (from_apbase<ascii_proto_append_plan> (proto));
 	else if (iequals(type, APTYPE_CHKPLAN)) process_protocol_check_plan  (from_apbase<ascii_proto_check_plan>  (proto), client);
-	else if (iequals(type, APTYPE_ABTPLAN)) process_protocol_abort_plan (from_apbase<ascii_proto_abort_plan> (proto));
+	else if (iequals(type, APTYPE_ABTPLAN)) process_protocol_abort_plan  (from_apbase<ascii_proto_abort_plan> (proto));
 	else if (iequals(type, APTYPE_REG))     process_protocol_register    (from_apbase<ascii_proto_reg>         (proto), client);
 	else if (iequals(type, APTYPE_UNREG))   process_protocol_unregister  (from_apbase<ascii_proto_unreg>       (proto), client);
 	else if (iequals(type, APTYPE_RELOAD))  process_protocol_reload();
@@ -618,24 +618,24 @@ void GeneralControl::process_protocol_check_plan(apchkplan proto, TCPClient* cli
 	const char *output;
 	int n;
 
-	plan->plan_sn = plan_sn;
 	if (plans_.size()) {
 		mutex_lock lck(mtx_plans_);
-		int state;
 
 		/* 遍历观测计划, 向客户端发送指定计划的工作状态 */
 		for (ExObsPlanVec::iterator it = plans_.begin(); it != plans_.end() && client->IsOpen(); ++it) {
 			if (plan_sn < 0 || (*it)->plan->plan_sn == plan_sn) {
 				if (!found) found = true;
 				// 构建并发送计划状态
-				if (plan_sn < 0) *plan = *((*it)->plan);
-				state = plan->state = (*it)->state;
+				*plan = *((*it)->plan);
+				plan->state = (*it)->state;
 				output = ascproto_->CompactPlan(plan, n);
 				client->Write(output, n);
+
+				if (plan_sn >= 0 && (*it)->imgtype >= IMGTYPE_OBJECT) break;
 			}
 		}
 	}
-	if (!found && client->IsOpen()) {
+	if (!found) {
 		output = ascproto_->CompactPlan(plan, n);
 		client->Write(output, n);
 	}
@@ -657,6 +657,8 @@ void GeneralControl::process_protocol_abort_plan(apabtplan proto) {
 					&& (plan_sn < 0 || plan_sn == (*it)->plan->plan_sn)) {
 				if (state <= OBSPLAN_INT) (*it)->state = OBSPLAN_DELETE;
 				else (*it)->obss->NotifyProtocol(to_apbase(proto));
+
+				if (plan_sn >= 0 && (*it)->imgtype >= IMGTYPE_OBJECT) break;
 			}
 		}
 	}
@@ -1077,7 +1079,7 @@ void GeneralControl::database_upload(ObsSysVec& obss) {
 		tele = (*it)->GetTelescope();
 		if (tele.use_count()) {
 			db_->uploadMountStatus(gid.c_str(), uid.c_str(), tele->utc.c_str(),
-					tele->state, tele->errcode, tele->ra, tele->dc, tele->ora, tele->odc, strstat);
+					tele->state, tele->errcode, tele->ra, tele->dec, tele->ora, tele->odec, strstat);
 		}
 		// 相机
 		ObssCamVec &cameras = (*it)->GetCameras();

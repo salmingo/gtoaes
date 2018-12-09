@@ -81,7 +81,6 @@ enum OBSS_STATUS {// 观测系统状态
 };
 
 enum OBSPLAN_STATUS {// 观测计划状态
-	OBSPLAN_ERROR = 0,	// 错误
 	OBSPLAN_CAT,		// 入库
 	OBSPLAN_INT,		// 中断
 	OBSPLAN_WAIT,		// 等待执行

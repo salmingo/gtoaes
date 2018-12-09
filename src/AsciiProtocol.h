@@ -83,7 +83,7 @@ public:
 };
 typedef boost::shared_ptr<ascii_proto_unreg> apunreg;
 
-struct ascii_proto_start : public ascii_proto_base {// 启动开机流程
+struct ascii_proto_start : public ascii_proto_base {// 启动自动观测流程
 public:
 	ascii_proto_start() {
 		type = APTYPE_START;
@@ -91,7 +91,7 @@ public:
 };
 typedef boost::shared_ptr<ascii_proto_start> apstart;
 
-struct ascii_proto_stop : public ascii_proto_base {// 启动关机流程
+struct ascii_proto_stop : public ascii_proto_base {// 启动自动观测流程
 public:
 	ascii_proto_stop() {
 		type = APTYPE_STOP;
@@ -99,7 +99,7 @@ public:
 };
 typedef boost::shared_ptr<ascii_proto_stop> apstop;
 
-struct ascii_proto_enable : public ascii_proto_base {// 启用设备
+struct ascii_proto_enable : public ascii_proto_base {// 启用设备或观测系统
 public:
 	ascii_proto_enable() {
 		type = APTYPE_ENABLE;
@@ -107,7 +107,7 @@ public:
 };
 typedef boost::shared_ptr<ascii_proto_enable> apenable;
 
-struct ascii_proto_disable : public ascii_proto_base {// 禁用设备
+struct ascii_proto_disable : public ascii_proto_base {// 禁用设备或观测系统
 public:
 	ascii_proto_disable() {
 		type = APTYPE_DISABLE;
@@ -157,9 +157,10 @@ struct ascii_proto_append_plan : public ascii_proto_base {
 	string	imgtype;	//< 图像类型
 	//<< 单望远镜多相机观测系统, 各相机使用不同参数
 	vector<string>		filter;		//< 滤光片名称或滤光片组合名称
-	vector<double>		expdur;		//< 曝光时间或曝光时间组合
-	vector<double>		delay;		//< 帧间延时, 量纲: 秒
-	vector<int>			frmcnt;		//< 总帧数
+	double				expdur;		//< 曝光时间或曝光时间组合
+	double				delay;		//< 帧间延时, 量纲: 秒
+	int					frmcnt;		//< 总帧数
+	int					loopcnt;	//< 滤光片循环次数
 	//>> 单望远镜多相机观测系统, 各相机使用不同参数
 	int		priority;	//< 优先级
 	string	begin_time;	//< 曝光开始时间
@@ -174,6 +175,10 @@ public:
 		epoch = 2000.0;
 		objra = objdec = 1E30;
 		objepoch = 2000.0;
+		expdur   = 0.0;
+		delay    = 0.0;
+		frmcnt   = 0;
+		loopcnt  = 1;
 		priority = 0;
 		pair_id = INT_MIN;
 	}
@@ -210,18 +215,12 @@ public:
 			begin_time	= ap.begin_time;
 			end_time	= ap.end_time;
 			pair_id		= ap.pair_id;
+			expdur		= ap.expdur;
+			delay		= ap.delay;
+			frmcnt		= ap.frmcnt;
 
 			for (i = 0, n = ap.filter.size(); i < n; ++i) {// 复制滤光片
 				filter.push_back(ap.filter[i]);
-			}
-			for (i = 0, n = ap.expdur.size(); i < n; ++i) {// 复制曝光时间
-				expdur.push_back(ap.expdur[i]);
-			}
-			for (i = 0, n = ap.delay.size(); i < n; ++i) {// 复制延迟时间
-				delay.push_back(ap.delay[i]);
-			}
-			for (i = 0, n = ap.frmcnt.size(); i < n; ++i) {// 复制总帧数
-				frmcnt.push_back(ap.frmcnt[i]);
 			}
 		}
 		return *this;
@@ -283,13 +282,13 @@ typedef boost::shared_ptr<ascii_proto_find_home> apfindhome;
 
 struct ascii_proto_home_sync : public ascii_proto_base {// 同步零点
 	double ra;		//< 赤经, 量纲: 角度
-	double dc;		//< 赤纬, 量纲: 角度
+	double dec;		//< 赤纬, 量纲: 角度
 	double epoch;	//< 历元
 
 public:
 	ascii_proto_home_sync() {
 		type = APTYPE_HOMESYNC;
-		ra = dc = 1E30;
+		ra = dec = 1E30;
 		epoch = 2000.0;
 	}
 };
@@ -297,13 +296,13 @@ typedef boost::shared_ptr<ascii_proto_home_sync> aphomesync;
 
 struct ascii_proto_slewto : public ascii_proto_base {// 指向
 	double ra;		//< 赤经, 量纲: 角度
-	double dc;		//< 赤纬, 量纲: 角度
+	double dec;		//< 赤纬, 量纲: 角度
 	double epoch;	//< 历元
 
 public:
 	ascii_proto_slewto() {
 		type = APTYPE_SLEWTO;
-		ra = dc = 1E30;
+		ra = dec = 1E30;
 		epoch = 2000.0;
 	}
 };
@@ -319,15 +318,15 @@ typedef boost::shared_ptr<ascii_proto_park> appark;
 
 struct ascii_proto_guide : public ascii_proto_base {// 导星
 	double ra;		//< 指向位置对应的天球坐标-赤经, 或赤经偏差, 量纲: 角度
-	double dc;		//< 指向位置对应的天球坐标-赤纬, 或赤纬偏差, 量纲: 角度
+	double dec;		//< 指向位置对应的天球坐标-赤纬, 或赤纬偏差, 量纲: 角度
 	double objra;	//< 目标赤经, 量纲: 角度
-	double objdc;	//< 目标赤纬, 量纲: 角度
+	double objdec;	//< 目标赤纬, 量纲: 角度
 
 public:
 	ascii_proto_guide() {
 		type = APTYPE_GUIDE;
-		ra = dc = 1E30;
-		objra = objdc = 1E30;
+		ra = dec = 1E30;
+		objra = objdec = 1E30;
 	}
 };
 typedef boost::shared_ptr<ascii_proto_guide> apguide;
@@ -342,18 +341,18 @@ typedef boost::shared_ptr<ascii_proto_abort_slew> apabortslew;
 
 struct ascii_proto_telescope : public ascii_proto_base {// 望远镜信息
 	int state;		//< 工作状态
-	int ec;			//< 错误代码
+	int errcode;	//< 错误代码
 	double ra;		//< 指向赤经, 量纲: 角度
-	double dc;		//< 指向赤纬, 量纲: 角度
+	double dec;		//< 指向赤纬, 量纲: 角度
 	double azi;		//< 指向方位, 量纲: 角度
 	double ele;		//< 指向高度, 量纲: 角度
 
 public:
 	ascii_proto_telescope() {
-		type = APTYPE_TELE;
-		state = TELESCOPE_ERROR;
-		ec = INT_MIN;
-		ra = dc = 1E30;
+		type    = APTYPE_TELE;
+		state   = TELESCOPE_ERROR;
+		errcode = INT_MIN;
+		ra = dec = 1E30;
 		azi = ele = 1E30;
 	}
 };
@@ -450,7 +449,10 @@ struct ascii_proto_object : public ascii_proto_base {// 目标信息与曝光参
 	double expdur;		//< 曝光时间, 量纲: 秒
 	double delay;		//< 帧间延迟, 量纲: 秒
 	int    frmcnt;		//< 曝光帧数
+	int    loopcnt;		//< 滤光片循环次数
+	int    ifilter;		//< 滤光片索引
 	int    frmno;		//< 曝光起始索引
+	int    loopno;		//< 循环索引
 
 public:
 	ascii_proto_object() {
@@ -465,7 +467,10 @@ public:
 		expdur   = 0.0;
 		delay    = 0.0;
 		frmcnt   = 0;
+		loopcnt  = 1;
+		ifilter  = 0;
 		frmno    = 0;
+		loopno   = 0;
 	}
 
 	ascii_proto_object(ascii_proto_append_plan &plan) {
@@ -491,11 +496,13 @@ public:
 		end_time	= plan.end_time;
 		pair_id		= plan.pair_id;
 		imgtype		= plan.imgtype;
-		/* 滤光片及曝光参数需要循环采用观测计划相关参数 */
-		expdur   = 0.0;
-		delay    = 0.0;
-		frmcnt   = 0;
-		frmno    = 0;
+		expdur		= plan.expdur;
+		delay		= plan.delay;
+		frmcnt		= plan.frmcnt;
+		loopcnt     = plan.loopcnt;
+		ifilter		= 0;
+		frmno		= 0;
+		loopno      = 0;
 	}
 };
 typedef boost::shared_ptr<ascii_proto_object> apobject;
@@ -530,24 +537,26 @@ struct ascii_proto_camera : public ascii_proto_base {// 相机信息
 	double	expdur;		//< 曝光时间, 量纲: 秒
 	double	delay;		//< 延迟时间, 量纲: 秒
 	int		frmcnt;		//< 总帧数
-	int     loopno;		//< 循环索引
-	int     expno;		//< 曝光参数索引
+	int		loopcnt;	//< 循环次数
+	int		ifilter;	//< 滤光片索引
 	int		frmno;		//< 帧编号
+	int		loopno;		//< 循环索引
 
 public:
 	ascii_proto_camera() {
-		type = APTYPE_CAMERA;
-		state = CAMCTL_ERROR;
+		type    = APTYPE_CAMERA;
+		state   = CAMCTL_ERROR;
 		errcode = INT_MIN;
 		mcstate = INT_MIN;
 		coolget = 1E30;
-		focus = INT_MIN;
-		expdur = 0.0;
-		delay  = 0.0;
-		frmcnt = 0;
-		loopno = 0;
-		expno  = 0;
-		frmno  = 0;
+		focus   = INT_MIN;
+		expdur  = 0.0;
+		delay   = 0.0;
+		frmcnt  = 0;
+		loopcnt = 0;
+		ifilter = 0;
+		frmno   = 0;
+		loopno  = 0;
 	}
 };
 typedef boost::shared_ptr<ascii_proto_camera> apcam;
@@ -857,6 +866,26 @@ public:
 	 * 统一转换为apbase类型
 	 */
 	apbase Resolve(const char *rcvd);
+
+protected:
+	/*!
+	 * @brief 将字符串格式赤经转换为实数
+	 * @param str 字符串
+	 * @return
+	 * 赤经, 量纲: 角度
+	 * @note
+	 * 字符串接受两种格式: 实数和hh:mm:ss.s
+	 */
+	double rastr2dbl(const string &str);
+	/*!
+	 * @brief 将字符串格式赤纬转换为实数
+	 * @param str 字符串
+	 * @return
+	 * 赤纬, 量纲: 角度
+	 * @note
+	 * 字符串接受两种格式: 实数和±dd:mm:ss.s
+	 */
+	double decstr2dbl(const string &str);
 
 protected:
 	/*!

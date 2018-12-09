@@ -374,8 +374,8 @@ void ObservationSystem::switch_state() {
 }
 
 bool ObservationSystem::slew_arrived() {
-	double era  = fabs((nftele_->ra - (nftele_->ora + nftele_->dra)) * cos(nftele_->dc * D2R));
-	double edec = fabs(nftele_->dc - (nftele_->odc + nftele_->ddc));
+	double era  = fabs((nftele_->ra - (nftele_->ora + nftele_->dra)) * cos(nftele_->dec * D2R));
+	double edec = fabs(nftele_->dec - (nftele_->odec + nftele_->ddec));
 	if (era > 180.0) era = 360.0 - era;
 
 	if (era > tslew_ || edec > tslew_) {
@@ -399,6 +399,7 @@ void ObservationSystem::thread_idle() {
 
 	while(1) {
 		boost::this_thread::sleep_for(period);
+
 		if (!plan_now_.use_count()) cb_acqnewplan_(gid_, uid_);
 	}
 }
@@ -432,13 +433,13 @@ void ObservationSystem::thread_client() {
 		/* 构建望远镜信息 */
 		aptele tele = boost::make_shared<ascii_proto_telescope>();
 		tele->set_id(gid_, uid_);
-		tele->utc   = nftele_->utc;
-		tele->state = nftele_->state;
-		tele->ec    = nftele_->errcode;
-		tele->ra    = nftele_->ra;
-		tele->dc    = nftele_->dc;
-		tele->azi   = nftele_->az;
-		tele->ele   = nftele_->el;
+		tele->utc     = nftele_->utc;
+		tele->state   = nftele_->state;
+		tele->errcode = nftele_->errcode;
+		tele->ra      = nftele_->ra;
+		tele->dec     = nftele_->dec;
+		tele->azi     = nftele_->azi;
+		tele->ele     = nftele_->ele;
 		s2 = ascproto_->CompactTelescope(tele, n2);
 
 		/* 构建观测计划信息 */
@@ -487,7 +488,11 @@ void ObservationSystem::thread_time() {
 		am = fd < 43200;
 		if ((t11 <= fd && fd <= t12) || (t21 <= fd && fd <= t22)) odtype_ = OD_FLAT;
 		else if ((t11 > fd) || (t22 < fd)) odtype_ = OD_NIGHT;
-		else odtype_ = OD_DAY;
+		else {// 白天时停止需要天光的曝光
+			odtype_ = OD_DAY;
+			if (plan_now_.use_count() && plan_now_->imgtype >= IMGTYPE_FLAT) interrupt_plan();
+		}
+
 		// 计算线程挂起时间
 		if      (odtype_ == OD_FLAT)  wait = am ? (t12 - fd) : (t22 - fd);
 		else if (odtype_ == OD_NIGHT) wait = am ? t11 - fd : 86400 - fd;
@@ -728,7 +733,7 @@ void ObservationSystem::on_new_plan(const long, const long) {
  * bool process_findhome() 望远镜搜索零点
  */
 bool ObservationSystem::process_findhome() {
-	if (tcpc_telescope_.use_count() && !plan_now_.use_count()) {
+	if (data_->enabled && tcpc_telescope_.use_count() && !plan_now_.use_count()) {
 		_gLog.Write("telescope [%s:%s] try to find home", gid_.c_str(), uid_.c_str());
 		return true;
 	}
@@ -740,9 +745,9 @@ bool ObservationSystem::process_findhome() {
  * - 该指令可能触发暂停观测计划及望远镜重新指向
  */
 bool ObservationSystem::process_homesync(aphomesync proto) {
-	if (tcpc_telescope_.use_count()) {
+	if (data_->enabled && tcpc_telescope_.use_count()) {
 		_gLog.Write("telescope [%s:%s] try to sync home. Telescope: [%.4f, %.4f] <== Sky: [%.4f, %.4f]",
-				gid_.c_str(), uid_.c_str(), nftele_->ra, nftele_->dc, proto->ra, proto->dc);
+				gid_.c_str(), uid_.c_str(), nftele_->ra, nftele_->dec, proto->ra, proto->dec);
 		nftele_->ResetOffset();
 		return true;
 	}
@@ -755,15 +760,17 @@ bool ObservationSystem::process_homesync(aphomesync proto) {
  * - 检查位置是否安全
  */
 bool ObservationSystem::process_slewto(apslewto proto) {
-	double ra(proto->ra), dc(proto->dc);
-	if (!(tcpc_telescope_.use_count() && safe_position(ra, dc)) || plan_now_.use_count())
-		return false;
-
-	_gLog.Write("telescope [%s:%s] will slew to [%.4f, %.4f][degree], [%.1f]",
-			gid_.c_str(), uid_.c_str(), ra, dc, proto->epoch);
-	lastguide_ = ptime(not_a_date_time);
-	nftele_->SetObject(ra, dc);
-	return process_slewto(ra, dc, proto->epoch);
+	if (data_->enabled && tcpc_telescope_.use_count() && !plan_now_.use_count()) {
+		double ra(proto->ra), dc(proto->dec);
+		if (safe_position(ra, dc)) {
+			_gLog.Write("telescope [%s:%s] will slew to [%.4f, %.4f][degree], [%.1f]",
+					gid_.c_str(), uid_.c_str(), ra, dc, proto->epoch);
+			lastguide_ = ptime(not_a_date_time);
+			nftele_->SetObject(ra, dc);
+			return process_slewto(ra, dc, proto->epoch);
+		}
+	}
+	return false;
 }
 
 /*
@@ -771,17 +778,20 @@ bool ObservationSystem::process_slewto(apslewto proto) {
  * - 该指令将触发停止观测计划
  */
 bool ObservationSystem::process_abortslew() {
-	_gLog.Write("telescope [%s:%s] try to abort slew", gid_.c_str(), uid_.c_str());
-	interrupt_plan();
-	return (tcpc_telescope_.use_count()
-			&& (nftele_->state == TELESCOPE_SLEWING || nftele_->state == TELESCOPE_PARKING));
+	if (data_->enabled && tcpc_telescope_.use_count()) {
+		_gLog.Write("telescope [%s:%s] try to abort slew", gid_.c_str(), uid_.c_str());
+		interrupt_plan();
+		return ((nftele_->state == TELESCOPE_SLEWING || nftele_->state == TELESCOPE_PARKING));
+	}
+	return false;
 }
 
 /*
  * bool process_park() 复位
  */
 bool ObservationSystem::process_park() {
-	if (tcpc_telescope_.use_count() && nftele_->state != TELESCOPE_PARKING && nftele_->state != TELESCOPE_PARKED) {
+	if (data_->enabled && tcpc_telescope_.use_count()
+			&& nftele_->state != TELESCOPE_PARKING && nftele_->state != TELESCOPE_PARKED) {
 		_gLog.Write("parking telescope [%s:%s]", gid_.c_str(), uid_.c_str());
 		interrupt_plan();
 		return true;
@@ -790,29 +800,30 @@ bool ObservationSystem::process_park() {
 }
 
 void ObservationSystem::process_guide(apguide proto) {
-	if (nftele_->state != TELESCOPE_TRACKING) return; // 望远镜跟踪态允许导星
-	double ora(proto->objra), odc(proto->objdc); // 通信协议中的目标位置
-	double tsame(AS2D); // 坐标相同阈值: 1角秒
-	double era, edc;
-	/* 计算导星量 */
-	if (valid_ra(ora) && valid_dec(odc)) {// 由目标位置和天文定位位置计算导星量
-		if ((era = fabs(ora - nftele_->ora)) > 180.0) era = 360.0 - era;
-		edc = fabs(odc - nftele_->odc);
-		if (era > tsame || edc > tsame) return; // 目标位置不同, 禁止导星
-		// 计算导星量
-		era = ora - proto->ra;
-		edc = odc - proto->dc;
-	}
-	else {
-		era = proto->ra;
-		edc = proto->dc;
-	}
+	if (data_->enabled && nftele_->state == TELESCOPE_TRACKING) {
+		double ora(proto->objra), odec(proto->objdec); // 通信协议中的目标位置
+		double tsame(AS2D); // 坐标相同阈值: 1角秒
+		double era, edc;
+		/* 计算导星量 */
+		if (valid_ra(ora) && valid_dec(odec)) {// 由目标位置和天文定位位置计算导星量
+			if ((era = fabs(ora - nftele_->ora)) > 180.0) era = 360.0 - era;
+			edc = fabs(odec - nftele_->odec);
+			if (era > tsame || edc > tsame) return; // 目标位置不同, 禁止导星
+			// 计算导星量
+			era = ora - proto->ra;
+			edc = odec - proto->dec;
+		}
+		else {
+			era = proto->ra;
+			edc = proto->dec;
+		}
 
-	if ((fabs(era) > tguide_ || fabs(edc) > tguide_) && process_guide(era, edc)) {
-		nftele_->Guide(era, edc);
-		lastguide_ = second_clock::universal_time();
-		_gLog.Write("telescope [%s:%s] do guiding for [%.1f, %.1f][arcsec]",
-				gid_.c_str(), uid_.c_str(), era * 3600.0, edc * 3600.0);
+		if ((fabs(era) > tguide_ || fabs(edc) > tguide_) && process_guide(era, edc)) {
+			nftele_->Guide(era, edc);
+			lastguide_ = second_clock::universal_time();
+			_gLog.Write("telescope [%s:%s] do guiding for [%.1f, %.1f][arcsec]",
+					gid_.c_str(), uid_.c_str(), era * 3600.0, edc * 3600.0);
+		}
 	}
 }
 
@@ -820,25 +831,29 @@ void ObservationSystem::process_guide(apguide proto) {
  * bool process_mcover() 开关镜盖
  */
 bool ObservationSystem::process_mcover(apmcover proto) {
-	MIRRORCOVER_COMMAND cmd = MIRRORCOVER_COMMAND(proto->value);
-	if (cmd == MCC_CLOSE && plan_now_.use_count() && plan_now_->imgtype >= IMGTYPE_FLAT)
-		return false;
-	_gLog.Write("%s mirror-cover for camera [%s:%s:%s]", cmd == MCC_OPEN ? "open" : "close",
-			gid_.c_str(), uid_.c_str(), proto->cid.empty() ? "All" : proto->cid.c_str());
-	return true;;
+	if (data_->enabled) {
+		MIRRORCOVER_COMMAND cmd = MIRRORCOVER_COMMAND(proto->value);
+		if (!(cmd == MCC_CLOSE && plan_now_.use_count() && plan_now_->imgtype >= IMGTYPE_FLAT)) {
+			_gLog.Write("%s mirror-cover for camera [%s:%s:%s]", cmd == MCC_OPEN ? "open" : "close",
+					gid_.c_str(), uid_.c_str(), proto->cid.empty() ? "All" : proto->cid.c_str());
+			return true;;
+		}
+	}
+	return false;
 }
 
 /*
  * bool process_focus() 通知望远镜改变焦点位置
  */
 bool ObservationSystem::process_focus(apfocus proto) {
-	string cid = proto->cid;
-	ObssCamPtr camptr = find_camera(cid);
-
-	if (camptr.use_count() && camptr->info->focus != proto->value) {
-		_gLog.Write("focus [%s:%s:%s] position will goto %d",
-				gid_.c_str(), uid_.c_str(), cid.c_str(), proto->value);
-		return true;
+	if (data_->enabled) {
+		string cid = proto->cid;
+		ObssCamPtr camptr = find_camera(cid);
+		if (camptr.use_count() && camptr->info->focus != proto->value) {
+			_gLog.Write("focus [%s:%s:%s] position will goto %d",
+					gid_.c_str(), uid_.c_str(), cid.c_str(), proto->value);
+			return true;
+		}
 	}
 	return false;
 }
@@ -877,7 +892,7 @@ void ObservationSystem::process_takeimage(aptakeimg proto) {
 	plan_now_->plan->cid = proto->cid;
 	if (imgtyp >= IMGTYPE_OBJECT) {
 		plan_now_->plan->ra = nftele_->ra;
-		plan_now_->plan->dec= nftele_->dc;
+		plan_now_->plan->dec= nftele_->dec;
 		nftele_->Actual2Object();
 	}
 	// 执行观测计划
@@ -990,7 +1005,7 @@ void ObservationSystem::process_disable(apdisable proto) {
  * - 超出限位触发复位
  */
 void ObservationSystem::process_info_telescope(aptele proto) {
-	double ra(proto->ra), dc(proto->dc);
+	double ra(proto->ra), dc(proto->dec);
 	TELESCOPE_STATE prev = nftele_->state;
 	TELESCOPE_STATE now  = TELESCOPE_STATE(proto->state);
 	// 更新望远镜指向坐标
@@ -1072,7 +1087,11 @@ void ObservationSystem::process_info_camera(ObssCamPtr camptr, apcam proto) {
 		/* 记录断点 */
 		if (valid_plan && plan_now_->state == OBSPLAN_INT && plan_now_->plan->plan_sn != INT_MAX) {
 			apobject ptbreak = plan_now_->GetBreakPoint(camptr->cid);
-			if (ptbreak.use_count()) ptbreak->frmno = proto->frmno;
+			if (ptbreak.use_count()) {
+				ptbreak->ifilter = proto->ifilter;
+				ptbreak->frmno   = proto->frmno;
+				ptbreak->loopno  = proto->loopno;
+			}
 		}
 		/* 处理观测计划 */
 		if (data_->leave_expoing() && valid_plan) {

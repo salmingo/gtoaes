@@ -61,13 +61,13 @@ public:
 		plan->objdec		= 1E30;
 		plan->objepoch		= 2000.0;
 		plan->imgtype		= ap->imgtype;
+		plan->expdur		= ap->expdur;
+		plan->frmcnt		= ap->frmcnt;
 		plan->priority		= 0xFFFF;
 		plan->begin_time	= plan->plan_time;
 		plan->end_time		= pt::to_iso_extended_string(now + pt::hours(2));
 		plan->pair_id		= -1;
 		plan->filter.push_back(ap->filter);
-		plan->expdur.push_back(ap->expdur);
-		plan->frmcnt.push_back(ap->frmcnt);
 	}
 
 	/*!

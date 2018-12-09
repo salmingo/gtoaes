@@ -25,21 +25,21 @@ struct InformationTelescope {
 	TELESCOPE_STATE state;	//< 工作状态
 	int errcode;		//< 错误代码
 	string utc;			//< 望远镜时标
-	double ra, dc;		//< 指向坐标, 量纲: 角度. 赤道系
-	double az, el;		//< 指向坐标, 量纲: 角度. 地平系
-	double ora, odc;	//< 目标坐标, 量纲: 角度. 赤道系
-	double dra, ddc;	//< 导星量, 量纲: 角度. 赤道系
+	double ra, dec;		//< 指向坐标, 量纲: 角度. 赤道系
+	double azi, ele;	//< 指向坐标, 量纲: 角度. 地平系
+	double ora, odec;	//< 目标坐标, 量纲: 角度. 赤道系
+	double dra, ddec;	//< 导星量, 量纲: 角度. 赤道系
 	int slewing;		//< 望远镜到达稳定态的控制量
 
 public:
 	InformationTelescope& operator=(ascii_proto_telescope &x) {
 		state   = (TELESCOPE_STATE) x.state;
-		errcode = x.ec;
+		errcode = x.errcode;
 		utc     = x.utc;
 		ra      = x.ra;
-		dc      = x.dc;
-		az      = x.azi;
-		el      = x.ele;
+		dec     = x.dec;
+		azi     = x.azi;
+		ele     = x.ele;
 
 		return *this;
 	}
@@ -50,8 +50,8 @@ public:
 	 * @param d 赤纬, 量纲: 角度
 	 */
 	void SetObject(double r, double d) {
-		ora = r, odc = d;
-		dra = ddc = 0.0;
+		ora = r, odec = d;
+		dra = ddec = 0.0;
 		BeginSlew();
 	}
 
@@ -59,8 +59,8 @@ public:
 	 * @brief 将目标位置设置为当前指向位置
 	 */
 	void Actual2Object() {
-		ora = ra, odc = dc;
-		dra = ddc = 0.0;
+		ora = ra, odec = dec;
+		dra = ddec = 0.0;
 	}
 
 	/*!
@@ -69,8 +69,8 @@ public:
 	 * @param dd 赤纬修正量, 量纲: 角度
 	 */
 	void Guide(double dr, double dd) {
-		dra += dr;
-		ddc += dd;
+		dra  += dr;
+		ddec += dd;
 		BeginSlew();
 	}
 
@@ -78,7 +78,7 @@ public:
 	 * @brief 重置导星量
 	 */
 	void ResetOffset() {
-		dra = ddc = 0.0;
+		dra = ddec = 0.0;
 	}
 
 	/*!

@@ -186,7 +186,7 @@ mpbase MountProto::Resolve(const char* rcvd) {
 		body->ra = atoi(buff) * 1E-4;
 		for (++i, j = 0; i < n; ++i, ++j) buff[j] = sref.at(i);
 		buff[j] = '\0';
-		body->dc = atoi(buff) * 1E-4;
+		body->dec = atoi(buff) * 1E-4;
 		proto = static_pointer_cast<mntproto_base>(body);
 	}
 	else if ((pos = sref.find(type_focus)) > 0) {
