@@ -521,8 +521,8 @@ const char *AsciiProtocol::CompactObject(apobject proto, int &n) {
 	join_kv(output, "frmcnt",      proto->frmcnt);
 	join_kv(output, "loopcnt",     proto->loopcnt);
 	join_kv(output, "ifilter",     proto->ifilter);
-	join_kv(output, "frmno",       proto->frmno);
-	join_kv(output, "loopno",      proto->loopno);
+	join_kv(output, "ifrm",        proto->ifrm);
+	join_kv(output, "iloop",       proto->iloop);
 	join_kv(output, "priority",    proto->priority);
 	join_kv(output, "begin_time",  proto->begin_time);
 	join_kv(output, "end_time",    proto->end_time);
@@ -558,8 +558,8 @@ const char *AsciiProtocol::CompactCamera(apcam proto, int &n) {
 	join_kv(output, "frmcnt",    proto->frmcnt);
 	join_kv(output, "loopcnt",   proto->loopcnt);
 	join_kv(output, "ifilter",   proto->ifilter);
-	join_kv(output, "frmno",     proto->frmno);
-	join_kv(output, "loopno",    proto->loopno);
+	join_kv(output, "ifrm",      proto->ifrm);
+	join_kv(output, "iloop",     proto->iloop);
 	return output_compacted(output, n);
 }
 
@@ -956,7 +956,7 @@ apbase AsciiProtocol::resolve_object(likv &kvs) {
 		else if (ch == 'f') {
 			if      (iequals(keyword, "filter"))    proto->filter   = (*it).value;
 			if      (iequals(keyword, "frmcnt"))    proto->frmcnt   = stoi((*it).value);
-			else if (iequals(keyword, "frmno"))     proto->frmno    = stoi((*it).value);
+			else if (iequals(keyword, "ifrm"))      proto->ifrm     = stoi((*it).value);
 			else if (iequals(keyword, "field_id"))  proto->field_id = (*it).value;
 		}
 		else if (ch == 'r') {
@@ -969,7 +969,7 @@ apbase AsciiProtocol::resolve_object(likv &kvs) {
 		}
 		else if (ch == 'l') {
 			if      (iequals(keyword, "loopcnt"))   proto->loopcnt = stoi((*it).value);
-			else if (iequals(keyword, "loopno"))    proto->loopno  = stoi((*it).value);
+			else if (iequals(keyword, "iloop"))     proto->iloop   = stoi((*it).value);
 		}
 		else if (iequals(keyword, "begin_time"))  proto->begin_time = (*it).value;
 		else if (iequals(keyword, "grid_id"))     proto->grid_id    = (*it).value;
@@ -1012,8 +1012,8 @@ apbase AsciiProtocol::resolve_camera(likv &kvs) {
 		else if (iequals(keyword, "frmcnt"))    proto->frmcnt    = stoi((*it).value);
 		else if (iequals(keyword, "loopcnt"))   proto->loopcnt   = stoi((*it).value);
 		else if (iequals(keyword, "ifilter"))   proto->ifilter   = stoi((*it).value);
-		else if (iequals(keyword, "frmno"))     proto->frmno     = stoi((*it).value);
-		else if (iequals(keyword, "loopno"))    proto->loopno    = stoi((*it).value);
+		else if (iequals(keyword, "ifrm"))      proto->ifrm      = stoi((*it).value);
+		else if (iequals(keyword, "iloop"))     proto->iloop     = stoi((*it).value);
 	}
 
 	return to_apbase(proto);

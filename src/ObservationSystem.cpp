@@ -1089,8 +1089,8 @@ void ObservationSystem::process_info_camera(ObssCamPtr camptr, apcam proto) {
 			apobject ptbreak = plan_now_->GetBreakPoint(camptr->cid);
 			if (ptbreak.use_count()) {
 				ptbreak->ifilter = proto->ifilter;
-				ptbreak->frmno   = proto->frmno;
-				ptbreak->loopno  = proto->loopno;
+				ptbreak->ifrm    = proto->ifrm;
+				ptbreak->iloop   = proto->iloop;
 			}
 		}
 		/* 处理观测计划 */

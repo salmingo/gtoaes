@@ -1088,7 +1088,7 @@ void GeneralControl::database_upload(ObsSysVec& obss) {
 			if (cam.use_count()) {
 				db_->uploadCameraStatus(gid.c_str(), uid.c_str(), cam->cid.c_str(), cam->utc.c_str(), cam->mcstate,
 						cam->focus, cam->coolget, cam->filter.c_str(), cam->state, cam->errcode, cam->imgtype.c_str(),
-						cam->objname.c_str(), cam->frmno, cam->filename.c_str(), strstat);
+						cam->objname.c_str(), cam->ifrm, cam->filename.c_str(), strstat);
 			}
 		}
 		// 系统

@@ -451,8 +451,8 @@ struct ascii_proto_object : public ascii_proto_base {// 目标信息与曝光参
 	int    frmcnt;		//< 曝光帧数
 	int    loopcnt;		//< 滤光片循环次数
 	int    ifilter;		//< 滤光片索引
-	int    frmno;		//< 曝光起始索引
-	int    loopno;		//< 循环索引
+	int    ifrm;		//< 曝光起始索引
+	int    iloop;		//< 循环索引
 
 public:
 	ascii_proto_object() {
@@ -469,8 +469,8 @@ public:
 		frmcnt   = 0;
 		loopcnt  = 1;
 		ifilter  = 0;
-		frmno    = 0;
-		loopno   = 0;
+		ifrm     = 0;
+		iloop    = 0;
 	}
 
 	ascii_proto_object(ascii_proto_append_plan &plan) {
@@ -501,8 +501,8 @@ public:
 		frmcnt		= plan.frmcnt;
 		loopcnt     = plan.loopcnt;
 		ifilter		= 0;
-		frmno		= 0;
-		loopno      = 0;
+		ifrm		= 0;
+		iloop       = 0;
 	}
 };
 typedef boost::shared_ptr<ascii_proto_object> apobject;
@@ -539,8 +539,8 @@ struct ascii_proto_camera : public ascii_proto_base {// 相机信息
 	int		frmcnt;		//< 总帧数
 	int		loopcnt;	//< 循环次数
 	int		ifilter;	//< 滤光片索引
-	int		frmno;		//< 帧编号
-	int		loopno;		//< 循环索引
+	int		ifrm;		//< 帧编号
+	int		iloop;		//< 循环索引
 
 public:
 	ascii_proto_camera() {
@@ -555,8 +555,21 @@ public:
 		frmcnt  = 0;
 		loopcnt = 0;
 		ifilter = 0;
-		frmno   = 0;
-		loopno  = 0;
+		ifrm    = 0;
+		iloop   = 0;
+	}
+
+	ascii_proto_camera &operator=(ascii_proto_object &obj) {
+		objname = obj.objname;
+		imgtype = obj.imgtype;
+		expdur  = obj.expdur;
+		frmcnt  = obj.frmcnt;
+		loopcnt = obj.loopcnt;
+		ifilter = obj.ifilter;
+		ifrm    = obj.ifrm;
+		iloop   = obj.iloop;
+
+		return *this;
 	}
 };
 typedef boost::shared_ptr<ascii_proto_camera> apcam;
