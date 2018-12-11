@@ -67,6 +67,20 @@ public:
 	virtual ~NTPClient();
 
 protected:
+	/* 声明成员变量 */
+	boost::mutex mtx_;		//< 互斥区
+	threadptr    thrd_;		//< 线程指针
+	std::string  host_;		//< NTP服务器的IPv4地址
+	uint16_t     port_;		//< NTP服务器的端口
+	int          sock_;		//< SOCKET套接字
+	carray       pack_;		//< 网络交互信息
+	double       offset_;	//< 时钟偏差, 量纲: 秒
+	bool         valid_;		//< 数据有效性
+	int          nfail_;		//< 时钟偏差检查失败次数
+	double       tSync_;		//< 修正本地时钟的最大时钟偏差
+	bool         autoSync_;	//< 是否自动修正时钟偏差
+
+protected:
 	/*!
 	 * @brief 构建待发送网络信息
 	 */
@@ -103,20 +117,6 @@ public:
 	 * @brief 启用或禁止自动时钟同步
 	 */
 	void EnableAutoSynch(bool bEnabled = true);
-
-protected:
-	/* 声明成员变量 */
-	boost::mutex mtx_;		//< 互斥区
-	threadptr    thrd_;		//< 线程指针
-	std::string  host_;		//< NTP服务器的IPv4地址
-	uint16_t     port_;		//< NTP服务器的端口
-	int          sock_;		//< SOCKET套接字
-	carray       pack_;		//< 网络交互信息
-	double       offset_;	//< 时钟偏差, 量纲: 秒
-	bool         valid_;		//< 数据有效性
-	int          nfail_;		//< 时钟偏差检查失败次数
-	double       tSync_;		//< 修正本地时钟的最大时钟偏差
-	bool         autoSync_;	//< 是否自动修正时钟偏差
 };
 typedef boost::shared_ptr<NTPClient> NTPPtr; //< NTPclient指针
 /*!

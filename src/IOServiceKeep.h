@@ -29,15 +29,15 @@ protected:
 	typedef io_service::work work;
 	typedef boost::shared_ptr<boost::thread> threadptr;
 
-public:
-	// 属性函数
-	io_service& get_service();
-
 private:
 	// 成员变量
 	io_service ios_;		//< io_service对象
 	boost::shared_ptr<work> work_;	//< io_service守护对象
 	threadptr thrd_keep_;			//< 线程
+
+public:
+	// 属性函数
+	io_service& get_service();
 };
 
 #endif /* IOSERVICEKEEP_H_ */

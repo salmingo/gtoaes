@@ -411,7 +411,7 @@ public:
 	 * @return
 	 * 关联结果
 	 */
-	bool CoupleCamera(TcpCPtr ptr, const string& cid);
+	virtual bool CoupleCamera(TcpCPtr ptr, const string& cid);
 	/*!
 	 * @brief 检查是否存在与硬件设备的有效关联
 	 * @return

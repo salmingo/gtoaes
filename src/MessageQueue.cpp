@@ -16,7 +16,6 @@ MessageQueue::MessageQueue() {
 }
 
 MessageQueue::~MessageQueue() {
-	Stop();
 }
 
 bool MessageQueue::RegisterMessage(const long id, const CBSlot& slot) {

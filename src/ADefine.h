@@ -42,7 +42,7 @@ namespace AstroUtil {
 // 计算实数的小数部分
 #define frac(x)			((x) - floor(x))
 // 调整到[0, T)周期内
-#define reduce(x, T)	((x) - floor((x) / (T)) * (T))
+#define cyclemod(x, T)	((x) - floor((x) / (T)) * (T))
 /*--------------------------------------------------------------------------*/
 }
 

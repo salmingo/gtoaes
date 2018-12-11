@@ -20,9 +20,16 @@ public:
 protected:
 	// 成员变量
 	MountPtr mntproto_;			//< GWAC转台编码协议解析接口
-	TcpCPtr tcpc_mount_annex_;	//< 望远镜附件网络连接(GWAC镜盖+调焦)
 
 public:
+	/*!
+	 * @brief 关联相机网络连接与观测系统
+	 * @param ptr    网络连接
+	 * @param cid    相机标志
+	 * @return
+	 * 关联结果
+	 */
+	bool CoupleCamera(TcpCPtr ptr, const string& cid);
 	/*!
 	 * @brief 关联GWAC转台附件网络连接与观测系统
 	 * @param client 网络连接
@@ -160,6 +167,7 @@ protected:
 	 * @param epoch 目标位置坐标系, 量纲: 历元
 	 */
 	bool process_homesync(aphomesync proto);
+	TcpCPtr tcpc_mount_annex_;	//< 望远镜附件网络连接(GWAC镜盖+调焦)
 };
 typedef boost::shared_ptr<ObservationSystemGWAC> ObsSysGWACPtr;
 extern ObsSysGWACPtr make_obss_gwac(const string& gid, const string& uid);

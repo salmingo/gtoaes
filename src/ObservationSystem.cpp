@@ -37,7 +37,6 @@ ObservationSystem::ObservationSystem(const string& gid, const string& uid) {
 }
 
 ObservationSystem::~ObservationSystem() {
-	StopService();
 }
 
 bool ObservationSystem::StartService() {
@@ -55,6 +54,7 @@ bool ObservationSystem::StartService() {
 
 void ObservationSystem::StopService() {
 	if (data_->running) {
+		Stop();
 		interrupt_thread(thrd_client_);
 		interrupt_thread(thrd_idle_);
 		interrupt_thread(thrd_time_);
@@ -247,15 +247,19 @@ int ObservationSystem::PlanRelativePriority(apappplan plan, ptime& now) {
 ObssCamPtr ObservationSystem::find_camera(TCPClient *ptr) {
 	mutex_lock lck(mtx_camera_);
 	ObssCamVec::iterator it;
+	ObssCamPtr camptr;
 	for (it = cameras_.begin(); it != cameras_.end() && (**it) != ptr; ++it);
-	return (*it);
+	if (it != cameras_.end()) camptr = *it;
+	return camptr;
 }
 
 ObssCamPtr ObservationSystem::find_camera(const string &cid) {
 	mutex_lock lck(mtx_camera_);
 	ObssCamVec::iterator it;
+	ObssCamPtr camptr;
 	for (it = cameras_.begin(); it != cameras_.end() && (**it) != cid; ++it);
-	return (*it);
+	if (it != cameras_.end()) camptr = *it;
+	return camptr;
 }
 
 /*

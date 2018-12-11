@@ -139,7 +139,7 @@ double ATimeSpace::UTC2UT1(double mjd, double dut) {
 double ATimeSpace::GreenwichMeanSiderealTime(double mjd) {
 	double t  = JulianCentury(mjd);
 	double gmst = 280.46061837 + t * (13185000.77005374225 + t * (3.87933E-4 - t / 38710000.0));
-	return (reduce(gmst, 360.0) * D2R);
+	return (cyclemod(gmst, 360.0) * D2R);
 }
 
 double ATimeSpace::GreenwichSiderealTime(double mjd) {
@@ -154,7 +154,7 @@ double ATimeSpace::GreenwichSiderealTime(double mjd) {
 }
 
 double ATimeSpace::LocalMeanSiderealTime(double mjd, double lgt) {
-	return reduce(GreenwichMeanSiderealTime(mjd) + lgt, A2PI);
+	return cyclemod(GreenwichMeanSiderealTime(mjd) + lgt, A2PI);
 }
 
 double ATimeSpace::LocalSiderealTime(double mjd, double lgt) {
@@ -327,46 +327,46 @@ void ATimeSpace::Nutation(double t, double& nl, double& no) {
 double ATimeSpace::MeanAnomalySun(double t) {
 	/* 参数来源: IERS 1992, Williams 1991 */
 	double ma = (129596581.0481 + (-0.5532 + (0.000136 - 0.00001149 * t) * t) * t) * t / 3600.0 + 357.52910918;
-	ma = reduce(ma, 360.0);
+	ma = cyclemod(ma, 360.0);
 	return (ma * D2R);
 }
 
 double ATimeSpace::MeanAnomalyMoon(double t) {
 	/* 参数来源: IERS 1992, Williams 1991 */
 	double ma = (1717915923.2178 + (31.8792 + (0.051635 - 0.0002447 * t) * t) * t) * t / 3600.0 + 134.96340251;
-	ma = reduce(ma, 360.0);
+	ma = cyclemod(ma, 360.0);
 	return (ma * D2R);
 }
 
 double ATimeSpace::MeanElongationMoonSun(double t) {
 	/* 参数来源: IERS 1992, Williams 1991 */
 	double me = (1602961601.209 + (-6.3706 + (6.593E-3 - 3.169E-5 * t) * t) * t) * t / 3600.0 + 297.85019547;
-	me = reduce(me, 360.0);
+	me = cyclemod(me, 360.0);
 	return (me * D2R);
 }
 
 double ATimeSpace::MeanLongAscNodeMoon(double t) {
 	/* 参数来源: IERS 1992, Williams 1991 */
 	double ml = (-6962890.5432 + (7.4722 + (7.702E-3 - 5.939E-5 * t) * t) * t) * t / 3600.0 + 125.04455501;
-	ml = reduce(ml, 360.0);
+	ml = cyclemod(ml, 360.0);
 	return (ml * D2R);
 }
 
 double ATimeSpace::RelLongMoon(double t) {
 	/* 参数来源: IERS 1992, Williams 1991 */
 	double rl = (1739527262.8478 + (-12.7512 + (-1.037E-3 + 4.17E-6 * t) * t) * t) * t / 3600.0 + 93.27209062;
-	rl = reduce(rl, 360.0);
+	rl = cyclemod(rl, 360.0);
 	return (rl * D2R);
 }
 
 double ATimeSpace::MeanLongSun(double t) {
 	double mls = 280.46646 + (36000.76983 + 3.032E-4 * t) * t;
-	mls = reduce(mls, 360.0);
+	mls = cyclemod(mls, 360.0);
 	return (mls * D2R);
 }
 
 void ATimeSpace::SunPosition(double t, double& ra, double& dec) {
-	double M = reduce(125.04 - 1934.136 * t, 360.0) * D2R;
+	double M = cyclemod(125.04 - 1934.136 * t, 360.0) * D2R;
 	double l = TrueLongSun(t) - (5.69E-3 + 4.78E-3 * sin(M)) * D2R;
 	double eps = MeanObliquity(t) + 2.56E-3 * cos(M) * D2R;
 
@@ -439,7 +439,7 @@ double ATimeSpace::GreenwichMeanSiderealTime() {
 	if (!valid_[ATS_GMST]) {
 		double t  = JulianCentury();
 		double gmst = 280.46061837 + t * (13185000.77005374225 + t * (3.87933E-4 - t / 38710000.0));
-		values_[ATS_GMST] = reduce(gmst, 360.0) * D2R;
+		values_[ATS_GMST] = cyclemod(gmst, 360.0) * D2R;
 		valid_[ATS_GMST]  = true;
 	}
 
@@ -461,7 +461,7 @@ double ATimeSpace::GreenwichSiderealTime() {
 
 double ATimeSpace::LocalMeanSiderealTime() {
 	if (!valid_[ATS_LMST]) {
-		values_[ATS_LMST] = reduce(GreenwichMeanSiderealTime() + lgt_, A2PI);
+		values_[ATS_LMST] = cyclemod(GreenwichMeanSiderealTime() + lgt_, A2PI);
 		valid_[ATS_LMST]  = true;
 	}
 
@@ -763,7 +763,7 @@ double ATimeSpace::TrueAnomalySun() {
 
 void ATimeSpace::SunPosition(double& ra, double& dec) {
 	if (!valid_[ATS_POSITION_SUN]) {
-		double M = reduce(125.04 - 1934.136 * JulianCentury(), 360.0) * D2R;
+		double M = cyclemod(125.04 - 1934.136 * JulianCentury(), 360.0) * D2R;
 		double l = TrueLongSun() - (5.69E-3 + 4.78E-3 * sin(M)) * D2R;
 		double eps = MeanObliquity() + 2.56E-3 * cos(M) * D2R;
 
@@ -1203,21 +1203,21 @@ int ATimeSpace::TimeOfSunAlt(double& sunrise, double& sunset, double alt) {
 	if (dm <= -1.0) return -1;
 	dm = acos(dm);
 	t0 = GreenwichSiderealTime(jdn);
-	m0 = reduce((ra - lgt_ - t0) / A2PI, 1.0);
+	m0 = cyclemod((ra - lgt_ - t0) / A2PI, 1.0);
 
-	m = reduce(m0 - dm / A2PI, 1.0);
+	m = cyclemod(m0 - dm / A2PI, 1.0);
 	t = t0 + 360.985647 * m * D2R;
 	SunPosition(JulianCentury(jdn + m), ra, dec);
 	Eq2Horizon(t + lgt_ - ra, dec, azi, h);
 	m += ((h - h0) / (A2PI * cos(dec) * cos(lat_) * sin(t + lgt_ - ra)));
-	sunrise = reduce(reduce(m, 1.0) * 24.0 + tz_, 24.0);
+	sunrise = cyclemod(cyclemod(m, 1.0) * 24.0 + tz_, 24.0);
 
-	m = reduce(m0 + dm / A2PI, 1.0);
+	m = cyclemod(m0 + dm / A2PI, 1.0);
 	t = t0 + 360.985647 * m * D2R;
 	SunPosition(JulianCentury(jdn + m), ra, dec);
 	Eq2Horizon(t + lgt_ - ra, dec, azi, h);
 	m += (h - h0) / (A2PI * cos(dec) * cos(lat_) * sin(t + lgt_ - ra));
-	sunset  = reduce(reduce(m, 1.0) * 24.0 + tz_, 24.0);
+	sunset  = cyclemod(cyclemod(m, 1.0) * 24.0 + tz_, 24.0);
 
 	return 0;
 }

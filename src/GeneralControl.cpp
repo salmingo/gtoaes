@@ -48,6 +48,7 @@ bool GeneralControl::StartService() {
 }
 
 void GeneralControl::StopService() {
+	Stop();
 	interrupt_thread(thrd_monitor_plan_);
 	interrupt_thread(thrd_monitor_obss_);
 	interrupt_thread(thrd_status_);
@@ -1127,7 +1128,6 @@ void GeneralControl::exit_ignore_plan() {
 void GeneralControl::exit_close_obss(ObsSysVec &obss) {
 	for (ObsSysVec::iterator it = obss.begin(); it != obss.end(); ++it) {
 		(*it)->StopService();
-		(*it).reset();
 	}
 }
 

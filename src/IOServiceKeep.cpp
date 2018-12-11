@@ -15,7 +15,6 @@ IOServiceKeep::IOServiceKeep() {
 }
 
 IOServiceKeep::~IOServiceKeep() {
-	work_.reset();
 	ios_.stop();
 	thrd_keep_->join();
 }

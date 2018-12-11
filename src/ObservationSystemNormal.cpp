@@ -7,6 +7,7 @@
 #include "ObservationSystemNormal.h"
 #include "GLog.h"
 #include "ADefine.h"
+#include "parameter.h"
 
 using namespace AstroUtil;
 using namespace boost;
@@ -32,6 +33,13 @@ bool ObservationSystemNormal::CoupleTelescope(TcpCPtr ptr) {
 	ptr->RegisterRead(slot);
 
 	return true;
+}
+
+bool ObservationSystemNormal::CoupleCamera(TcpCPtr ptr, const string& cid) {
+	if (!ObservationSystem::CoupleCamera(ptr, cid)) return false;
+	int n;
+	const char *s = ascproto_->CompactRegister(OST_NORMAL, n);
+	return ptr->Write(s, n);
 }
 
 int ObservationSystemNormal::relative_priority(int x) {

@@ -40,13 +40,14 @@
  @li 集成GWAC与通用望远镜
  */
 
+#include <boost/make_shared.hpp>
 #include "globaldef.h"
 #include "daemon.h"
 #include "parameter.h"
 #include "GLog.h"
 #include "GeneralControl.h"
 
-GLog _gLog(stdout);
+GLog _gLog;
 GLog _gLogPlan(gLogPlanDir, gLogPlanPrefix);
 
 int main(int argc, char** argv) {
@@ -62,7 +63,7 @@ int main(int argc, char** argv) {
 		boost::asio::signal_set signals(ios, SIGINT, SIGTERM);  // interrupt signal
 		signals.async_wait(boost::bind(&boost::asio::io_service::stop, &ios));
 
-//		if (!MakeItDaemon(ios)) return 1;
+		if (!MakeItDaemon(ios)) return 1;
 		if (!isProcSingleton(gPIDPath)) {
 			_gLog.Write("%s is already running or failed to access PID file", DAEMON_NAME);
 			return 2;
@@ -70,11 +71,11 @@ int main(int argc, char** argv) {
 
 		_gLog.Write("Try to launch %s %s %s as daemon", DAEMON_NAME, DAEMON_VERSION, DAEMON_AUTHORITY);
 		// 主程序入口
-		GeneralControl gc;
-		if (gc.StartService()) {
+		boost::shared_ptr<GeneralControl> gc = boost::make_shared<GeneralControl>();
+		if (gc->StartService()) {
 			_gLog.Write("Daemon goes running");
 			ios.run();
-			gc.StopService();
+			gc->StopService();
 			_gLog.Write("Daemon stop running");
 		}
 		else {
