@@ -14,7 +14,7 @@
 #include <boost/container/stable_vector.hpp>
 #include <boost/smart_ptr.hpp>
 #include "AsciiProtocol.h"
-#include "AstroDeviceState.h"
+#include "AstroDeviceDef.h"
 
 // 数据类型
 typedef boost::container::stable_vector<apobject> ObsPlanBreakPtVec;

@@ -22,16 +22,10 @@ ObservationSystemGWAC::ObservationSystemGWAC(const string& gid, const string& ui
 	mntproto_ = make_mount(gid, uid);
 	tslew_    = AS2D * 600;	// 600角秒
 	tguide_   = 0.08;		// 288角秒
+	ostype_   = OBSST_GWAC;
 }
 
 ObservationSystemGWAC::~ObservationSystemGWAC() {
-}
-
-bool ObservationSystemGWAC::CoupleCamera(TcpCPtr ptr, const string& cid) {
-	if (!ObservationSystem::CoupleCamera(ptr, cid)) return false;
-	int n;
-	const char *s = ascproto_->CompactRegister(OST_GWAC, n);
-	return ptr->Write(s, n);
 }
 
 bool ObservationSystemGWAC::CoupleMountAnnex(TcpCPtr client) {

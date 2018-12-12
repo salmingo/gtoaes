@@ -14,13 +14,9 @@
 #include <boost/foreach.hpp>
 #include <boost/smart_ptr.hpp>
 #include <boost/make_shared.hpp>
+#include "AstroDeviceDef.h"
 
 using std::string;
-
-enum ObservationSystemType {// 观测系统类型
-	OST_GWAC = 1,	//< GWAC
-	OST_NORMAL		//< 常规系统
-};
 
 struct ObservationSystemTrait {// 观测系统关键特征
 	string gid;		//< 在网络系统中的组标志

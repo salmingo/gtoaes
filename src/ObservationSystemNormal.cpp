@@ -21,6 +21,7 @@ ObservationSystemNormal::ObservationSystemNormal(const string& gid, const string
 	: ObservationSystem(gid, uid) {
 	tslew_    = AS2D * 30;	// 30角秒
 	tguide_   = 1.39E-4;	// 0.5角秒
+	ostype_   = OBSST_NORMAL;
 }
 
 ObservationSystemNormal::~ObservationSystemNormal() {
@@ -33,13 +34,6 @@ bool ObservationSystemNormal::CoupleTelescope(TcpCPtr ptr) {
 	ptr->RegisterRead(slot);
 
 	return true;
-}
-
-bool ObservationSystemNormal::CoupleCamera(TcpCPtr ptr, const string& cid) {
-	if (!ObservationSystem::CoupleCamera(ptr, cid)) return false;
-	int n;
-	const char *s = ascproto_->CompactRegister(OST_NORMAL, n);
-	return ptr->Write(s, n);
 }
 
 int ObservationSystemNormal::relative_priority(int x) {

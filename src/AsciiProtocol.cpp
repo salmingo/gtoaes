@@ -132,15 +132,6 @@ const char *AsciiProtocol::CompactRegister(apreg proto, int &n) {
 	string output;
 	compact_base(to_apbase(proto), output);
 
-	if (proto->ostype != INT_MIN) join_kv(output, "ostype",   proto->ostype);
-
-	return output_compacted(output, n);
-}
-
-const char *AsciiProtocol::CompactRegister(int ostype, int &n) {
-	string output = APTYPE_REG;
-	output += " ";
-	join_kv(output, "ostype", ostype);
 	return output_compacted(output, n);
 }
 
@@ -149,6 +140,16 @@ const char *AsciiProtocol::CompactUnregister(apunreg proto, int &n) {
 
 	string output;
 	compact_base(to_apbase(proto), output);
+	return output_compacted(output, n);
+}
+
+const char *AsciiProtocol::CompactTerminal(int ostype, double lgt, double lat, double alt, int &n) {
+	string output = APTYPE_TERM;
+	output += " ";
+	join_kv(output, "ostype",    ostype);
+	join_kv(output, "longitude", lgt);
+	join_kv(output, "latitude",  lat);
+	join_kv(output, "altitude",  alt);
 	return output_compacted(output, n);
 }
 
@@ -679,6 +680,7 @@ apbase AsciiProtocol::Resolve(const char *rcvd) {
 	else if (ch == 't'){
 		if      (iequals(type, APTYPE_TELE))     proto = resolve_telescope(kvs);
 		else if (iequals(type, APTYPE_TAKIMG))   proto = resolve_takeimg(kvs);
+		else if (iequals(type, APTYPE_TERM))     proto = resolve_terminal(kvs);
 	}
 	else if (iequals(type, APTYPE_GUIDE))    proto = resolve_guide(kvs);
 	else if (iequals(type, APTYPE_REG))      proto = resolve_register(kvs);
@@ -701,19 +703,26 @@ apbase AsciiProtocol::Resolve(const char *rcvd) {
 
 apbase AsciiProtocol::resolve_register(likv &kvs) {
 	apreg proto = boost::make_shared<ascii_proto_reg>();
-	string keyword;
-
-	for (likv::iterator it = kvs.begin(); it != kvs.end(); ++it) {// 遍历键值对
-		keyword = (*it).keyword;
-		// 识别关键字
-		if (iequals(keyword, "ostype"))  proto->ostype = stoi((*it).value);
-	}
-
 	return to_apbase(proto);
 }
 
 apbase AsciiProtocol::resolve_unregister(likv &kvs) {
 	apunreg proto = boost::make_shared<ascii_proto_unreg>();
+	return to_apbase(proto);
+}
+
+apbase AsciiProtocol::resolve_terminal(likv &kvs) {
+	apterm proto = boost::make_shared<ascii_proto_term>();
+	string keyword;
+
+	for (likv::iterator it = kvs.begin(); it != kvs.end(); ++it) {// 遍历键值对
+		keyword = (*it).keyword;
+		if      (iequals(keyword, "ostype"))    proto->ostype = stoi((*it).value);
+		else if (iequals(keyword, "longitude")) proto->lgt    = stod((*it).value);
+		else if (iequals(keyword, "latitude"))  proto->lat    = stod((*it).value);
+		else if (iequals(keyword, "altitude"))  proto->alt    = stod((*it).value);
+	}
+
 	return to_apbase(proto);
 }
 

@@ -1,11 +1,11 @@
 /*!
- * @file AstroDeviceState.h 声明与光学天文望远镜观测相关的状态、指令、类型等相关的常量
+ * @file AstroDeviceDef.h 声明与光学天文望远镜观测相关的状态、指令、类型等相关的常量
  * @version 0.1
  * @date 2017-11-24
  */
 
-#ifndef ASTRO_DEVICE_STATE_H_
-#define ASTRO_DEVICE_STATE_H_
+#ifndef ASTRO_DEVICE_DEFINE_H_
+#define ASTRO_DEVICE_DEFINE_H_
 
 /* 状态与指令 */
 enum TELESCOPE_STATE {// 转台状态
@@ -56,10 +56,11 @@ enum IMAGE_TYPE {// 图像类型
 };
 
 enum EXPOSE_COMMAND {// 相机控制指令
-	EXPOSE_START = 1,	//< 开始曝光
-	EXPOSE_STOP,		//< 中止曝光
-	EXPOSE_PAUSE,		//< 暂停曝光
-	EXPOSE_RESUME		//< EXPOSE_START分支: 当处理暂停过程中收到开始曝光指令, 指令记录为RESUME
+	EXPOSE_INIT,	//< 初始化
+	EXPOSE_START,	//< 开始曝光
+	EXPOSE_STOP,	//< 中止曝光
+	EXPOSE_PAUSE,	//< 暂停曝光
+	EXPOSE_RESUME	//< EXPOSE_START分支: 当处理暂停过程中收到开始曝光指令, 指令记录为RESUME
 };
 
 enum CAMCTL_STATUS {// 相机工作状态
@@ -72,6 +73,12 @@ enum CAMCTL_STATUS {// 相机工作状态
 	CAMCTL_WAIT_TIME   = 0x20,	// 等待曝光流传起始时间到达
 	CAMCTL_WAIT_SYNC   = 0x40,	// 完成曝光, 等待其它相机完成曝光
 	CAMCTL_WAIT_FLAT   = 0x80	// 平场间等待--等待转台重新指向
+};
+
+enum OBSS_TYPE {// 观测系统类型
+	OBSST_UNKNOWN,	//< 初始化
+	OBSST_GWAC,		//< GWAC
+	OBSST_NORMAL	//< 常规系统
 };
 
 enum OBSS_STATUS {// 观测系统状态

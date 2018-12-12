@@ -266,12 +266,16 @@ protected:
 	boost::mutex mtx_ats_;		//< 互斥锁: ats_
 //////////////////////////////////////////////////////////////////////
 	/* 成员变量 */
-	string	gid_;			//< 组标志
-	string	uid_;			//< 单元标志
-	int		timezone_;		//< 时区
-	double	minEle_;		//< 最小仰角, 量纲: 弧度
-	double	tslew_;			//< 指向到位阈值
-	double	tguide_;		//< 导星阈值
+	string	gid_;		//< 组标志
+	string	uid_;		//< 单元标志
+	OBSS_TYPE ostype_;	//< 观测系统类型
+	double	lgt_;		//< 地理经度
+	double	lat_;		//< 地理纬度
+	double	alt_;		//< 海拔
+	int		timezone_;	//< 时区
+	double	minEle_;	//< 最小仰角, 量纲: 弧度
+	double	tslew_;		//< 指向到位阈值
+	double	tguide_;	//< 导星阈值
 	OBSERVATION_DURATION odtype_;			//< 观测周期类型
 	boost::posix_time::ptime tmLast_;		//< 时标, 记录: 系统创建时间, 最后一条网络连接断开时间
 	boost::posix_time::ptime lastflat_;		//< 时标: 最后一次平场重新指向时间
@@ -411,7 +415,7 @@ public:
 	 * @return
 	 * 关联结果
 	 */
-	virtual bool CoupleCamera(TcpCPtr ptr, const string& cid);
+	bool CoupleCamera(TcpCPtr ptr, const string& cid);
 	/*!
 	 * @brief 检查是否存在与硬件设备的有效关联
 	 * @return

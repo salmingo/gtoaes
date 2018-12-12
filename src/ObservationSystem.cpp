@@ -24,6 +24,10 @@ ObservationSystemCamera::ObservationSystemCamera(const string& id) {
 ObservationSystem::ObservationSystem(const string& gid, const string& uid) {
 	gid_      = gid;
 	uid_      = uid;
+	ostype_   = OBSST_UNKNOWN;
+	lgt_      = 120.0;
+	lat_      = 40.0;
+	alt_      = 1000.0;
 	timezone_ = 8;
 	minEle_   = 20.0 * D2R;
 	tslew_    = AS2D * 10;
@@ -74,6 +78,9 @@ void ObservationSystem::SetGeosite(const string& name, const double lgt, const d
 	_gLog.Write("Observation System [%s:%s] located at [%s, %.4f, %.4f, %.1f]",
 			gid_.c_str(), uid_.c_str(), name.c_str(), lgt, lat, alt);
 	ats_->SetSite(lgt, lat, alt, timezone);
+	lgt_      = lgt;
+	lat_      = lat;
+	alt_      = alt;
 	timezone_ = timezone;
 }
 
@@ -168,14 +175,20 @@ bool ObservationSystem::CoupleCamera(TcpCPtr client, const string& cid) {
 	ObssCamPtr camptr = find_camera(cid);
 	if (!camptr.use_count()) {
 		_gLog.Write("camera [%s:%s:%s] is on-line", gid_.c_str(), uid_.c_str(), cid.c_str());
-		ObssCamPtr one = boost::make_shared<ObssCamera>(cid);
-		const TCPClient::CBSlot& slot = boost::bind(&ObservationSystem::receive_camera, this, _1, _2);
-		client->RegisterRead(slot);
-		one->tcptr = client;
-		one->info  = boost::make_shared<ascii_proto_camera>();
-		// 相机资源入库, 并检查系统工作状态
-		mutex_lock lck(mtx_camera_);
-		cameras_.push_back(one);
+		{
+			// 建立关联, 存储资源
+			mutex_lock lck(mtx_camera_);
+			ObssCamPtr one = boost::make_shared<ObssCamera>(cid);
+			const TCPClient::CBSlot& slot = boost::bind(&ObservationSystem::receive_camera, this, _1, _2);
+			client->RegisterRead(slot);
+			one->tcptr = client;
+			one->info  = boost::make_shared<ascii_proto_camera>();
+			cameras_.push_back(one);
+			// 通知相机参数
+			int n;
+			const char *s = ascproto_->CompactTerminal(ostype_, lgt_, lat_, alt_, n);
+			client->Write(s, n);
+		}
 		switch_state();
 		return true;
 	}

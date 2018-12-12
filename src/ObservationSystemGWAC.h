@@ -23,14 +23,6 @@ protected:
 
 public:
 	/*!
-	 * @brief 关联相机网络连接与观测系统
-	 * @param ptr    网络连接
-	 * @param cid    相机标志
-	 * @return
-	 * 关联结果
-	 */
-	bool CoupleCamera(TcpCPtr ptr, const string& cid);
-	/*!
 	 * @brief 关联GWAC转台附件网络连接与观测系统
 	 * @param client 网络连接
 	 * @return

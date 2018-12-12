@@ -304,7 +304,7 @@ void GeneralControl::process_protocol_telescope(apbase proto, TCPClient* client)
 		client->Close();
 	}
 	else {// 关联观测系统与望远镜
-		ObsSysPtr obss = find_obss(gid, uid, OST_NORMAL);
+		ObsSysPtr obss = find_obss(gid, uid, OBSST_NORMAL);
 		if (obss.use_count()) {
 			mutex_lock lck(mtx_tcpc_tele_);
 			TcpCVec::iterator it;
@@ -326,7 +326,7 @@ void GeneralControl::process_protocol_mount(mpbase proto, TCPClient* client) {
 	string gid = proto->gid;
 	string uid = proto->uid;
 
-	ObsSysGWACPtr obss = from_obss<ObservationSystemGWAC>(find_obss(gid, uid, OST_GWAC));
+	ObsSysGWACPtr obss = from_obss<ObservationSystemGWAC>(find_obss(gid, uid, OBSST_GWAC));
 	if (obss.use_count()) {
 		string type = proto->type;
 		TcpCPtr cliptr;
@@ -385,7 +385,7 @@ void GeneralControl::process_protocol_mount_annex(mpbase proto, TCPClient* clien
 	string gid = proto->gid;
 	string uid = proto->uid;
 
-	ObsSysGWACPtr obss = from_obss<ObservationSystemGWAC>(find_obss(gid, uid, OST_GWAC));
+	ObsSysGWACPtr obss = from_obss<ObservationSystemGWAC>(find_obss(gid, uid, OBSST_GWAC));
 	if (obss.use_count()) {
 		string type = proto->type;
 		TcpCPtr cliptr;
@@ -419,7 +419,7 @@ void GeneralControl::process_protocol_camera_annex(apbase proto, TCPClient* clie
 
 	if (!cid.empty()) {
 		// 向观测系统传递信息
-		ObsSysGWACPtr obss = from_obss<ObservationSystemGWAC>(find_obss(gid, uid, OST_GWAC));
+		ObsSysGWACPtr obss = from_obss<ObservationSystemGWAC>(find_obss(gid, uid, OBSST_GWAC));
 		if (obss.use_count()) obss->NotifyCooler(cooler);
 		else client->Close();
 	}
@@ -906,7 +906,7 @@ void GeneralControl::on_acquire_plan(const long, const long) {
 		uid = acq->uid;
 	}
 
-	ObsSysPtr obss = find_obss(gid, uid, acq->type == "gwac" ? OST_GWAC : OST_NORMAL);
+	ObsSysPtr obss = find_obss(gid, uid, acq->type == "gwac" ? OBSST_GWAC : OBSST_NORMAL);
 	/*
 	 * 查找gid:uid强匹配的可执行观测计划
 	 * - GWAC观测计划要求gid:uid不为空, 因此当IsMatched()>=0时, 其匹配值实际为1
@@ -943,7 +943,7 @@ ObsSysPtr GeneralControl::find_obss(const string& gid, const string& uid, int os
 	}
 	/* 定位/创建观测系统 */
 	else if (ostype == 0 || trait->ostype == ostype) {
-		if (trait->ostype == OST_GWAC) {
+		if (trait->ostype == OBSST_GWAC) {
 			mutex_lock lck(mtx_obss_gwac_);
 			ObsSysVec::iterator it;
 			for (it = obss_gwac_.begin(); it != obss_gwac_.end() && (*it)->IsMatched(gid, uid) != 1; ++it);
@@ -953,7 +953,7 @@ ObsSysPtr GeneralControl::find_obss(const string& gid, const string& uid, int os
 				obss = to_obss(obss_gwac); // obss计数==2, 退出if后计数==1
 			}
 		}
-		else if (trait->ostype == OST_NORMAL) {
+		else if (trait->ostype == OBSST_NORMAL) {
 			mutex_lock lck(mtx_obss_normal_);
 			ObsSysVec::iterator it;
 			for (it = obss_normal_.begin(); it != obss_normal_.end() && (*it)->IsMatched(gid, uid) != 1; ++it);
@@ -979,7 +979,7 @@ ObsSysPtr GeneralControl::find_obss(const string& gid, const string& uid, int os
 			obss->SetGeosite(trait->sitename, trait->lgt, trait->lat, trait->alt, trait->timezone);
 			obss->SetElevationLimit(limit.use_count() ? limit->value : 20.0);
 
-			if (trait->ostype == OST_GWAC) {
+			if (trait->ostype == OBSST_GWAC) {
 				mutex_lock lck(mtx_obss_gwac_);
 				obss_gwac_.push_back(obss);
 				// 注册回调函数: 申请新的观测计划

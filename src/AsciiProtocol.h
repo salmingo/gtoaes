@@ -14,7 +14,7 @@
 #include <boost/thread.hpp>
 #include <boost/algorithm/string.hpp>
 #include "AsciiProtocolBase.h"
-#include "AstroDeviceState.h"
+#include "AstroDeviceDef.h"
 
 using std::list;
 using std::vector;
@@ -31,6 +31,7 @@ typedef list<pair_key_val> likv;	//< pair_key_val列表
 /* 宏定义: 通信协议类型 */
 #define APTYPE_REG		"register"
 #define APTYPE_UNREG	"unregister"
+#define APTYPE_TERM		"terminal"
 #define APTYPE_START	"start"
 #define APTYPE_STOP		"stop"
 #define APTYPE_ENABLE	"enable"
@@ -65,12 +66,10 @@ typedef list<pair_key_val> likv;	//< pair_key_val列表
 
 /*--------------------------------- 声明通信协议 ---------------------------------*/
 struct ascii_proto_reg : public ascii_proto_base {// 注册设备/用户
-	int ostype;	//< 观测系统类型. 通知相机观测系统类型, 区别创建目录及文件名和文件头
 
 public:
 	ascii_proto_reg() {
 		type = APTYPE_REG;
-		ostype = INT_MIN;
 	}
 };
 typedef boost::shared_ptr<ascii_proto_reg> apreg;
@@ -82,6 +81,21 @@ public:
 	}
 };
 typedef boost::shared_ptr<ascii_proto_unreg> apunreg;
+
+struct ascii_proto_term : public ascii_proto_base {// 终端参数
+	int		ostype;	//< 观测系统类型. 通知相机观测系统类型, 区别创建目录及文件名和文件头
+	double	lgt;	//< 地理经度, 量纲: 角度
+	double	lat;	//< 地理纬度, 量纲: 角度
+	double	alt;	//< 海拔, 量纲: 米
+
+public:
+	ascii_proto_term() {
+		type   = APTYPE_TERM;
+		ostype = INT_MIN;
+		lgt = lat = alt = 0.0;
+	}
+};
+typedef boost::shared_ptr<ascii_proto_term> apterm;
 
 struct ascii_proto_start : public ascii_proto_base {// 启动自动观测流程
 public:
@@ -169,7 +183,7 @@ struct ascii_proto_append_plan : public ascii_proto_base {
 
 public:
 	ascii_proto_append_plan() {
-		type = APTYPE_APPGWAC;
+		type = APTYPE_APPPLAN;
 		plan_sn = -1;
 		ra = dec = 1E30;
 		epoch = 2000.0;
@@ -731,11 +745,14 @@ public:
 	 * @brief 封装设备注册和注册结果
 	 */
 	const char *CompactRegister(apreg proto, int &n);
-	const char *CompactRegister(int ostype, int &n);
 	/*!
 	 * @brief 封装设备注销和注销结果
 	 */
 	const char *CompactUnregister(apunreg proto, int &n);
+	/*!
+	 * @brief 封装终端参数
+	 */
+	const char *CompactTerminal(int ostype, double lgt, double lat, double alt, int &n);
 	/*!
 	 * @brief 封装开机自检
 	 */
@@ -921,6 +938,10 @@ protected:
 	 * @brief 注销设备与注销结果
 	 * */
 	apbase resolve_unregister(likv &kvs);
+	/*!
+	 * @brief 解析终端参数
+	 */
+	apbase resolve_terminal(likv &kvs);
 	/**
 	 * @brief 开机自检
 	 * */
