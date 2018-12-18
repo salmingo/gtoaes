@@ -1135,7 +1135,6 @@ apbase AsciiProtocol::resolve_append_plan(likv &kvs) {
 	apappplan proto = boost::make_shared<ascii_proto_append_plan>();
 	string keyword, value;
 	char ch;
-	const char seps[] = ";";
 
 	for (likv::iterator it = kvs.begin(); it != kvs.end(); ++it) {// 遍历键值对
 		keyword = (*it).keyword;
@@ -1169,6 +1168,7 @@ apbase AsciiProtocol::resolve_append_plan(likv &kvs) {
 		}
 		else if (ch == 'f') {
 			if      (iequals(keyword, "filter")) {// 滤光片
+				const char seps[] = "| ";
 				listring tokens;
 				algorithm::split(tokens, (*it).value, is_any_of(seps), token_compress_on);
 				for (listring::iterator it1 = tokens.begin(); it1 != tokens.end(); ++it1) {
