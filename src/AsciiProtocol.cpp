@@ -143,13 +143,23 @@ const char *AsciiProtocol::CompactUnregister(apunreg proto, int &n) {
 	return output_compacted(output, n);
 }
 
-const char *AsciiProtocol::CompactTerminal(int ostype, double lgt, double lat, double alt, int &n) {
-	string output = APTYPE_TERM;
+const char *AsciiProtocol::CompactObsSite(apobsite proto, int &n) {
+	if (!proto.use_count()) return NULL;
+
+	string output;
+	compact_base(to_apbase(proto), output);
+	join_kv(output, "sitename",  proto->sitename);
+	join_kv(output, "longitude", proto->lgt);
+	join_kv(output, "latitude",  proto->lat);
+	join_kv(output, "altitude",  proto->alt);
+	join_kv(output, "timezone",  proto->timezone);
+	return output_compacted(output, n);
+}
+
+const char *AsciiProtocol::CompactObssType(int type, int &n) {
+	string output = APTYPE_OBSSTYPE;
 	output += " ";
-	join_kv(output, "ostype",    ostype);
-	join_kv(output, "longitude", lgt);
-	join_kv(output, "latitude",  lat);
-	join_kv(output, "altitude",  alt);
+	join_kv(output, "ostype",    type);
 	return output_compacted(output, n);
 }
 
@@ -667,6 +677,8 @@ apbase AsciiProtocol::Resolve(const char *rcvd) {
 	else if (ch == 'o') {
 		if      (iequals(type, APTYPE_OBJECT))   proto = resolve_object(kvs);
 		else if (iequals(type, APTYPE_OBSS))     proto = resolve_obss(kvs);
+		else if (iequals(type, APTYPE_OBSSTYPE)) proto = resolve_obsstype(kvs);
+		else if (iequals(type, APTYPE_OBSITE))   proto = resolve_obsite(kvs);
 	}
 	else if (ch == 'p') {
 		if      (iequals(type, APTYPE_PARK))     proto = resolve_park(kvs);
@@ -680,7 +692,6 @@ apbase AsciiProtocol::Resolve(const char *rcvd) {
 	else if (ch == 't'){
 		if      (iequals(type, APTYPE_TELE))     proto = resolve_telescope(kvs);
 		else if (iequals(type, APTYPE_TAKIMG))   proto = resolve_takeimg(kvs);
-		else if (iequals(type, APTYPE_TERM))     proto = resolve_terminal(kvs);
 	}
 	else if (iequals(type, APTYPE_GUIDE))    proto = resolve_guide(kvs);
 	else if (iequals(type, APTYPE_REG))      proto = resolve_register(kvs);
@@ -711,16 +722,29 @@ apbase AsciiProtocol::resolve_unregister(likv &kvs) {
 	return to_apbase(proto);
 }
 
-apbase AsciiProtocol::resolve_terminal(likv &kvs) {
-	apterm proto = boost::make_shared<ascii_proto_term>();
+apbase AsciiProtocol::resolve_obsite(likv &kvs) {
+	apobsite proto = boost::make_shared<ascii_proto_obsite>();
 	string keyword;
 
 	for (likv::iterator it = kvs.begin(); it != kvs.end(); ++it) {// 遍历键值对
 		keyword = (*it).keyword;
-		if      (iequals(keyword, "ostype"))    proto->ostype = stoi((*it).value);
-		else if (iequals(keyword, "longitude")) proto->lgt    = stod((*it).value);
-		else if (iequals(keyword, "latitude"))  proto->lat    = stod((*it).value);
-		else if (iequals(keyword, "altitude"))  proto->alt    = stod((*it).value);
+
+		if      (iequals(keyword, "sitename"))  proto->sitename = (*it).value;
+		else if (iequals(keyword, "longitude")) proto->lgt      = stod((*it).value);
+		else if (iequals(keyword, "latitude"))  proto->lat      = stod((*it).value);
+		else if (iequals(keyword, "altitude"))  proto->alt      = stod((*it).value);
+		else if (iequals(keyword, "timezone"))  proto->timezone = stoi((*it).value);
+	}
+	return to_apbase(proto);
+}
+
+apbase AsciiProtocol::resolve_obsstype(likv &kvs) {
+	apobsst proto = boost::make_shared<ascii_proto_obsstype>();
+	string keyword;
+
+	for (likv::iterator it = kvs.begin(); it != kvs.end(); ++it) {// 遍历键值对
+		keyword = (*it).keyword;
+		if      (iequals(keyword, "ostype"))    proto->obsstype   = stoi((*it).value);
 	}
 
 	return to_apbase(proto);

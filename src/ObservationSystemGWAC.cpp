@@ -22,7 +22,7 @@ ObservationSystemGWAC::ObservationSystemGWAC(const string& gid, const string& ui
 	mntproto_ = make_mount(gid, uid);
 	tslew_    = AS2D * 600;	// 600角秒
 	tguide_   = 0.08;		// 288角秒
-	ostype_   = OBSST_GWAC;
+	obsstype_ = OBSST_GWAC;
 }
 
 ObservationSystemGWAC::~ObservationSystemGWAC() {

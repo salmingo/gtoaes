@@ -31,7 +31,8 @@ typedef list<pair_key_val> likv;	//< pair_key_val列表
 /* 宏定义: 通信协议类型 */
 #define APTYPE_REG		"register"
 #define APTYPE_UNREG	"unregister"
-#define APTYPE_TERM		"terminal"
+#define APTYPE_OBSITE	"obsite"
+#define APTYPE_OBSSTYPE	"obsstype"
 #define APTYPE_START	"start"
 #define APTYPE_STOP		"stop"
 #define APTYPE_ENABLE	"enable"
@@ -82,20 +83,32 @@ public:
 };
 typedef boost::shared_ptr<ascii_proto_unreg> apunreg;
 
-struct ascii_proto_term : public ascii_proto_base {// 终端参数
-	int		ostype;	//< 观测系统类型. 通知相机观测系统类型, 区别创建目录及文件名和文件头
-	double	lgt;	//< 地理经度, 量纲: 角度
-	double	lat;	//< 地理纬度, 量纲: 角度
-	double	alt;	//< 海拔, 量纲: 米
+struct ascii_proto_obsite : public ascii_proto_base {// 测站位置
+	string  sitename;	//< 测站名称
+	double	lgt;		//< 地理经度, 量纲: 角度
+	double	lat;		//< 地理纬度, 量纲: 角度
+	double	alt;		//< 海拔, 量纲: 米
+	int timezone;		//< 时区, 量纲: 小时
 
 public:
-	ascii_proto_term() {
-		type   = APTYPE_TERM;
-		ostype = INT_MIN;
+	ascii_proto_obsite() {
+		type = APTYPE_OBSITE;
 		lgt = lat = alt = 0.0;
+		timezone = 8;
 	}
 };
-typedef boost::shared_ptr<ascii_proto_term> apterm;
+typedef boost::shared_ptr<ascii_proto_obsite> apobsite;
+
+struct ascii_proto_obsstype : public ascii_proto_base {// 观测系统类型
+	int	obsstype;	//< 观测系统类型. 通知相机观测系统类型, 区别创建目录及文件名和文件头
+
+public:
+	ascii_proto_obsstype() {
+		type     = APTYPE_OBSSTYPE;
+		obsstype = INT_MIN;
+	}
+};
+typedef boost::shared_ptr<ascii_proto_obsstype> apobsst;
 
 struct ascii_proto_start : public ascii_proto_base {// 启动自动观测流程
 public:
@@ -750,9 +763,13 @@ public:
 	 */
 	const char *CompactUnregister(apunreg proto, int &n);
 	/*!
+	 * @brief 封装测站位置参数
+	 */
+	const char *CompactObsSite(apobsite proto, int &n);
+	/*!
 	 * @brief 封装终端参数
 	 */
-	const char *CompactTerminal(int ostype, double lgt, double lat, double alt, int &n);
+	const char *CompactObssType(int type, int &n);
 	/*!
 	 * @brief 封装开机自检
 	 */
@@ -939,9 +956,13 @@ protected:
 	 * */
 	apbase resolve_unregister(likv &kvs);
 	/*!
-	 * @brief 解析终端参数
+	 * @brief 解析测站参数
 	 */
-	apbase resolve_terminal(likv &kvs);
+	apbase resolve_obsite(likv &kvs);
+	/*!
+	 * @brief 解析观测系统类型
+	 */
+	apbase resolve_obsstype(likv &kvs);
 	/**
 	 * @brief 开机自检
 	 * */

@@ -24,11 +24,8 @@ ObservationSystemCamera::ObservationSystemCamera(const string& id) {
 ObservationSystem::ObservationSystem(const string& gid, const string& uid) {
 	gid_      = gid;
 	uid_      = uid;
-	ostype_   = OBSST_UNKNOWN;
-	lgt_      = 120.0;
-	lat_      = 40.0;
-	alt_      = 1000.0;
-	timezone_ = 8;
+	obsstype_ = OBSST_UNKNOWN;
+	obsite_   = boost::make_shared<ascii_proto_obsite>();
 	minEle_   = 20.0 * D2R;
 	tslew_    = AS2D * 10;
 	tguide_   = AS2D;
@@ -78,10 +75,11 @@ void ObservationSystem::SetGeosite(const string& name, const double lgt, const d
 	_gLog.Write("Observation System [%s:%s] located at [%s, %.4f, %.4f, %.1f]",
 			gid_.c_str(), uid_.c_str(), name.c_str(), lgt, lat, alt);
 	ats_->SetSite(lgt, lat, alt, timezone);
-	lgt_      = lgt;
-	lat_      = lat;
-	alt_      = alt;
-	timezone_ = timezone;
+	obsite_->sitename = name;
+	obsite_->lgt      = lgt;
+	obsite_->lat      = lat;
+	obsite_->alt      = alt;
+	obsite_->timezone = timezone;
 }
 
 void ObservationSystem::SetElevationLimit(double value) {
@@ -186,7 +184,9 @@ bool ObservationSystem::CoupleCamera(TcpCPtr client, const string& cid) {
 			cameras_.push_back(one);
 			// 通知相机参数
 			int n;
-			const char *s = ascproto_->CompactTerminal(ostype_, lgt_, lat_, alt_, n);
+			const char *s = ascproto_->CompactObsSite(obsite_, n);
+			client->Write(s, n);
+			s = ascproto_->CompactObssType(obsstype_, n);
 			client->Write(s, n);
 		}
 		switch_state();
@@ -284,7 +284,7 @@ void ObservationSystem::flat_position(double &ra, double &dec, double &epoch) {
 	mutex_lock lck(mtx_ats_);
 	ptime now = second_clock::universal_time();
 	double fd = now.time_of_day().total_seconds() / DAYSEC;
-	double azi0 = (fd * 24 + timezone_) < 12.0 ? 180.0 : 0.0;
+	double azi0 = (fd * 24 + obsite_->timezone) < 12.0 ? 180.0 : 0.0;
 	double azi, alt;
 	// 生成天顶坐标
 	ats_->SetMJD(now.date().modjulian_day() + fd);

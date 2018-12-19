@@ -21,7 +21,7 @@ ObservationSystemNormal::ObservationSystemNormal(const string& gid, const string
 	: ObservationSystem(gid, uid) {
 	tslew_    = AS2D * 30;	// 30角秒
 	tguide_   = 1.39E-4;	// 0.5角秒
-	ostype_   = OBSST_NORMAL;
+	obsstype_ = OBSST_NORMAL;
 }
 
 ObservationSystemNormal::~ObservationSystemNormal() {

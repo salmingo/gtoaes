@@ -268,11 +268,8 @@ protected:
 	/* 成员变量 */
 	string	gid_;		//< 组标志
 	string	uid_;		//< 单元标志
-	OBSS_TYPE ostype_;	//< 观测系统类型
-	double	lgt_;		//< 地理经度
-	double	lat_;		//< 地理纬度
-	double	alt_;		//< 海拔
-	int		timezone_;	//< 时区
+	OBSS_TYPE obsstype_;	//< 观测系统类型
+	apobsite  obsite_;		//< 测站位置
 	double	minEle_;	//< 最小仰角, 量纲: 弧度
 	double	tslew_;		//< 指向到位阈值
 	double	tguide_;	//< 导星阈值
