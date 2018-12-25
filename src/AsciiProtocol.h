@@ -590,6 +590,7 @@ public:
 		objname = obj.objname;
 		imgtype = obj.imgtype;
 		expdur  = obj.expdur;
+		delay   = obj.delay;
 		frmcnt  = obj.frmcnt;
 		loopcnt = obj.loopcnt;
 		ifilter = obj.ifilter;
