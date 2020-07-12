@@ -5,11 +5,13 @@
  **/
 
 #include <boost/make_shared.hpp>
+#include <boost/date_time/posix_time/posix_time.hpp>
 #include <stdlib.h>
 #include "AsciiProtocol.h"
 
 using namespace std;
 using namespace boost;
+using namespace boost::posix_time;
 
 //////////////////////////////////////////////////////////////////////////////
 // 检查赤经/赤纬有效性
@@ -56,9 +58,10 @@ AscProtoPtr make_ascproto() {
 }
 
 //////////////////////////////////////////////////////////////////////////////
-AsciiProtocol::AsciiProtocol() {
+AsciiProtocol::AsciiProtocol()
+	: szproto_(1024) {
 	ibuf_ = 0;
-	buff_.reset(new char[1024 * 10]); //< 存储区
+	buff_.reset(new char[szproto_ * 10]); //< 存储区
 }
 
 AsciiProtocol::~AsciiProtocol() {
@@ -71,20 +74,25 @@ const char* AsciiProtocol::output_compacted(string& output, int& n) {
 
 const char* AsciiProtocol::output_compacted(const char* s, int& n) {
 	mutex_lock lck(mtx_);
-	char* buff = buff_.get() + ibuf_ * 1024;
+	char* buff = buff_.get() + ibuf_ * szproto_;
 	if (++ibuf_ == 10) ibuf_ = 0;
 	n = sprintf(buff, "%s\n", s);
 	return buff;
 }
 
 void AsciiProtocol::compact_base(apbase base, string &output) {
-	base->set_timetag(); // 为输出信息加上时标
+	likv &kvs = base->kvs;
+	likv::iterator itend = kvs.end();
 
 	output = base->type + " ";
-	join_kv(output, "utc",      base->utc);
+	base->utc = to_iso_extended_string(second_clock::universal_time());
+	join_kv(output, "utc",  base->utc);
 	if (!base->gid.empty()) join_kv(output, "group_id", base->gid);
 	if (!base->uid.empty()) join_kv(output, "unit_id",  base->uid);
 	if (!base->cid.empty()) join_kv(output, "cam_id",   base->cid);
+	for (likv::iterator x = kvs.begin(); x != itend; ++x) { // 封装自定义关键字
+		join_kv(output, x->keyword, x->value);
+	}
 }
 
 bool AsciiProtocol::resolve_kv(string& kv, string& keyword, string& value) {
@@ -110,7 +118,7 @@ void AsciiProtocol::resolve_kv_array(listring &tokens, likv &kvs, ascii_proto_ba
 		else if (iequals(keyword, "unit_id"))  basis.uid = value;
 		else if (iequals(keyword, "cam_id"))   basis.cid = value;
 		else {// 存储非通用项
-			pair_key_val kv;
+			key_val kv;
 			kv.keyword = keyword;
 			kv.value   = value;
 			kvs.push_back(kv);

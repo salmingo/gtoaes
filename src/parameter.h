@@ -1,245 +1,117 @@
 /*!
- * @file parameter.h 使用XML文件格式管理配置参数
+ * @struct Parameter 使用XML文件格式管理配置参数
  */
 
-#ifndef PARAMETER_H_
-#define PARAMETER_H_
+#ifndef SRC_PARAMETER_H_
+#define SRC_PARAMETER_H_
 
 #include <string>
 #include <vector>
-#include <boost/property_tree/xml_parser.hpp>
-#include <boost/property_tree/ptree.hpp>
-#include <boost/algorithm/string.hpp>
-#include <boost/date_time/posix_time/posix_time.hpp>
-#include <boost/foreach.hpp>
-#include <boost/smart_ptr.hpp>
-#include <boost/make_shared.hpp>
 #include "AstroDeviceDef.h"
 
 using std::string;
 
-struct ObservationSystemTrait {// 观测系统关键特征
-	string gid;		//< 在网络系统中的组标志
-	int ostype;		//< 观测系统类型, 用于通知相机的文件存储格式
-					//< 1: GWAC
-					//< 2: NORMAL
-	string sitename;//< 测站名称
-	double lgt;		//< 地理经度, 东经为正, 量纲: 角度
-	double lat;		//< 地理纬度, 北纬为正, 量纲: 角度
-	double alt;		//< 海拔高度, 量纲: 米
-	int timezone;	//< 时区, 量纲: 小时
+/**
+ * @struct OBSSParam 观测系统参数
+ */
+struct OBSSParam {
+	string		gid;		/// 组标志
+	OBSS_TYPE	type;		/// 观测系统类型
+	string		sitename;	/// 测站名称
+	double		sitelon;	/// 地理经度, 东经为正, 量纲: 角度
+	double 		sitelat;	/// 地理纬度, 北纬为正, 量纲: 角度
+	double		sitealt;	/// 海拔高度, 量纲: 米
+	int			timezone;	/// 时区, 量纲: 小时
+	double		elelimit;	/// 水平限位, 最低仰角, 量纲: 角度
 
 public:
-	ObservationSystemTrait & operator=(const ObservationSystemTrait &other) {
+	OBSSParam & operator=(const OBSSParam &other) {
 		if (this != &other) {
 			gid			= other.gid;
-			ostype		= other.ostype;
+			type		= other.type;
 			sitename	= other.sitename;
-			lgt			= other.lgt;
-			lat			= other.lat;
-			alt			= other.alt;
+			sitelon		= other.sitelon;
+			sitelat		= other.sitelat;
+			sitealt		= other.sitealt;
 			timezone	= other.timezone;
+			elelimit	= other.elelimit;
 		}
 		return *this;
 	}
 };
-typedef ObservationSystemTrait ObssTrait;
-typedef boost::shared_ptr<ObssTrait> ObssTraitPtr;
-typedef std::vector<ObssTraitPtr> ObssTraitVec;
+typedef std::vector<OBSSParam> ObssPrmVec;
 
-struct MountLimit {// 转台限位保护参数
-	string gid;		//< 组标志
-	string uid;		//< 单元标志
-	double value;	//< 水平限位, 最低仰角, 量纲: 角度
-
+/**
+ * @struct Parameter 全局配置参数
+ */
+struct Parameter {
 public:
-	MountLimit() {
-		value = 20.0;
-	}
-};
-typedef boost::shared_ptr<MountLimit> MountLimitPtr;
-typedef std::vector<MountLimitPtr> MountLimitVec;
+	Parameter();
+	virtual ~Parameter();
 
-struct param_config {// 软件配置参数
-	int	portClient;		//< 面向客户端网络服务端口
-	int portTele;		//< 通用望远镜网络服务端口
-	int portMount;		//< GWAC转台网络服务端口
-	int portCamera;		//< 面向相机网络服务端口
-	int portMountAnnex;	//< GWAC转台配套设备网络服务端口: 镜盖+调焦
-	int portCameraAnnex;//< 面向相机配套设备网络服务端口
-
-	bool enableNTP;		//< NTP启用标志
-	string hostNTP;		//< NTP服务器IP地址
-	int  maxDiffNTP;	//< 采用自动校正时钟策略时, 本机时钟与NTP时钟所允许的最大偏差, 量纲: 毫秒
-
-	string urlDB;		//< 数据库访问地址
-	bool enableDB;		//< 数据库启用标志
-
-	ObssTraitVec  obsst;	//< 测站系统参数
-	MountLimitVec mntlimit;	//< 转台限位保护
+/* 成员变量 */
+public:
+	/* 网络服务端口 */
+	int portClient;
+	/**
+	 * portTele:        通用望远镜
+	 * portMount:       GWAC转台
+	 * portTeleAnnex:   通用望远镜附属设备
+	 * portMountAnnex:  GWAC转台附属设备端口, 镜盖+调焦+天窗
+	 * portCameraAnnex: GWAC相机附属设备端口, 温控+真空
+	 */
+	int portTele;
+	int portMount;
+	int portCamera;
+	int portTeleAnnex;
+	int portMountAnnex;
+	int portCameraAnnex;
+	/* NTP时间服务器 */
+	bool ntpEnable;
+	string ntpHost;
+	/* 数据库服务器 */
+	bool dbEnable;
+	string dbUrl;
 
 private:
-	string filepath_config;	//< 配置参数文件路径
+	string filepath_;
+	string errmsg_;
+	bool modified_;
+	/* 观测系统参数 */
+	ObssPrmVec prmOBSS_;
 
 public:
 	/*!
-	 * @brief 初始化文件filepath, 存储缺省配置参数
+	 * @brief 使用缺省参数创建配置文件
 	 * @param filepath 文件路径
 	 */
-	void InitFile(const std::string& filepath) {
-		using namespace boost::posix_time;
-		using boost::property_tree::ptree;
-
-		ptree pt;
-
-		pt.add("version", "0.8");
-		pt.add("date", to_iso_string(second_clock::universal_time()));
-
-		ptree& node1 = pt.add("Server", "");
-		node1.add("Client",     portClient     = 4010);
-		node1.add("Telescope",  portTele       = 4011);
-		node1.add("Mount",      portMount      = 4012);
-		node1.add("Camera",     portCamera     = 4013);
-		node1.add("MountAnnex", portMountAnnex = 4014);
-		node1.add("CameraAnnex",portCameraAnnex= 4015);
-
-		ptree& node2 = pt.add("NTP", "");
-		node2.add("Enable", enableNTP = false);
-		node2.add("IP",     hostNTP = "172.28.1.3");
-		node2.add("MaximumDifference", maxDiffNTP = 100);
-
-		ptree& node3 = pt.add("Database", "");
-		node3.add("Enable", enableDB = false);
-		node3.add("URL",    urlDB    = "http://172.28.8.8:8080/gwebend/");
-
-		ptree& node4 = pt.add("ObservationSytemTrait", "");
-		ObssTraitPtr trait = boost::make_shared<ObssTrait>();
-		node4.add("group_id",  trait->gid       = "001");
-		node4.add("sitename",  trait->sitename  = "Xinglong");
-		node4.add("longitude", trait->lgt       = 117.57454166666667);
-		node4.add("latitude",  trait->lat       = 40.395933333333333);
-		node4.add("altitude",  trait->alt       = 900);
-		node4.add("timezone",  trait->timezone  = 8);
-		node4.add("ostype",    trait->ostype    = 1);
-		node4.add("<xmlcomment>", "ostype #1: GWAC");
-		node4.add("<xmlcomment>", "ostype #2: Normal");
-		obsst.push_back(trait);
-
-		ptree& node5 = pt.add("ObservationSytemTrait", "");
-		trait = boost::make_shared<ObssTrait>();
-		node5.add("group_id",  trait->gid       = "002");
-		node5.add("sitename",  trait->sitename  = "Xinglong");
-		node5.add("longitude", trait->lgt       = 117.57454166666667);
-		node5.add("latitude",  trait->lat       = 40.395933333333333);
-		node5.add("altitude",  trait->alt       = 900);
-		node5.add("timezone",  trait->timezone  = 8);
-		node5.add("ostype",    trait->ostype    = 2);
-		node5.add("<xmlcomment>", "ostype #1: GWAC");
-		node5.add("<xmlcomment>", "ostype #2: Normal");
-		obsst.push_back(trait);
-
-		ptree& node6 = pt.add("MountLimit", "");
-		MountLimitPtr limit = boost::make_shared<MountLimit>();
-		node6.add("<xmlattr>.GroupID",  limit->gid   = "001");
-		node6.add("<xmlattr>.UnitID",   limit->uid   = "");
-		node6.add("<xmlattr>.Value",    limit->value = 20.0);
-		mntlimit.push_back(limit);
-
-		ptree& node7 = pt.add("MountLimit", "");
-		limit = boost::make_shared<MountLimit>();
-		node7.add("<xmlattr>.GroupID",  limit->gid   = "002");
-		node7.add("<xmlattr>.UnitID",   limit->uid   = "");
-		node7.add("<xmlattr>.Value",    limit->value = 10.0);
-		mntlimit.push_back(limit);
-
-		boost::property_tree::xml_writer_settings<std::string> settings(' ', 4);
-		write_xml(filepath, pt, std::locale(), settings);
-
-		filepath_config = filepath;
-	}
-
+	void Init(const string &filepath);
 	/*!
-	 * @brief 从文件filepath加载配置参数
+	 * @brief 从配置文件中加载配置参数
 	 * @param filepath 文件路径
+	 * @return
+	 * 成功读取配置文件时返回NULL, 否则返回错误提示
 	 */
-	void LoadFile(const std::string& filepath) {
-		try {
-			using boost::property_tree::ptree;
-
-			ptree pt;
-			read_xml(filepath, pt, boost::property_tree::xml_parser::trim_whitespace);
-
-			obsst.clear();
-			BOOST_FOREACH(ptree::value_type const &child, pt.get_child("")) {
-				if (boost::iequals(child.first, "Server")) {
-					portClient     = child.second.get("Client",     4010);
-					portTele       = child.second.get("Telescope",  4011);
-					portMount      = child.second.get("Mount",      4012);
-					portCamera     = child.second.get("Camera",     4013);
-					portMountAnnex = child.second.get("MountAnnex", 4014);
-					portCameraAnnex= child.second.get("CameraAnnex",4015);
-				}
-				else if (boost::iequals(child.first, "NTP")) {
-					enableNTP  = child.second.get("Enable", true);
-					hostNTP    = child.second.get("IP",     "172.28.1.3");
-					maxDiffNTP = child.second.get("MaximumDifference", 100);
-				}
-				else if (boost::iequals(child.first, "Database")) {
-					enableDB   = pt.get("Enable",  false);
-					urlDB      = pt.get("URL",     "http://172.28.8.8:8080/gwebend/");
-				}
-				else if (boost::iequals(child.first, "ObservationSytemTrait")) {
-					ObssTraitPtr trait = boost::make_shared<ObssTrait>();
-					trait->gid      = child.second.get("group_id",     "");
-					trait->sitename = child.second.get("sitename",     "");
-					trait->lgt      = child.second.get("longitude",   0.0);
-					trait->lat      = child.second.get("latitude",    0.0);
-					trait->alt      = child.second.get("altitude",  100.0);
-					trait->timezone = child.second.get("timezone",      8);
-					trait->ostype   = child.second.get("ostype",        1);
-					obsst.push_back(trait);
-				}
-				else if (boost::iequals(child.first, "MountLimit")) {
-					MountLimitPtr limit = boost::make_shared<MountLimit>();
-					limit->gid   = child.second.get("<xmlattr>.GroupID", "001");
-					limit->gid   = child.second.get("<xmlattr>.UnitID",  "001");
-					limit->value = child.second.get("<xmlattr>.Value",    10.0);
-				}
-			}
-			filepath_config = filepath;
-		}
-		catch(boost::property_tree::xml_parser_error &ex) {
-			InitFile(filepath);
-		}
-	}
-
+	const char* Load(const string &filepath);
 	/*!
-	 * @brief 从配置项中查找group_id对应的观测系统信息
-	 * @param group_id  GWAC组标志
-	 * @param lgt       地理经度, 东经为正, 量纲: 角度
-	 * @param lat		地理纬度, 北纬为正, 量纲: 角度
-	 * @param alt		海拔高度, 量纲: 米
+	 * @brief 查看观测系统的参数
+	 * @param gid    组标志
+	 * @param param  参数
+	 * @return
+	 * 若观测系统已配置则返回true, 否则返回false
 	 */
-	ObssTraitPtr GetObservationSystemTrait(const std::string& group_id) {
-		ObssTraitVec::iterator it;
-		ObssTraitPtr trait;
-		for (it = obsst.begin(); it != obsst.end() && !boost::iequals(group_id, (*it)->gid); ++it);
-		if (it != obsst.end()) trait = *it;
-		return trait;
-	}
-
-	MountLimitPtr GetMountSafeLimit(const string& group_id, const string& unit_id) {
-		MountLimitVec::iterator it;
-		MountLimitPtr limit;
-		string uid;
-
-		for (it = mntlimit.begin(); it != mntlimit.end(); ++it) {
-			limit = *it;
-			uid   = limit->uid;
-			if (limit->gid == group_id && (uid == unit_id || uid.empty())) break;
-		}
-		return limit;
-	}
+	bool GetParamOBSS(const string &gid, OBSSParam &param);
+	/*!
+	 * @brief 更改已配置观测系统的参数, 或增加新的观测系统参数
+	 * @param param  参数
+	 * @return
+	 * 操作结果.
+	 * -1 : 参数错误
+	 * -2 : 写入配置文件错误
+	 *  1 : 更改配置参数
+	 *  2 : 新增观测系统
+	 */
+	int SetParamOBSS(const OBSSParam &param);
 };
 
-#endif // PARAMETER_H_
+#endif /* SRC_PARAMETER_H_ */

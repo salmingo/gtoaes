@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<version>v1.0 @ July, 2020</version>
+<date>20200704T214746</date>
+<Server>
+    <Client Port="4010"/>
+    <Telescope Port="4011"/>
+    <Camera Port="4012"/>
+    <TelescopeAnnex Port="4013"/>
+    <CameraAnnex Port="4014"/>
+</Server>
+<NTP Enable="false" Host="127.0.0.1"/>
+<Database Enable="false" URL="http://172.28.8.8:8080/gwebend/"/>
+<ObservationSystem>
+    <GroupID>001</GroupID>
+    <Type>1</Type>
+    <!--Type #1: Normal-->
+    <!--Type #2: GWAC-->
+    <Site Name="Xinglong" Lon="117.57454166666668" Lat="40.395933333333332" Alt="900" TZ="8"/>
+    <EleLimit>30</EleLimit>
+</ObservationSystem>

@@ -14,9 +14,9 @@
 #define _ASCII_PROTOCOL_BASE_H_
 
 #include <string>
+#include <list>
 #include <boost/smart_ptr.hpp>
 #include <boost/format.hpp>
-#include <boost/date_time/posix_time/posix_time.hpp>
 
 using std::string;
 
@@ -29,22 +29,21 @@ using std::string;
 // - 子关键字可以为空, 为空时代表通配符
 // - 子关键字不为空时, 父关键字不可为空
 /****************************************************************************/
+struct key_val {// 关键字-键值对
+	string keyword;
+	string value;
+};
+typedef std::list<key_val> likv;	//< pair_key_val列表
+
 struct ascii_proto_base {
 	string type;	//< 协议类型
 	string utc;		//< 时间标签. 格式: YYYY-MM-DDThh:mm:ss
 	string gid;		//< 组编号
 	string uid;		//< 单元编号
 	string cid;		//< 相机编号
+	likv kvs;		//< 未定义关键字的键值对
 
 public:
-	/*!
-	 * @brief 为协议生成时间标签
-	 */
-	void set_timetag() {
-		namespace pt = boost::posix_time;
-		utc = pt::to_iso_extended_string(pt::second_clock::universal_time());
-	}
-
 	void set_id(const string& _1) {
 		gid = _1;
 	}

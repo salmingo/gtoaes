@@ -30,12 +30,213 @@
 #ifndef ATIMESPACE_H_
 #define ATIMESPACE_H_
 
+#include <cmath>
+
 namespace AstroUtil {
+static double coef_aab[36][6] = {// 周年光行差改正系数
+	{   0,  -25,   0,    0,     0,    0 },
+	{   0,    0,   0,    0, -2559,    0 },
+	{ 715,    0,   6, -657,   -15, -282 },
+	{ 715,    0,   0, -656,     0, -285 },
+	{   0,    0,   0,    0,   -94, -193 },
+	{ 159,    0,   2, -147,    -6,  -61 },
+	{   0,    0,   0,   26,     0,  -59 },
+	{  39,    0,   0,  -36,     0,  -16 },
+	{  33,  -10,  -9,  -30,    -5,  -13 },
+	{  31,    1,   1,  -28,     0,  -12 },
+	{   8,  -28,  25,    8,    11,    3 },
+	{   8,  -28, -25,   -8,   -11,   -3 },
+	{  21,    0,   0,  -19,     0,   -8 },
+	{ -19,    0,   0,   17,     0,    8 },
+	{  17,    0,   0,  -16,     0,   -7 },
+	{  16,    0,   0,   15,     1,    7 },
+	{  16,    0,   1,  -15,    -3,   -6 },
+	{  11,   -1,  -1,  -10,    -1,   -5 },
+	{   0,  -11, -10,    0,    -4,    0 },
+	{ -11,   -2,  -2,    9,    -1,    4 },
+	{  -7,   -8,  -8,    6,    -3,    3 },
+	{ -10,    0,   0,    9,     0,    4 },
+	{  -9,    0,   0,   -9,     0,   -4 },
+	{  -9,    0,   0,   -8,     0,   -4 },
+	{   0,   -9,  -8,    0,    -3,    0 },
+	{   0,   -9,   8,    0,     3,    0 },
+	{   8,    0,   0,   -8,     0,   -3 },
+	{   8,    0,   0,   -7,     0,   -3 },
+	{  -4,   -7,  -6,    4,    -3,    2 },
+	{  -4,   -7,   6,   -4,     3,   -2 },
+	{  -6,   -5,  -4,    5,    -2,    2 },
+	{  -1,   -1,  -2,   -7,     1,   -4 },
+	{   4,   -6,  -5,   -4,    -2,   -2 },
+	{   0,   -7,  -6,    0,    -3,    0 },
+	{   5,   -5,  -4,   -5,    -2,   -2 },
+	{   5,    0,   0,   -5,     0,   -2 }
+};
+
+/**
+ * @struct AnnualAberration 周年光年差
+ */
+struct AnnualAberration {
+protected:
+	double t;	//< 儒略世纪
+	double L2, L3, L4, L5, L6, L7, L8, LA, D, MA, F;
+	double sa[36], ca[36];	//< 参数的sin、cos项
+
+protected:
+	/*!
+	 * @brief 设置修正儒略日
+	 */
+	void set_mjd(double mjd) {
+		double v, t1;
+
+		t1 = (mjd - 51544.5) / 36525.0;
+		if (fabs(t - t1) < 1E-6) return;
+		t = t1;
+		L2 = 3.1761467 + 1021.3285546 * t;
+		L3 = 1.7534703 +  628.3075849 * t;
+		L4 = 6.2034809 +  334.0612431 * t;
+		L5 = 0.5995465 +   52.9690965 * t;
+		L6 = 0.8740168 +   21.3299095 * t;
+		L7 = 5.4812939 +    7.4781599 * t;
+		L8 = 5.3118863 +    3.8133036 * t;
+		LA = 3.8103444 + 8399.6847337 * t;
+		D  = 5.1984667 + 7771.3771486 * t;
+		MA = 2.3555559 + 8328.6914289 * t;
+		F  = 1.6279052 + 8433.4661601 * t;
+
+		sa[0]  = sin(v = L3);						ca[0]  = cos(v);
+		sa[1]  = sin(v = 2 * L3);					ca[1]  = cos(v);
+		sa[2]  = sin(v = L5);						ca[2]  = cos(v);
+		sa[3]  = sin(v = LA);						ca[3]  = cos(v);
+		sa[4]  = sin(v = 3 * L3);					ca[4]  = cos(v);
+		sa[5]  = sin(v = L6);						ca[5]  = cos(v);
+		sa[6]  = sin(v = F);						ca[6]  = cos(v);
+		sa[7]  = sin(v = LA + MA);					ca[7]  = cos(v);
+		sa[8]  = sin(v = 2 * L5);					ca[8]  = cos(v);
+		sa[9]  = sin(v = 2 * L3 - L5);				ca[9]  = cos(v);
+		sa[10] = sin(v = 3 * L3 - 8 * L4 + 3 * L5);	ca[10] = cos(v);
+		sa[11] = sin(v = 5 * L3 - 8 * L4 + 3 * L5);	ca[11] = cos(v);
+		sa[12] = sin(v = 2 * L2 - L3);				ca[12] = cos(v);
+		sa[13] = sin(v = L2);						ca[13] = cos(v);
+		sa[14] = sin(v = L7);						ca[14] = cos(v);
+		sa[15] = sin(v = L3 - 2 * L5);				ca[15] = cos(v);
+		sa[16] = sin(v = L8);						ca[16] = cos(v);
+		sa[17] = sin(v = L3 + L5);					ca[17] = cos(v);
+		sa[18] = sin(v = 2 * (L2 - L3));			ca[18] = cos(v);
+		sa[19] = sin(v = L3 - L5);					ca[19] = cos(v);
+		sa[20] = sin(v = 4 * L3);					ca[20] = cos(v);
+		sa[21] = sin(v = 3 * L3 - 2 * L5);			ca[21] = cos(v);
+		sa[22] = sin(v = L2 - 2 * L3);				ca[22] = cos(v);
+		sa[23] = sin(v = 2 * L2 - 3 * L3);			ca[23] = cos(v);
+		sa[24] = sin(v = 2 * L6);					ca[24] = cos(v);
+		sa[25] = sin(v = 2 * (L2 - 2 * L3));		ca[25] = cos(v);
+		sa[26] = sin(v = 3 * L3 - 2 * L4);			ca[26] = cos(v);
+		sa[27] = sin(v = LA + 2 * D - MA);			ca[27] = cos(v);
+		sa[28] = sin(v = 8 * L2 - 12 * L3);			ca[28] = cos(v);
+		sa[29] = sin(v = 8 * L2 - 14 * L3);			ca[29] = cos(v);
+		sa[30] = sin(v = 2 * L4);					ca[30] = cos(v);
+		sa[31] = sin(v = 3 * L2 - 4 * L3);			ca[31] = cos(v);
+		sa[32] = sin(v = 2 * (L3 - L5));			ca[32] = cos(v);
+		sa[33] = sin(v = 3 * (L2 - L3));			ca[33] = cos(v);
+		sa[34] = sin(v = 2 * (L3 - L4));			ca[34] = cos(v);
+		sa[35] = sin(v = LA - 2 * D);				ca[35] = cos(v);
+
+		coef_aab[0][0] = -1719914 -   2 * t;
+		coef_aab[0][2] =       25 -  13 * t;
+		coef_aab[0][3] =  1578089 + 156 * t;
+		coef_aab[0][4] =       10 +  32 * t;
+		coef_aab[0][5] =   684185 - 358 * t;
+		coef_aab[1][0] =     6434 + 141 * t;
+		coef_aab[1][1] =    28007 - 107 * t;
+		coef_aab[1][2] =    25697 -  95 * t;
+		coef_aab[1][3] =    -5904 - 130 * t;
+		coef_aab[1][4] =    11141 -  48 * t;
+		coef_aab[1][5] =    -2559 -  55 * t;
+		coef_aab[4][0] =      486 -   5 * t;
+		coef_aab[4][1] =     -236 -   4 * t;
+		coef_aab[4][2] =     -216 -   4 * t;
+		coef_aab[4][3] =     -446 +   5 * t;
+	}
+
+public:
+	/*!
+	 * @brief 计算赤道指向位置在某一时刻的周年光行差
+	 * @param mjd    修正儒略日
+	 * @param ra     赤经, 量纲: 弧度
+	 * @param dec    赤纬, 量纲: 弧度
+	 * @param d_ra   赤经偏差, 量纲: 弧度
+	 * @param d_dec  赤纬偏差, 量纲: 弧度
+	 * @note
+	 * - 地基观测时, 计算日心系=>地心系带来的光行偏差
+	 */
+	void GetAnnualAberration(double mjd, double ra, double dec, double &d_ra, double &d_dec) {
+		double c(17314463350.0);
+		double X(0.0), Y(0.0), Z(0.0);
+		double cra  = cos(ra),  sra  = sin(ra);
+		double cdec = cos(dec), sdec = sin(dec);
+
+		set_mjd(mjd);
+		for (int i = 0; i < 36; ++i) {
+			X += (coef_aab[i][0] * sa[i] + coef_aab[i][1] * ca[i]);
+			Y += (coef_aab[i][2] * sa[i] + coef_aab[i][3] * ca[i]);
+			Z += (coef_aab[i][4] * sa[i] + coef_aab[i][5] * ca[i]);
+		}
+		d_ra  = cdec > 1E-4 ? (Y * cra - X * sra) / c / cdec : 0.0;
+		d_dec = (Z * cdec - (X * cra + Y * sra) * sdec) / c;
+	}
+};
+
 ///////////////////////////////////////////////////////////////////////////////
 class ATimeSpace {
 public:
 	ATimeSpace();
 	virtual ~ATimeSpace();
+
+private:
+	/** 声明数据类型 **/
+	enum {
+		ATS_MJD,	//< UTC对应的修正儒略日
+		ATS_JD,		//< UTC对应的儒略日
+		ATS_TAI,	//< UTC对应的原子时的修正儒略日
+		ATS_DAT,	//< DAT=TAI-UTC
+		ATS_JC,		//< UTC时间对应的、相对2000年1月1日0时的儒略世纪
+		ATS_GMST,	//< 格林尼治平恒星时
+		ATS_GST,	//< 格林尼治真恒星时
+		ATS_LMST,	//< 本地平恒星时
+		ATS_LST,	//< 本地真恒星时
+		ATS_MO,		//< 平黄赤交角
+		ATS_NL,		//< 黄经章动
+		ATS_NO,		//< 交角章动
+		ATS_MASUN,	//< 太阳平近点角
+		ATS_MAMOON,	//< 月亮平近点角
+		ATS_MELONG_MOON_SUN,	//< 日月平角距
+		ATS_MLAN_MOON,			//< 月亮升交点平黄经
+		ATS_RLONG_MOON,			//< 月亮相对升交点的黄经角位移
+		ATS_ML_SUN,				//< 太阳平黄经
+		ATS_CENTER_SUN,			//< 太阳中心黄经偏差量
+		ATS_TL_SUN,				//< 太阳真黄经
+		ATS_TA_SUN,				//< 太阳真近点角
+		ATS_ECCENTRICITY_EARTH,	//< 地球轨道偏心率
+		ATS_PL_EARTH,			//< 地球近日点黄经
+		ATS_POSITION_SUN,		//< 太阳赤道坐标
+		ATS_POSITION_SUN_RA,
+		ATS_POSITION_SUN_DEC,
+		ATS_POSITION_MOON,		//< 月亮赤道坐标
+		ATS_POSITION_MOON_RA,
+		ATS_POSITION_MOON_DEC,
+		ATS_END		//< 最后一个数值, 用作判断缓冲区长度
+	};
+
+protected:
+	/** 成员变量 : 通用 **/
+	double	lgt_;	//< 地理经度, 量纲: 弧度. 东经为正
+	double	lat_;	//< 地理纬度, 量纲: 弧度. 北纬为正
+	double	alt_;	//< 海拔高度, 量纲: 米
+	int		tz_;	//< 时区, 量纲: 小时. 东经时区为正
+	double	values_[ATS_END];	//< 数据缓冲区, 避免重复计算
+	bool	valid_[ATS_END];	//< 数据缓冲区有效性
+
+protected:
+	/** 成员变量 : 周年光行差 annual aberration **/
 
 public:
 	/*!
@@ -452,6 +653,26 @@ public:
 	 * @param dec 赤纬, 量纲: 弧度
 	 */
 	void SunPosition(double& ra, double& dec);
+	/*!
+	 * @brief 当前时间地心坐标系的月球中心赤道坐标
+	 * @param ra   赤经, 量纲: 弧度
+	 * @param dec  赤纬, 量纲: 弧度
+	 */
+	void MoonPosition(double& ra, double& dec);
+	/*!
+	 * @brief 当前时间测站坐标系的月球中心赤道坐标
+	 * @param ra   赤经, 量纲: 弧度
+	 * @param dec  赤纬, 量纲: 弧度
+	 */
+	void MoonTopcentric(double& ra, double& dec);
+	/*!
+	 * @brief 当前时间的月相
+	 * @return
+	 * 月相
+	 * @note
+	 *
+	 */
+	double MoonPhase();
 
 public:
 	/*!
@@ -520,6 +741,15 @@ public:
 	 * h-ref=真高度角
 	 */
 	double VisualRefract(double h, double airp, double temp);
+	/*!
+	 * @brief 大气质量
+	 * @param h 视高度角, 量纲: 角度
+	 * @return
+	 * 大气质量
+	 * @note
+	 * 采用Pickering(2002)公式
+	 */
+	double AirMass(double h);
 	/*!
 	 * @brief 计算两点的大圆距离
 	 * @param l1 位置1的经度, 量纲: 弧度
@@ -647,47 +877,6 @@ private:
 	 * @brief 重置数据区
 	 */
 	void invalid_values();
-
-private:
-	enum {
-		ATS_MJD,	//< UTC对应的修正儒略日
-		ATS_JD,		//< UTC对应的儒略日
-		ATS_TAI,	//< UTC对应的原子时的修正儒略日
-		ATS_DAT,	//< DAT=TAI-UTC
-		ATS_JC,		//< UTC时间对应的、相对2000年1月1日0时的儒略世纪
-		ATS_GMST,	//< 格林尼治平恒星时
-		ATS_GST,	//< 格林尼治真恒星时
-		ATS_LMST,	//< 本地平恒星时
-		ATS_LST,	//< 本地真恒星时
-		ATS_MO,		//< 平黄赤交角
-		ATS_NL,		//< 黄经章动
-		ATS_NO,		//< 交角章动
-		ATS_MASUN,	//< 太阳平近点角
-		ATS_MAMOON,	//< 月亮平近点角
-		ATS_MELONG_MOON_SUN,	//< 日月平角距
-		ATS_MLAN_MOON,			//< 月亮升交点平黄经
-		ATS_RLONG_MOON,			//< 月亮相对升交点的黄经角位移
-		ATS_ML_SUN,				//< 太阳平黄经
-		ATS_CENTER_SUN,			//< 太阳中心黄经偏差量
-		ATS_TL_SUN,				//< 太阳真黄经
-		ATS_TA_SUN,				//< 太阳真近点角
-		ATS_ECCENTRICITY_EARTH,	//< 地球轨道偏心率
-		ATS_PL_EARTH,			//< 地球近日点黄经
-		ATS_POSITION_SUN,		//< 太阳赤道坐标
-		ATS_POSITION_SUN_RA,
-		ATS_POSITION_SUN_DEC,
-		ATS_POSITION_MOON,		//< 月亮赤道坐标
-		ATS_POSITION_MOON_RA,
-		ATS_POSITION_MOON_DEC,
-		ATS_END		//< 最后一个数值, 用作判断缓冲区长度
-	};
-
-	double	lgt_;	//< 地理经度, 量纲: 弧度. 东经为正
-	double	lat_;	//< 地理纬度, 量纲: 弧度. 北纬为正
-	double	alt_;	//< 海拔高度, 量纲: 米
-	int		tz_;	//< 时区, 量纲: 小时. 东经时区为正
-	double	values_[ATS_END];	//< 数据缓冲区, 避免重复计算
-	bool	valid_[ATS_END];	//< 数据缓冲区有效性
 };
 ///////////////////////////////////////////////////////////////////////////////
 }

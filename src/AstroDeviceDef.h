@@ -77,8 +77,8 @@ enum CAMCTL_STATUS {// 相机工作状态
 
 enum OBSS_TYPE {// 观测系统类型
 	OBSST_UNKNOWN,	//< 初始化
-	OBSST_GWAC,		//< GWAC
-	OBSST_NORMAL	//< 常规系统
+	OBSST_NORMAL,	//< 常规系统
+	OBSST_GWAC		//< GWAC
 };
 
 enum OBSS_STATUS {// 观测系统状态

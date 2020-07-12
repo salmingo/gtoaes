@@ -9,7 +9,6 @@
 #ifndef ASCIIPROTOCOL_H_
 #define ASCIIPROTOCOL_H_
 
-#include <list>
 #include <vector>
 #include <boost/thread.hpp>
 #include <boost/algorithm/string.hpp>
@@ -22,12 +21,6 @@ using std::vector;
 typedef list<string> listring;	//< string列表
 
 //////////////////////////////////////////////////////////////////////////////
-struct pair_key_val {// 关键字-键值对
-	string keyword;
-	string value;
-};
-typedef list<pair_key_val> likv;	//< pair_key_val列表
-
 /* 宏定义: 通信协议类型 */
 #define APTYPE_REG		"register"
 #define APTYPE_UNREG	"unregister"
@@ -707,6 +700,7 @@ public:
 protected:
 	/* 成员变量 */
 	boost::mutex mtx_;	//< 互斥锁
+	const int szproto_;	//< 协议最大长度: 1024
 	int ibuf_;			//< 存储区索引
 	charray buff_;		//< 存储区
 
@@ -726,8 +720,8 @@ protected:
 	 * @param keyword  关键字
 	 * @param value    非字符串型数值
 	 */
-	template <class T1, class T2>
-	void join_kv(string& output, T1& keyword, T2& value) {
+	template <class T>
+	void join_kv(string& output, const string& keyword, T& value) {
 		boost::format fmt("%1%=%2%,");
 		fmt % keyword % value;
 		output += fmt.str();

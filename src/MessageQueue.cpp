@@ -4,12 +4,14 @@
  * @date 2017-10-02
  */
 
+#include <stdio.h>
 #include <boost/bind.hpp>
 #include <boost/make_shared.hpp>
 #include "MessageQueue.h"
 #include "GLog.h"
 
 #define MQFUNC_SIZE		1024
+int MessageQueue::id_ = 0;
 
 MessageQueue::MessageQueue() {
 	funcs_.reset(new CallbackFunc[MQFUNC_SIZE]);
@@ -44,14 +46,16 @@ bool MessageQueue::Start(const char* name) {
 	if (thrdmsg_.unique()) return true;
 
 	try {
-		message_queue::remove(name);
-		mq_.reset(new message_queue(boost::interprocess::create_only, name, 1024, sizeof(MSG_UNIT)));
+		char mqname[200];
+		sprintf (mqname, "%s_%d", name, ++id_);
+		message_queue::remove(mqname);
+		mq_.reset(new message_queue(boost::interprocess::create_only, mqname, 1024, sizeof(MSG_UNIT)));
 		thrdmsg_.reset(new boost::thread(boost::bind(&MessageQueue::thread_message, this)));
 
 		return true;
 	}
 	catch(boost::interprocess::interprocess_exception& ex) {
-		_gLog.Write(LOG_FAULT, "MessageQueue::Start", "failed to create message queue [%s] for %s",
+		_gLog->Write(LOG_FAULT, "MessageQueue::Start", "failed to create message queue [%s] for %s",
 				name, ex.what());
 		return false;
 	}

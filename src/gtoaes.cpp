@@ -1,4 +1,4 @@
-/*
+/*!
  Name        : gtoaes.cpp
  Author      : Xiaomeng Lu
  Copyright   : SVOM Group, NAOC
@@ -38,25 +38,35 @@
  Note        :
  @li 优化软件
  @li 集成GWAC与通用望远镜
+ ==============================================================================
+ Date        : 2020-07
+ Version     : 1.0
+ Note        :
+ @li 优化软件各模块
+ @li 集成GWAC与通用望远镜
  */
 
 #include <boost/make_shared.hpp>
+#include <boost/asio.hpp>
 #include "globaldef.h"
 #include "daemon.h"
-#include "parameter.h"
 #include "GLog.h"
+#include "Parameter.h"
 #include "GeneralControl.h"
 
-GLog _gLog;
-GLog _gLogPlan(gLogPlanDir, gLogPlanPrefix);
+GLogPtr _gLog;		/// 工作日志
+GLogPtr _gLogPlan;	/// 观测计划日志
 
-int main(int argc, char** argv) {
+int main(int argc, char **argv) {
+	_gLog = boost::make_shared<GLog>();
+	_gLogPlan = boost::make_shared<GLog>(gLogPlanDir, gLogPlanPrefix);
+
 	if (argc >= 2) {// 处理命令行参数
 		if (strcmp(argv[1], "-d") == 0) {
-			param_config param;
-			param.InitFile("gtoaes.xml");
+			Parameter param;
+			param.Init("gtoaes.xml");
 		}
-		else _gLog.Write("Usage: gtoaes <-d>\n");
+		else printf("Usage: gtoaes <-d>\n");
 	}
 	else {// 常规工作模式
 		boost::asio::io_service ios;
@@ -65,23 +75,20 @@ int main(int argc, char** argv) {
 
 		if (!MakeItDaemon(ios)) return 1;
 		if (!isProcSingleton(gPIDPath)) {
-			_gLog.Write("%s is already running or failed to access PID file", DAEMON_NAME);
+			_gLog->Write("%s is already running or failed to access PID file", DAEMON_NAME);
 			return 2;
 		}
-
-		_gLog.Write("Try to launch %s %s %s as daemon", DAEMON_NAME, DAEMON_VERSION, DAEMON_AUTHORITY);
+		_gLog->Write("Try to launch %s %s %s as daemon", DAEMON_NAME, DAEMON_VERSION, DAEMON_AUTHORITY);
 		// 主程序入口
 		boost::shared_ptr<GeneralControl> gc = boost::make_shared<GeneralControl>();
-		if (gc->StartService()) {
-			_gLog.Write("Daemon goes running");
+		if (gc->Start()) {
+			_gLog->Write("Daemon goes running");
 			ios.run();
-			gc->StopService();
-			_gLog.Write("Daemon stop running");
+			gc->Stop();
+			_gLog->Write("Daemon stop running");
 		}
 		else {
-			_gLog.Write(LOG_FAULT, NULL, "Fail to launch %s", DAEMON_NAME);
+			_gLog->Write(LOG_FAULT, NULL, "Fail to launch %s", DAEMON_NAME);
 		}
 	}
-
-	return 0;
 }

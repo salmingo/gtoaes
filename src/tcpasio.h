@@ -1,4 +1,4 @@
-/*
+/*!
  * @file tcpasio.h 声明文件, 基于boost::asio实现TCP通信接口
  * @version 0.2
  * @date 2017-10-01
@@ -20,7 +20,7 @@
 #include <string>
 #include "IOServiceKeep.h"
 
-using boost::asio::ip::tcp;
+using namespace boost::asio::ip;
 
 //////////////////////////////////////////////////////////////////////////////
 /*---------------- TCPClient: 客户端 ----------------*/
@@ -51,8 +51,8 @@ protected:
 	bool usebuf_;	//< 启用循环缓冲区
 	int bytercv_;	//< 已接收信息长度
 	charray bufrcv_;	//< 单条接收缓冲区
-	crcbuff crcrcv_;		//< 循环接收缓冲区
-	crcbuff crcsnd_;		//< 循环发送缓冲区
+	crcbuff crcrcv_;	//< 循环接收缓冲区
+	crcbuff crcsnd_;	//< 循环发送缓冲区
 	bool pause_rcv_;	//< 暂停接收
 
 	IOServiceKeep keep_;	//< 提供io_service对象
@@ -211,6 +211,7 @@ protected:
 	IOServiceKeep keep_;		//< 提供io_service对象
 	tcp::acceptor acceptor_;	//< 服务套接口
 	CallbackFunc  cbaccept_;	//< accept回调函数
+	std::string errmsg_;		//< 错误提示
 
 public:
 	// 接口
@@ -228,6 +229,7 @@ public:
 	 * 其它 -- 错误代码
 	 */
 	int CreateServer(const uint16_t port);
+	const char* GetError();
 
 protected:
 	// 功能

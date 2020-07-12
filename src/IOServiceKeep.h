@@ -1,4 +1,4 @@
-/*
+/*!
  * @file IOServiceKeep.h 封装boost::asio::io_service, 维持run()在生命周期内的有效性
  * @date 2017-01-27
  * @version 0.1
@@ -18,7 +18,7 @@
 
 using boost::asio::io_service;
 
-class IOServiceKeep : private boost::noncopyable {
+class IOServiceKeep {
 public:
 	// 构造函数与析构函数
 	IOServiceKeep();
@@ -26,14 +26,13 @@ public:
 
 protected:
 	// 数据类型
-	typedef io_service::work work;
 	typedef boost::shared_ptr<boost::thread> threadptr;
 
 private:
 	// 成员变量
 	io_service ios_;		//< io_service对象
-	boost::shared_ptr<work> work_;	//< io_service守护对象
-	threadptr thrd_keep_;			//< 线程
+	boost::shared_ptr<boost::asio::io_service::work> work_;	//< io_service守护对象
+	threadptr thrd_keep_;	//< 线程
 
 public:
 	// 属性函数

@@ -1,4 +1,4 @@
-/*
+/*!
  * @file NTPClient.h 类NTPClient声明文件
  * @author       卢晓猛
  * @description  检查本机与NTP服务器的时间偏差, 并修正本机时钟
@@ -75,9 +75,9 @@ protected:
 	int          sock_;		//< SOCKET套接字
 	carray       pack_;		//< 网络交互信息
 	double       offset_;	//< 时钟偏差, 量纲: 秒
-	bool         valid_;		//< 数据有效性
-	int          nfail_;		//< 时钟偏差检查失败次数
-	double       tSync_;		//< 修正本地时钟的最大时钟偏差
+	bool         valid_;	//< 数据有效性
+	int          nfail_;	//< 时钟偏差检查失败次数
+	double       tSync_;	//< 修正本地时钟的最大时钟偏差
 	bool         autoSync_;	//< 是否自动修正时钟偏差
 
 protected:
@@ -117,6 +117,14 @@ public:
 	 * @brief 启用或禁止自动时钟同步
 	 */
 	void EnableAutoSynch(bool bEnabled = true);
+	/*!
+	 * @brief 查看本机时钟与时钟服务器的时间偏差
+	 * @return
+	 * 时间偏差
+	 * @note
+	 * 时间偏差=标准时间-本机时间
+	 */
+	double GetOffset();
 };
 typedef boost::shared_ptr<NTPClient> NTPPtr; //< NTPclient指针
 /*!

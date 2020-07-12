@@ -1,4 +1,4 @@
-/*
+/*!
  * @file tcpasio.cpp 定义文件, 基于boost::asio实现TCP通信接口
  */
 
@@ -38,7 +38,10 @@ bool TCPClient::Connect(const string& host, const uint16_t port) {
 	tcp::resolver::iterator itertor = resolver.resolve(query);
 	boost::system::error_code ec;
 	sock_.connect(*itertor, ec);
-	if (!ec) sock_.set_option(socket_base::keep_alive(true));
+	if (!ec) {
+		sock_.set_option(socket_base::keep_alive(true));
+		start_read();
+	}
 	return !ec;
 }
 
@@ -131,7 +134,7 @@ int TCPClient::Lookup(const char* flag, const int len, const int from) {
 			for (i = 0, j = pos; i < len && flag[i] == bufrcv_[j]; ++i, ++j);
 		}
 	}
-	return i != len ? -1 : (pos - 1);
+	return i != len ? (n < TCP_PACK_SIZE ? -1 : n) : (pos - 1);
 }
 
 int TCPClient::Read(char* buff, const int len, const int from) {
@@ -211,9 +214,12 @@ void TCPClient::handle_write(const boost::system::error_code& ec, int n) {
 
 void TCPClient::start_read() {
 	if (sock_.is_open()) {
-		sock_.async_read_some(buffer(bufrcv_.get(), TCP_PACK_SIZE),
-				boost::bind(&TCPClient::handle_read, this,
-						placeholders::error, placeholders::bytes_transferred));
+		if (crcrcv_.size() == crcrcv_.capacity()) sock_.close();
+		else  {
+			sock_.async_read_some(buffer(bufrcv_.get(), TCP_PACK_SIZE),
+					boost::bind(&TCPClient::handle_read, this,
+							placeholders::error, placeholders::bytes_transferred));
+		}
 	}
 }
 
@@ -227,8 +233,10 @@ void TCPClient::start_write() {
 }
 
 void TCPClient::start() {
-	sock_.set_option(socket_base::keep_alive(true));
-	start_read();
+	if (sock_.is_open()) {
+		sock_.set_option(socket_base::keep_alive(true));
+		start_read();
+	}
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -252,7 +260,6 @@ void TCPServer::RegisterAccespt(const CBSlot& slot) {
 }
 
 int TCPServer::CreateServer(const uint16_t port) {
-	int rslt(0);
 	try {
 		tcp::endpoint endpoint(tcp::v4(), port);
 		acceptor_.open(endpoint.protocol());
@@ -260,11 +267,16 @@ int TCPServer::CreateServer(const uint16_t port) {
 		acceptor_.bind(endpoint);
 		acceptor_.listen(10);
 		start_accept();
+		return 0;
 	}
-	catch (boost::system::error_code& ec) {
-		rslt = ec.value();
+	catch (boost::system::system_error &ex) {
+		errmsg_ = ex.what();
+		return ex.code().value();
 	}
-	return rslt;
+}
+
+const char* TCPServer::GetError() {
+	return errmsg_.c_str();
 }
 
 void TCPServer::start_accept() {
