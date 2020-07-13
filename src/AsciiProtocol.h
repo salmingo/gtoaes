@@ -32,7 +32,6 @@ typedef list<string> listring;	//< string列表
 #define APTYPE_DISABLE	"disable"
 #define APTYPE_RELOAD	"reload"
 #define APTYPE_REBOOT	"reboot"
-#define APTYPE_APPGWAC	"append_gwac"
 #define APTYPE_APPPLAN	"append_plan"
 #define APTYPE_ABTPLAN	"abort_plan"
 #define APTYPE_CHKPLAN	"check_plan"

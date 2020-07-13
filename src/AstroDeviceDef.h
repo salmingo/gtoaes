@@ -75,10 +75,16 @@ enum CAMCTL_STATUS {// 相机工作状态
 	CAMCTL_WAIT_FLAT   = 0x80	// 平场间等待--等待转台重新指向
 };
 
+/**
+ * @brief 观测系统类型
+ * 以维护观测计划的方式区分观测系统
+ * - 观测计划直接投递到观测系统, 打断正在执行的计划
+ * - 观测计划以队列形式存储在内存中
+ */
 enum OBSS_TYPE {// 观测系统类型
 	OBSST_UNKNOWN,	//< 初始化
-	OBSST_NORMAL,	//< 常规系统
-	OBSST_GWAC		//< GWAC
+	OBSST_NORMAL,	//< 类型1: 观测计划直接投递到观测系统, 并中断当前正在执行的计划
+	OBSST_QUEUE		//< 类型2: 以队列形式维护观测计划
 };
 
 enum OBSS_STATUS {// 观测系统状态
