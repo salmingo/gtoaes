@@ -426,6 +426,7 @@ void ObservationSystem::on_new_protocol(const long, const long) {
 		else if (iequals(type, APTYPE_ABTSLEW))  process_abortslew  ();
 		else if (iequals(type, APTYPE_ABTIMG))   process_abortimage ();
 		else if (iequals(type, APTYPE_SLEWTO))   process_slewto     (from_apbase<ascii_proto_slewto>      (proto));
+		else if (iequals(type, APTYPE_TRACK))    process_track      (from_apbase<ascii_proto_track>       (proto));
 		else if (iequals(type, APTYPE_TAKIMG))   process_takeimage  (from_apbase<ascii_proto_take_image>  (proto));
 	}
 	else {
