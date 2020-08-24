@@ -43,6 +43,13 @@ const char* AnnexProtocol::CompactSlit(const int command, int& n) {
 	return buff;
 }
 
+const char* AnnexProtocol::CompactSlit(const string& gid, const int command, int& n) {
+	char *buff = get_buff();
+
+	n = sprintf(buff, "g#%sslit%02d%%\n", gid.c_str(), command);
+	return buff;
+}
+
 const char* AnnexProtocol::CompactSlit(const string& gid, const string& uid, const int command, int& n) {
 	char *buff = get_buff();
 
@@ -103,8 +110,18 @@ annpbase AnnexProtocol::Resolve(const char* rcvd) {
 		proto = static_pointer_cast<annexproto_base>(body);
 	}
 	else if ((pos = sref.find(type_slit)) > 0) {
-		// 格式: g#slit<value>%
 		annpslit body = boost::make_shared<annexproto_slit>();
+		// HN, 单圆顶系统. 格式: g#slit<value>%
+		// 怀柔: 每圆顶对应2望远镜. 格式: g#<group_id>slit<value>%
+		pos1 = pos - unit_len;
+		for (i = prefix.length(); i < pos1; ++i) body->gid += sref.at(i);
+
+		/* 每望远镜对应一圆顶
+		// 格式: g#<group_id><unit_id>slit<value>%
+		pos1 = pos - unit_len;
+		for (i = prefix.length(); i < pos1; ++i) body->gid += sref.at(i);
+		for (; i < pos; ++i) body->uid += sref.at(i);
+		*/
 		for (j = 0, i = pos + type_slit.length(); i < n && j < slit_len; ++i, ++j) buff[j] = sref.at(i);
 		buff[j] = '\0';
 		body->state = atoi(buff);

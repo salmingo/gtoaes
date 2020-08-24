@@ -212,7 +212,7 @@ void ObservationSystem::thread_cycle() {
 				dbt_->UpdateCameraState(gid_, uid_, cid_, tzt, nfCamera_->state, nfCamera_->errcode, nfCamera_->coolget);
 			}
 		}
-
+/*
 		if (nfMount_.unique() && nfMount_->utc.size()) {// 检查转台时标
 			if (utcMount != nfMount_->utc) utcMount = nfMount_->utc;
 			else tcpc_mount_->Close();
@@ -222,6 +222,7 @@ void ObservationSystem::thread_cycle() {
 			if (utcCamera != nfCamera_->utc) utcCamera = nfCamera_->utc;
 			else tcpc_camera_->Close();
 		}
+*/
 	}
 }
 

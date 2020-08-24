@@ -20,6 +20,12 @@ using namespace boost;
 using namespace boost::posix_time;
 using namespace boost::filesystem;
 
+// 观测系统区别:
+// 1. 海南仅有一个圆顶; 怀柔有多圆顶, 且每个圆顶内有多个望远镜
+// 2. 海南不需要全自动, 由人工操作打开天窗; 怀柔需要全自动
+// 3. 怀柔需要自动校正零点
+#define OBSS_LOC	1	// 观测系统位置. 1: 海南; 2: 怀柔
+
 GeneralControl::GeneralControl() {
 	param_.LoadFile(gConfigPath);
 }
@@ -271,13 +277,7 @@ void GeneralControl::process_protocol_mount(apbase proto, TCPClient* client) {
 	string gid = proto->gid;
 	string uid = proto->uid;
 
-	if (!iequals(proto->type, APTYPE_REG)) {
-		_gLog.Write(LOG_FAULT, "GeneralControl::process_protocol_mount()",
-				"protocol[%s gid=%s, uid=%s] was rejected", proto->type.c_str(),
-				gid.c_str(), uid.c_str());
-		client->Close();
-	}
-	else {// 关联观测系统与望远镜
+	if (iequals(proto->type, APTYPE_REG) || iequals(proto->type, APTYPE_MOUNT)) {// 关联观测系统与望远镜
 		ObsSysPtr obss = find_obss(gid, uid);
 		if (!obss.use_count()) client->Close();
 		else {
@@ -286,8 +286,17 @@ void GeneralControl::process_protocol_mount(apbase proto, TCPClient* client) {
 
 			for (it = tcpc_mount_.begin(); it != tcpc_mount_.end() && (*it).get() != client; ++it);
 			if (obss->CoupleMount(*it)) tcpc_mount_.erase(it);
-			else client->Close();
+			/*
+			 * GeneralControl中可能连续收到多条REG信息
+			 */
+//			else client->Close();
 		}
+	}
+	else {
+		_gLog.Write(LOG_FAULT, "GeneralControl::process_protocol_mount()",
+				"protocol[%s gid=%s, uid=%s] was rejected", proto->type.c_str(),
+				gid.c_str(), uid.c_str());
+		client->Close();
 	}
 }
 

@@ -37,6 +37,8 @@ public:
 typedef boost::shared_ptr<annexproto_rain> annprain;
 
 struct annexproto_slit : public annexproto_base {// 天窗指令与状态
+	string gid;
+	string uid;
 	int cmd;	//< 控制指令
 	int state;	//< 天窗状态
 
@@ -106,6 +108,7 @@ public:
 	 * 封装数据地址
 	 */
 	const char* CompactSlit(const int command, int& n);
+	const char* CompactSlit(const string& gid, const int command, int& n);
 	const char* CompactSlit(const string& gid, const string& uid, const int command, int& n);
 	/*!
 	 * @brief 封装协议fwhm
