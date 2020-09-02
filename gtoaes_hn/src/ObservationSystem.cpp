@@ -3,7 +3,7 @@
  * @version 0.1
  * @date 2019-10-22
  */
-
+#include <boost/bind/bind.hpp>
 #include <boost/make_shared.hpp>
 #include <boost/algorithm/string.hpp>
 #include "ObservationSystem.h"
@@ -14,6 +14,7 @@
 using namespace AstroUtil;
 using namespace boost;
 using namespace boost::posix_time;
+using namespace boost::placeholders;
 
 //////////////////////////////////////////////////////////////////////////////
 ObsSysPtr make_obss(const string& gid, const string& uid) {
@@ -116,8 +117,10 @@ bool ObservationSystem::CoupleCamera(TcpCPtr ptr, const string& cid) {
 		const TCPClient::CBSlot &slot = boost::bind(&ObservationSystem::receive_camera, this, _1, _2);
 		ptr->RegisterRead(slot);
 		tcpc_camera_ = ptr;
-		cid_ = cid;
-		nfCamera_ = boost::make_shared<CameraInfo>();
+		if (!nfCamera_.unique()) {
+			nfCamera_ = boost::make_shared<CameraInfo>();
+			cid_ = cid;
+		}
 		// 测站位置=>相机
 		int n;
 		const char *s = ascproto_->CompactObsSite(obsite_, n);
@@ -129,7 +132,11 @@ bool ObservationSystem::CoupleCamera(TcpCPtr ptr, const string& cid) {
 }
 
 int ObservationSystem::CoupleFocus(TcpCPtr ptr, const string& cid) {
-	if (!tcpc_camera_.unique()) return 2;
+//	if (!tcpc_camera_.unique()) return 2;
+	if (!tcpc_camera_.unique()) {
+		cid_ = cid;
+		nfCamera_ = boost::make_shared<CameraInfo>();
+	}
 	if (!tcpc_focus_.use_count() && cid == cid_) {
 		_gLog.Write("focuser[%s:%s:%s] was on-line", gid_.c_str(), uid_.c_str(), cid.c_str());
 		tcpc_focus_ = ptr;
@@ -158,10 +165,11 @@ void ObservationSystem::NotifyFocus(const string &cid, int position) {
 #ifdef NDEBUG
 	_gLog.Write("focus[%s:%s:%s] position was %d", gid_.c_str(), uid_.c_str(), cid.c_str(), position);
 #endif
-	// 焦点位置=>相机
-	int n;
-	const char *s = ascproto_->CompactFocus(position, n);
-	tcpc_camera_->Write(s, n);
+	if (tcpc_camera_.unique()) {// 焦点位置=>相机
+		int n;
+		const char *s = ascproto_->CompactFocus(position, n);
+		tcpc_camera_->Write(s, n);
+	}
 }
 
 void ObservationSystem::GetID(string &gid, string &uid) {
@@ -170,7 +178,7 @@ void ObservationSystem::GetID(string &gid, string &uid) {
 }
 
 bool ObservationSystem::IsAlive() {
-	if (tcpc_mount_.unique() || tcpc_camera_.unique())
+	if (tcpc_mount_.unique() || tcpc_camera_.unique() || tcpc_focus_.use_count())
 		return true;
 	ptime::time_duration_type tdt = second_clock::universal_time() - tmclosed_;
 	return (tdt.total_seconds() < keep_alive_);
@@ -286,15 +294,17 @@ void ObservationSystem::on_receive_mount(const long addr, const long) {
 
 void ObservationSystem::process_info_mount(apmount proto) {
 	int now(proto->state), prev(nfMount_->state);
+	static int repark = 0;
 	// 更新望远镜指向坐标
 	*nfMount_ = proto;
 
 	if (nfMount_->alt <= minEle_) {
-		if (now != MOUNT_PARKING) {
+		if (now != MOUNT_PARKING && ++repark == 1) {
 			_gLog.Write(LOG_WARN, NULL, "orientation[azi=%.4f, alt=%.4f] of mount[%s:%s] was out of safe limit",
 					nfMount_->azi, nfMount_->alt, gid_.c_str(), uid_.c_str());
 			process_park();
 		}
+		if (repark > 10) repark = 0;
 	}
 	else if (now != prev) {
 #ifdef NDEBUG

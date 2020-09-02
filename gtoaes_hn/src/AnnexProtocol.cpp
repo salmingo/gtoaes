@@ -115,7 +115,6 @@ annpbase AnnexProtocol::Resolve(const char* rcvd) {
 		// 怀柔: 每圆顶对应2望远镜. 格式: g#<group_id>slit<value>%
 		pos1 = pos - unit_len;
 		for (i = prefix.length(); i < pos1; ++i) body->gid += sref.at(i);
-
 		/* 每望远镜对应一圆顶
 		// 格式: g#<group_id><unit_id>slit<value>%
 		pos1 = pos - unit_len;

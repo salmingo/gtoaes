@@ -5,6 +5,7 @@
  */
 #include <algorithm>
 #include <cstdio>
+#include <boost/bind/bind.hpp>
 #include <boost/algorithm/string.hpp>
 #include <boost/date_time/gregorian/gregorian.hpp>
 #include <boost/filesystem.hpp>
@@ -19,6 +20,7 @@ using namespace AstroUtil;
 using namespace boost;
 using namespace boost::posix_time;
 using namespace boost::filesystem;
+using namespace boost::placeholders;
 
 // 观测系统区别:
 // 1. 海南仅有一个圆顶; 怀柔有多圆顶, 且每个圆顶内有多个望远镜
@@ -227,11 +229,12 @@ void GeneralControl::process_protocol_client(apbase proto, TCPClient* client) {
 	else if (iequals(type, APTYPE_LOADPLAN)) cv_loadplan_.notify_one();
 	else if (iequals(type, APTYPE_SLIT)) {
 		apslit slit = static_pointer_cast<ascii_proto_slit>(proto);
-		if (bool(slit->enable) != nfEnv_.slitEnable && (slit->enable == 0 || slit->enable == 1)) {
-			nfEnv_.slitEnable = slit->enable;
-			_gLog.Write("slit was %s", nfEnv_.slitEnable ? "enabled" : "disabled");
-		}
-		if (nfEnv_.mode == OC_STOP && nfEnv_.slitEnable) command_slit(slit->command);
+//		if (bool(slit->enable) != nfEnv_.slitEnable && (slit->enable == 0 || slit->enable == 1)) {
+//			nfEnv_.slitEnable = slit->enable;
+//			_gLog.Write("slit was %s", nfEnv_.slitEnable ? "enabled" : "disabled");
+//		}
+//		if (nfEnv_.mode == OC_STOP && nfEnv_.slitEnable) command_slit(slit->command);
+		command_slit(slit->command);
 	}
 	else if (obss_.size()) {// 尝试向观测系统投递协议
 		mutex_lock lck(mtx_obss_);
@@ -258,13 +261,14 @@ void GeneralControl::autobs(const string &gid, const string &uid, bool start) {
 
 void GeneralControl::command_slit(int cmd) {
 	if (tcpc_annex_.unique()) {
-		if ((cmd == SC_CLOSE && nfEnv_.slitState != SS_CLOSED && nfEnv_.slitState != SS_CLOSING)
-			|| (cmd == SC_OPEN && nfEnv_.slitState != SS_OPEN && nfEnv_.slitState != SS_OPENING)) {
+//		if ((cmd == SC_CLOSE && nfEnv_.slitState != SS_CLOSED && nfEnv_.slitState != SS_CLOSING)
+//			|| (cmd == SC_OPEN && nfEnv_.slitState != SS_OPEN && nfEnv_.slitState != SS_OPENING)) {
 			_gLog.Write("try to %s dome slit", cmd == SC_CLOSE ? "close" : "open");
 			int n;
-			const char *s = annproto_->CompactSlit(cmd, n);
+//			const char *s = annproto_->CompactSlit(cmd, n);
+			const char *s = annproto_->CompactSlit("001", cmd, n);
 			tcpc_annex_->Write(s, n);
-		}
+//		}
 	}
 #ifdef NDEBUG
 	else {
@@ -336,7 +340,8 @@ void GeneralControl::process_protocol_focus(annpbase proto) {
 		string gid = focus->gid;
 		string uid = focus->uid;
 		string cid = focus->cid;
-		ObsSysPtr obss = find_obss(gid, uid, false);
+//		ObsSysPtr obss = find_obss(gid, uid, false);
+		ObsSysPtr obss = find_obss(gid, uid);
 		if (obss.use_count()) {
 			int rslt = obss->CoupleFocus(tcpc_focus_, cid);
 			if (rslt == 1)  obss->NotifyFocus(cid, focus->position);
