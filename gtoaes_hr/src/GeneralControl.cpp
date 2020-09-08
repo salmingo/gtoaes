@@ -29,6 +29,7 @@ using namespace boost::placeholders;
 
 GeneralControl::GeneralControl() {
 	param_.LoadFile(gConfigPath);
+	odType_ = 0;
 }
 
 GeneralControl::~GeneralControl() {
@@ -231,8 +232,6 @@ void GeneralControl::autobs(const string &gid, const string &uid, bool start) {
 	for (ObsSysVec::iterator it = obss_.begin(); it != obss_.end(); ++it) {
 		if ((*it)->IsMatched(gid, uid)) (*it)->NotifyAsciiProtocol(proto);
 	}
-	/* 当条件满足时, 关闭天窗 */
-//	if (!start && nfEnv_.slitState == SS_OPEN) command_slit(SC_CLOSE);
 }
 
 void GeneralControl::command_slit(int cmd) {
@@ -698,7 +697,7 @@ void GeneralControl::resort_obsplan() {
 
 ObsPlanPtr GeneralControl::acquire_new_plan(const string& gid, const string& uid) {
 	ObsPlanPtr plan;
-	int odt(nfEnv_.odt), state(nfEnv_.slitState);
+	int odt(odType_), state(nfEnv_.slitState);
 	if (!(nfEnv_.slitEnable										// 禁用天窗
 			&& ((state != SS_OPEN  && state != SS_CLOSED)		// 天窗状态不是全开或全关
 				|| (odt == OD_DAY  && state != SS_CLOSED)		// 白天 : 天窗没有完全关闭
@@ -756,11 +755,11 @@ void GeneralControl::thread_obsplan() {
 }
 
 void GeneralControl::thread_odt() {
-	boost::chrono::minutes period(2);
+	boost::chrono::minutes period(5);
 	boost::mutex mtx;
 	mutex_lock lck(mtx);
-	int dayold(-1), daynew, odt, preslew(0);
-	double ra, dec, azi, alt, altold(0.0), lmst;
+	int dayold(-1), daynew, odt;
+	double ra, dec, azi, alt, lmst;
 	double odtDay(param_.odtDay), odtNight(param_.odtNight);
 
 	boost::this_thread::sleep_for(boost::chrono::seconds(10));
@@ -773,7 +772,6 @@ void GeneralControl::thread_odt() {
 
 		if (dayold != daynew && scan_obsplan()) {
 			dayold  = daynew;
-			preslew = 0;
 
 			/* 向数据库上传所有观测计划 */
 			if (dbt_.unique()) {
@@ -784,16 +782,6 @@ void GeneralControl::thread_odt() {
 					dbt_->UploadObsPlan((*it)->plan_sn, (*it)->plan_type, btime, etime);
 				}
 			}
-
-			/**
-			 * @date 2019-11-24
-			 * 第一次: 驱动转台微量运动, 消除长时间静止造成的阻尼
-			 **/
-			mutex_lock lck(mtx_obss_);
-			apbase proto = to_apbase(boost::make_shared<ascii_proto_preslew>());
-			for (ObsSysVec::iterator it = obss_.begin(); it != obss_.end(); ++it) {
-				(*it)->NotifyAsciiProtocol(proto);
-			}
 		}
 		/* 计算观测时段类型 */
 		ats_.SetUTC(day.year(), day.month(), daynew, (tmday.hours() + tmday.minutes() / 60.0) / 24.0);
@@ -802,32 +790,20 @@ void GeneralControl::thread_odt() {
 		ats_.Eq2Horizon(lmst - ra, dec, azi, alt);
 		alt *= R2D;
 		odt = alt > odtDay ? OD_DAY : (alt < odtNight ? OD_NIGHT : OD_FLAT);
-		if (odt == OD_DAY && alt < altold && alt < (odtDay + 1) && ++preslew == 1) {
-			/**
-			 * @date 2019-11-24
-			 * 第二次: 驱动转台微量运动, 消除长时间静止造成的阻尼
-			 **/
-			mutex_lock lck(mtx_obss_);
-			apbase proto = to_apbase(boost::make_shared<ascii_proto_preslew>());
-			for (ObsSysVec::iterator it = obss_.begin(); it != obss_.end(); ++it) {
-				(*it)->NotifyAsciiProtocol(proto);
-			}
-		}
-		altold = alt;
-		if (nfEnv_.odt != odt) {
+		if (odt!= odType_) {
 			_gLog.Write("Enter %s duration", odt == OD_NIGHT ? "Night"
 					: (odt == OD_FLAT ? "Flat field" : "Daylight"));
-			if (odt == OD_DAY && nfEnv_.odt != -1) {
+			if (odt == OD_DAY && odType_ != 0) {
 				mutex_lock lck(mtx_obss_);
 				apbase proto = to_apbase(boost::make_shared<ascii_proto_park>());
 				for (ObsSysVec::iterator it = obss_.begin(); it != obss_.end(); ++it) {
 					(*it)->NotifyAsciiProtocol(proto);
 				}
 			}
-			nfEnv_.odt = odt;
+			odType_ = odt;
 
-			if (nfEnv_.slitEnable && odt == OD_DAY && nfEnv_.slitState == SS_OPEN)
-				command_slit(SC_CLOSE);
+//			if (nfEnv_.slitEnable && odt == OD_DAY && nfEnv_.slitState == SS_OPEN)
+//				command_slit(SC_CLOSE);
 		}
 		/*
 		 * @date 2019-10-25

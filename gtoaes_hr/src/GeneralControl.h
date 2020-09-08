@@ -54,7 +54,6 @@ protected:
 		bool slitEnable;//< 启用天窗控制
 		int slitState;	//< 天窗状态
 		int rain;		//< 降水
-		int odt;		//< 时段标志
 
 	public:
 		EnvInfo() {
@@ -62,7 +61,6 @@ protected:
 			slitEnable = true;
 			slitState  = -1;
 			rain       = -1;
-			odt        = -1;
 		}
 
 		EnvInfo* Get(const string &_gid) {
@@ -107,6 +105,7 @@ protected:
 	boost::mutex mtx_obss_;	//< 互斥锁: 观测系统
 	ObsSysVec obss_;		//< 观测系统集合
 	threadptr thrd_obss_;	//< 线程: 观测系统有效性
+	int odType_;			//< 时段标志
 	/* 数据库 */
 	boost::shared_ptr<DBCurl> dbt_; //< 数据库访问接口
 	/* 观测计划 */
