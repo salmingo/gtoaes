@@ -299,27 +299,7 @@ void GeneralControl::process_protocol_camera(apbase proto, TCPClient* client) {
 		}
 	}
 }
-/*
-void GeneralControl::process_protocol_focus(annpbase proto) {
-	if (!iequals(proto->type, APTYPE_FOCUS)) {
-		_gLog.Write(LOG_FAULT, "GeneralControl::process_protocol_focus()",
-				"protocol[%s] was rejected", proto->type.c_str());
-		tcpc_focus_->Close();
-	}
-	else {
-		annpfocus focus = static_pointer_cast<annexproto_focus>(proto);
-		string gid = focus->gid;
-		string uid = focus->uid;
-		string cid = focus->cid;
-		ObsSysPtr obss = find_obss(gid, uid);
-		if (obss.use_count()) {
-			int rslt = obss->CoupleFocus(tcpc_focus_, cid);
-			if (rslt == 1)  obss->NotifyFocus(cid, focus->position);
-			else if (!rslt) tcpc_focus_->Close();
-		}
-	}
-}
-*/
+
 void GeneralControl::process_protocol_annex(annpbase proto, TCPClient* client) {
 	// 依据网络地址查找对应的EnvInfo
 	EnvInfo *nfenv;
@@ -334,7 +314,7 @@ void GeneralControl::process_protocol_annex(annpbase proto, TCPClient* client) {
 		annprain rain = static_pointer_cast<annexproto_rain>(proto);
 		if (rain->value != nfenv->rain) {
 			nfenv->rain = rain->value;
-			change_skystate(rain->value);
+			change_skystate();
 
 			if (dbt_.unique()) {
 				string tzt = to_iso_string(second_clock::local_time());
@@ -375,28 +355,27 @@ void GeneralControl::process_protocol_annex(annpbase proto, TCPClient* client) {
 }
 
 void GeneralControl::change_slitstate(int state) {
-	if (state < SS_ERROR || state > SS_FREEZE) {
-		_gLog.Write(LOG_WARN, "GeneralControl::change_slitstate()", "undefined slit state[=%d]", state);
-		tcpc_annex_->Close();
-	}
-	else {
-		_gLog.Write("SLIT was %s", SLIT_STATE_STR[state]);
-		nfEnv_.slitState = state;
-		/* 当天窗状态发生变化时, 望远镜复位, 触发中止观测计划 */
-		if (state != SS_OPEN && state != SS_CLOSED) {
-			mutex_lock lck(mtx_obss_);
-			apbase proto = to_apbase(boost::make_shared<ascii_proto_park>());
-			for (ObsSysVec::iterator it = obss_.begin(); it != obss_.end(); ++it) {
-				(*it)->NotifyAsciiProtocol(proto);
-			}
-		}
-	}
+//	if (state < SS_ERROR || state > SS_FREEZE) {
+//		_gLog.Write(LOG_WARN, "GeneralControl::change_slitstate()", "undefined slit state[=%d]", state);
+//		tcpc_annex_->Close();
+//	}
+//	else {
+//		_gLog.Write("SLIT was %s", SLIT_STATE_STR[state]);
+//		nfEnv_.slitState = state;
+//		/* 当天窗状态发生变化时, 望远镜复位, 触发中止观测计划 */
+//		if (state != SS_OPEN && state != SS_CLOSED) {
+//			mutex_lock lck(mtx_obss_);
+//			apbase proto = to_apbase(boost::make_shared<ascii_proto_park>());
+//			for (ObsSysVec::iterator it = obss_.begin(); it != obss_.end(); ++it) {
+//				(*it)->NotifyAsciiProtocol(proto);
+//			}
+//		}
+//	}
 }
 
-void GeneralControl::change_skystate(int rain) {
-	_gLog.Write("Sky was %s", rain == RAIN_CLEAR ? "Clear" :
-			(rain == RAIN_RAINY ? "Rainy" : "Unknown"));
-	nfEnv_.rain = rain;
+void GeneralControl::change_skystate() {
+//	_gLog.Write("Sky was %s", rain == RAIN_CLEAR ? "Clear" :
+//			(rain == RAIN_RAINY ? "Rainy" : "Unknown"));
 	/*
 	 * - 当发生降水时, 关闭天窗
 	 * - 当停止降水时, 记录时标
@@ -416,25 +395,21 @@ void GeneralControl::register_message() {
 	const CBSlot& slot11 = boost::bind(&GeneralControl::on_receive_client,  this, _1, _2);
 	const CBSlot& slot12 = boost::bind(&GeneralControl::on_receive_mount,   this, _1, _2);
 	const CBSlot& slot13 = boost::bind(&GeneralControl::on_receive_camera,  this, _1, _2);
-//	const CBSlot& slot14 = boost::bind(&GeneralControl::on_receive_focus,   this, _1, _2);
 	const CBSlot& slot15 = boost::bind(&GeneralControl::on_receive_annex,   this, _1, _2);
 
 	const CBSlot& slot21 = boost::bind(&GeneralControl::on_close_client,    this, _1, _2);
 	const CBSlot& slot22 = boost::bind(&GeneralControl::on_close_mount,     this, _1, _2);
 	const CBSlot& slot23 = boost::bind(&GeneralControl::on_close_camera,    this, _1, _2);
-//	const CBSlot& slot24 = boost::bind(&GeneralControl::on_close_focus,     this, _1, _2);
 	const CBSlot& slot25 = boost::bind(&GeneralControl::on_close_annex,     this, _1, _2);
 
 	RegisterMessage(MSG_RECEIVE_CLIENT,  slot11);
 	RegisterMessage(MSG_RECEIVE_MOUNT,   slot12);
 	RegisterMessage(MSG_RECEIVE_CAMERA,  slot13);
-//	RegisterMessage(MSG_RECEIVE_FOCUS,   slot14);
 	RegisterMessage(MSG_RECEIVE_ANNEX,   slot15);
 
 	RegisterMessage(MSG_CLOSE_CLIENT,    slot21);
 	RegisterMessage(MSG_CLOSE_MOUNT,     slot22);
 	RegisterMessage(MSG_CLOSE_CAMERA,    slot23);
-//	RegisterMessage(MSG_CLOSE_FOCUS,     slot24);
 	RegisterMessage(MSG_CLOSE_ANNEX,     slot25);
 }
 

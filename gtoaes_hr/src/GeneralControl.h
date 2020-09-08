@@ -54,8 +54,6 @@ protected:
 		bool slitEnable;//< 启用天窗控制
 		int slitState;	//< 天窗状态
 		int rain;		//< 降水
-		ptime tmclear;	//< 时标: '第一次'晴朗
-		int keepclear;	//< 时长: 维持晴朗的时间长度, 量纲: 分钟
 		int odt;		//< 时段标志
 
 	public:
@@ -64,7 +62,6 @@ protected:
 			slitEnable = true;
 			slitState  = -1;
 			rain       = -1;
-			keepclear  = 10;
 			odt        = -1;
 		}
 
@@ -224,7 +221,7 @@ protected:
 	/*!
 	 * @brief 改变降水状态
 	 */
-	void change_skystate(int rain);
+	void change_skystate();
 	/* 网络通信 */
 //////////////////////////////////////////////////////////////////////////////
 
