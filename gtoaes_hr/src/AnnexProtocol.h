@@ -26,6 +26,7 @@ struct annexproto_base {
 typedef boost::shared_ptr<annexproto_base> annpbase;
 
 struct annexproto_rain : public annexproto_base {// 雨量
+	string gid;
 	int value;	//< 降水量
 
 public:
@@ -37,6 +38,7 @@ public:
 typedef boost::shared_ptr<annexproto_rain> annprain;
 
 struct annexproto_slit : public annexproto_base {// 天窗指令与状态
+	string gid;
 	int cmd;	//< 控制指令
 	int state;	//< 天窗状态
 

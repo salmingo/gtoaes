@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<version>0.1</version>
+<date>20200722T230940</date>
+<NetworkServer>
+    <Client Port="4010"/>
+    <Mount Port="4011"/>
+    <Camera Port="4012"/>
+    <Focus Port="4013"/>
+    <Annex Port="4014"/>
+</NetworkServer>
+<NTP Enable="false" IPv4="172.28.1.3">
+    <MaxDiff Value="100"/>
+    <!--Difference is in millisec-->
+</NTP>
+<Database Enable="false">
+    <URL Addr="http://172.28.8.8:8080/gwebend/"/>
+</Database>
+<ObsPlan>
+    <Location Path="/home/wata/plan"/>
+    <Check LocalTime="17:00"/>
+</ObsPlan>
+<ObservationSytemTrait>
+    <ID Group="001"/>
+    <Geosite Name="Xinglong" Lon="117.57454166666668" Lat="40.395933333333332" Alt="900" Timezone="8"/>
+</ObservationSytemTrait>
+<MountLimit>
+    <ID Group="001" Unit=""/>
+    <Ele Min="10"/>
+</MountLimit>
+<SunCenterAlt>
+    <Daylight Value="-6"/>
+    <Night Value="-11"/>
+</SunCenterAlt>
