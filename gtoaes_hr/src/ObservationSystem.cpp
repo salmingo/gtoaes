@@ -199,7 +199,7 @@ void ObservationSystem::receive_camera(const long ptr, const long ec) {
 }
 
 void ObservationSystem::thread_cycle() {
-	chrono::seconds period(5);
+	boost::chrono::seconds period(5);
 	string utcMount, utcCamera;
 
 	while(1) {
@@ -764,7 +764,7 @@ void ObservationSystem::interrupt_plan() {
 void ObservationSystem::thread_acqplan() {
 	mutex mtx;
 	mutex_lock lck(mtx);
-	chrono::seconds period(30);
+	boost::chrono::seconds period(30);
 
 	/*
 	 * 申请观测计划条件:

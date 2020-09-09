@@ -51,16 +51,14 @@ protected:
 		string gid;			//< 组标志
 		TcpCPtr tcpclient;	//< 网络连接
 		int mode;		//< 系统工作模式
-		bool slitEnable;//< 启用天窗控制
 		int slitState;	//< 天窗状态
 		int rain;		//< 降水
 
 	public:
 		EnvInfo() {
-			mode       = -1;
-			slitEnable = true;
-			slitState  = -1;
-			rain       = -1;
+			mode       = OBSS_ERROR;
+			slitState  = SS_ERROR;
+			rain       = RAIN_ERROR;
 		}
 
 		EnvInfo* Get(const string &_gid) {
@@ -212,11 +210,11 @@ protected:
 	/*!
 	 * @brief 打开/关闭天窗
 	 */
-	void command_slit(int cmd);
+	void command_slit(const string &gid, int cmd);
 	/*!
 	 * @brief 改变天窗状态
 	 */
-	void change_slitstate(int state);
+	void change_slitstate(const string &gid, int state);
 	/*!
 	 * @brief 改变降水状态
 	 */
@@ -244,10 +242,6 @@ protected:
 	 */
 	void on_receive_camera(const long addr, const long);
 	/*!
-	 * @brief 消息ID == MSG_RECEIVE_FOCUS, 接收解析网络信息: 调焦
-	 */
-//	void on_receive_focus(const long addr, const long);
-	/*!
 	 * @brief 消息ID == MSG_RECEIVE_ANNEX, 接收解析网络信息: 附属
 	 */
 	void on_receive_annex(const long addr, const long);
@@ -263,10 +257,6 @@ protected:
 	 * @brief 消息ID == MSG_CLOSE_CAMERA, 断开连接: 相机
 	 */
 	void on_close_camera(const long addr, const long);
-	/*!
-	 * @brief 消息ID == MSG_CLOSE_FOCUS, 断开连接: 调焦
-	 */
-//	void on_close_focus(const long addr, const long);
 	/*!
 	 * @brief 消息ID == MSG_CLOSE_ANNEX, 断开连接: 附属
 	 */
