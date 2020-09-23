@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<version>0.4</version>
+<date>20170507T053738</date>
+<Server>
+    <Client>4010</Client>
+    <Database>4011</Database>
+    <Mount>4012</Mount>
+    <Camera>4013</Camera>
+</Server>
+<NTP>
+    <Enable>true</Enable>
+    <IP>172.28.1.3</IP>
+    <MaximumDifference>5</MaximumDifference>
+</NTP>
+<Observatory>
+    <name>Xinglong</name>
+    <group_id>001</group_id>
+    <longitude>117.57454166700001</longitude>
+    <latitude>40.3959333333</latitude>
+    <altitude>900</altitude>
+</Observatory>

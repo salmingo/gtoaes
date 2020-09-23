@@ -220,7 +220,6 @@ void GeneralControl::process_protocol_client(apbase proto, TCPClient* client) {
 }
 
 void GeneralControl::autobs(const string &gid, const string &uid, bool start) {
-//	if (gid.empty() && uid.empty()) nfEnv_.mode = start ? OC_START : OC_STOP;
 	/* 通知观测改变工作模式 */
 	mutex_lock lck(mtx_obss_);
 	apbase proto = start ? to_apbase(boost::make_shared<ascii_proto_start>())
