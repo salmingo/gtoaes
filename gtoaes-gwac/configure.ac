@@ -9,6 +9,7 @@ AM_INIT_AUTOMAKE()
 
 AC_PROG_CXX
 AC_PROG_CC
+CXXFLAGS="-std=c++0x"
 
 AC_CHECK_FUNCS([mkdir ftruncate gettimeofday memset select socket strerror])
 AC_CHECK_HEADERS([unistd.h fcntl.h netdb.h sys/socket.h syslog.h limits.h])

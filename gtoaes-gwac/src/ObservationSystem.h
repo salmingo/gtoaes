@@ -363,6 +363,11 @@ public:
 	typedef boost::shared_ptr<mount_info>  mntnfptr;
 	typedef boost::shared_ptr<ascproto_object_info> planptr;
 
+	enum {
+		CAMERA_TYPE_FFOV = 1,
+		CAMERA_TYPE_JFOV
+	};
+
 	struct one_camera {
 		int			type;	//< 1: FFoV; 2: JFoV. FFoV的编号是5的倍数
 		tcpcptr     tcpcli;	//< 网络连接
@@ -372,7 +377,7 @@ public:
 
 	public:
 		one_camera(tcpcptr client, std::string cid) {
-			type = std::stoi(cid) % 5 == 0 ? 1 : 2;
+			type = std::stoi(cid) % 5 == 0 ? CAMERA_TYPE_FFOV : CAMERA_TYPE_JFOV;
 			tcpcli = client;
 			id = cid;
 			info = boost::make_shared<camera_info>();
@@ -398,6 +403,12 @@ public:
 		MSG_FLAT_RESLEW,				//< 消息: 为拍摄平场重新定位
 		MSG_WAIT_OVER,					//< 消息: 等待线程已经结束
 		MSG_OS_END						//< 消息: 观测系统结束消息占位符
+	};
+
+	enum EXPMODE {
+		EXPMODE_GUIDE,
+		EXPMODE_JOINT,
+		EXPMODE_ALL
 	};
 
 public:
@@ -581,6 +592,15 @@ private:
 	 * @param cid   相机标志. 为空时发送给所有相机
 	 */
 	void WriteToCamera(const char* data, const int n, const std::string& cid);
+	/*!
+	 * @brief 向相机发送控制指令
+	 * @param cmd   曝光指令
+	 * @param mode  模式
+	 *              0: 导星相机FFoV
+	 *              1: 拼接相机JFoV
+	 *              2: 所有相机
+	 */
+	void WriteToCamera(EXPOSE_COMMAND cmd, EXPMODE mode);
 	/*!
 	 * @brief 将观测目标信息发送给指定相机
 	 * @param nf   目标信息

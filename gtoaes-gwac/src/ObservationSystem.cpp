@@ -472,6 +472,30 @@ void ObservationSystem::WriteToCamera(const char* data, const int n, const std::
 	}
 }
 
+/*!
+ * @brief 向相机发送控制指令
+ * @param cmd   曝光指令
+ * @param mode  模式
+ *              0: 导星相机FFoV
+ *              1: 拼接相机JFoV
+ *              2: 所有相机
+ */
+void ObservationSystem::WriteToCamera(EXPOSE_COMMAND cmd, EXPMODE mode) {
+	mutex_lock lck(mutex_camera_);
+	camvec::iterator it;
+	int n;
+	const char *compacted = ascproto_->compact_expose(cmd, n);
+
+	for (it = tcp_camera_.begin(); it != tcp_camera_.end(); ++it) {
+		if ((mode == EXPMODE_ALL)	// 所有相机
+			|| ((*it)->type == CAMERA_TYPE_FFOV && mode == EXPMODE_GUIDE)	// 导星相机且导星模式
+			|| ((*it)->type == CAMERA_TYPE_JFOV && mode == EXPMODE_JOINT)) {	// 拼接相机且拼接模式
+				(*it)->tcpcli->write(compacted, n);
+				if (mode == EXPMODE_GUIDE) break;
+		}
+	}
+}
+
 // 发送目标信息到指定相机
 void ObservationSystem::WriteObject(boost::shared_ptr<ascproto_object_info> nf, const std::string &cid) {
 	mutex_lock lck(mutex_camera_);
@@ -674,9 +698,7 @@ void ObservationSystem::OnMountChanged(long param1, long param2) {
 			if (systate_.exposing) {
 				gLog.Write(NULL, LOG_WARN, "exposure<%s:%s> is interrupted for position error",
 						groupid_.c_str(), unitid_.c_str());
-				int n;
-				const char *compacted = ascproto_->compact_expose(EXPOSE_STOP, n);
-				WriteToCamera(compacted, n, "");
+				WriteToCamera(EXPOSE_STOP, EXPMODE_ALL);
 			}
 			else {
 				gLog.Write(NULL, LOG_WARN, "plan<%d> on <%s:%s> is interrupted for position error",
@@ -691,15 +713,18 @@ void ObservationSystem::OnMountChanged(long param1, long param2) {
 			gLog.Write("<%s:%s> %s exposure", groupid_.c_str(), unitid_.c_str(),
 					systate_.exposing ? "resume" : "start");
 			const char *compacted = ascproto_->compact_expose(EXPOSE_START, n);
-			WriteToCamera(compacted, n, "");
+			if (boost::iequals(obsplan_->obstype, "mon") || boost::iequals(obsplan_->obstype, "toa")) {
+				// 通知导星相机开始曝光
+				WriteToCamera(EXPOSE_START, EXPMODE_GUIDE);
+			}
+			else WriteToCamera(EXPOSE_START, EXPMODE_ALL);
 		}
 	}
 	else {// 导星到位
 		if (systate_.lighting) {
 			gLog.Write("<%s:%s> resume suspended exposure", groupid_.c_str(), unitid_.c_str());
-			int n;
-			const char* compacted = ascproto_->compact_expose(EXPOSE_START, n);
-			WriteToCamera(compacted, n, "");
+			// 导星功能仅在观测模式为"mon"或"toa"时有效
+			WriteToCamera(EXPOSE_START, EXPMODE_GUIDE);
 		}
 	}
 }
@@ -829,9 +854,7 @@ void ObservationSystem::OnFlatReslew(long param1, long param2) {
 			tcp_mount_->write(compacted, n);
 		}
 		else {// 在该位置继续尝试曝光
-                        int n;
-                        const char *compacted = ascproto_->compact_expose(EXPOSE_START, n);
-                        WriteToCamera(compacted, n, "");
+			WriteToCamera(EXPOSE_START, EXPMODE_ALL);
 		}
 	}
 }
@@ -1159,13 +1182,13 @@ void ObservationSystem::ProcessFWHM(boost::shared_ptr<ascproto_fwhm> proto) {
 void ObservationSystem::ProcessGuide(boost::shared_ptr<ascproto_guide> proto) {
 	mutex_lock lck(mutex_mount_);
 	if (!mntnf_.unique()) {
-//		gLog.Write(NULL, LOG_WARN, "guide<%s:%s> is rejected for mount is off-line",
-//				groupid_.c_str(), unitid_.c_str());
+		gLog.Write(NULL, LOG_WARN, "guide<%s:%s> is rejected for mount is off-line",
+				groupid_.c_str(), unitid_.c_str());
 	}
 	else if ((mntnf_->state >= MOUNT_ERROR && mntnf_->state != MOUNT_TRACKING)
 		|| (mntnf_->state < MOUNT_ERROR && (systate_.slewing || systate_.parking || systate_.guiding))) {
-//		gLog.Write(NULL, LOG_WARN, "guide<%s:%s> is rejected for not being in tracking mode",
-//				groupid_.c_str(), unitid_.c_str());
+		gLog.Write(NULL, LOG_WARN, "guide<%s:%s> is rejected for not being in tracking mode",
+				groupid_.c_str(), unitid_.c_str());
 	}
 	else if (boost::iequals(obsplan_->obstype, "mon") || boost::iequals(obsplan_->obstype, "toa")) {
 		/*
@@ -1182,6 +1205,7 @@ void ObservationSystem::ProcessGuide(boost::shared_ptr<ascproto_guide> proto) {
 		double era(0.0), edc(0.0);	// 导星量
 		bool bsky(true);	// 是否有天文坐标. 若有天文坐标, 可以执行同步零点
 		bool legal(true);	// 导星量合法标记
+		double dis(0.0);	// 大圆距离, 量纲: 角分
 
 		/* 计算导星量并评估其合法性 */
 		if (valid_ra(ora) && valid_dc(odc)) {// 目标位置有效
@@ -1192,6 +1216,7 @@ void ObservationSystem::ProcessGuide(boost::shared_ptr<ascproto_guide> proto) {
 				edc = odc - dc; // (era, edc)调整为导星量
 				if ((era = ra - ora) > 180.0) era -= 360.0;
 				else if (era < -180.0) era += 360.0;
+				dis = ats_->SphereAngle(ra * D2R, dc * D2R, ora * D2R, odc * D2R) * R2D;
 			}
 		}
 		else {// 导星协议: 数据可容纳范围9999角秒, 一次导星量不超过2.5度=9000角秒
@@ -1214,11 +1239,18 @@ void ObservationSystem::ProcessGuide(boost::shared_ptr<ascproto_guide> proto) {
 			prompt += ", " + fmt2.str() + ", " + fmt3.str();
 		}
 
-		if (legal && (fabs(era) > tguide || fabs(edc) > tguide)) {
+		if (legal && dis > tguide) {
 			 gLog.Write("%s guide<%s:%s>. %s", legal ? "legal" : "illegal",
 				groupid_.c_str(), unitid_.c_str(), prompt.c_str());
 		}
-		if (!legal || (fabs(era) <= tguide && fabs(edc) <= tguide)) seqGuide_ = 0;
+		/* 判定是否可以开始有效曝光: 通过天文定位, 判定转台已到达目标位置 */
+		if (legal
+			&& dis <= tguide
+			&& systate_.exposing < tcp_camera_.size()) {
+			WriteToCamera(EXPOSE_START, EXPMODE_JOINT);
+		}
+
+		if (!legal || dis <= tguide) seqGuide_ = 0;
 		else if (++seqGuide_ >= 2) {
 			bool bguide(true);
 			ptime now = second_clock::universal_time();
@@ -1257,8 +1289,7 @@ void ObservationSystem::ProcessGuide(boost::shared_ptr<ascproto_guide> proto) {
 					gLog.Write("guide<%s:%s>: <%.1f, %.1f>[arcsec]%s", groupid_.c_str(), unitid_.c_str(), era, edc,
 							systate_.lighting ? ". pause exposure furthmore as light required" : "");
 					if (systate_.lighting) {// 暂停曝光
-						const char *compacted = ascproto_->compact_expose(EXPOSE_PAUSE, n);
-						WriteToCamera(compacted, n, "");
+						WriteToCamera(EXPOSE_PAUSE, EXPMODE_ALL);
 					}
 					systate_.begin_guide();
 					const char *compacted = mntproto_->compact_guide(groupid_, unitid_, int(era), int(edc), n);
