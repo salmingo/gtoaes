@@ -88,12 +88,13 @@ void ObservationSystem::SetDBUrl(const char *dburl) {
 }
 
 bool ObservationSystem::CoupleMount(TcpCPtr ptr) {
-	if (tcpc_mount_.use_count()) {
+	if (tcpc_mount_.use_count() && tcpc_mount_ != ptr) {
 		_gLog.Write(LOG_WARN, "ObservationSystem::CoupleMount()",
 				"OBSS[%s:%s] had correlated mount", gid_.c_str(), uid_.c_str());
 
 		return false;
 	}
+	else if (tcpc_mount_ == ptr) return true;
 	else {
 		_gLog.Write("Mount[%s:%s] was on-line", gid_.c_str(), uid_.c_str());
 		const TCPClient::CBSlot &slot = boost::bind(&ObservationSystem::receive_mount, this, _1, _2);
@@ -107,11 +108,12 @@ bool ObservationSystem::CoupleMount(TcpCPtr ptr) {
 }
 
 bool ObservationSystem::CoupleCamera(TcpCPtr ptr, const string& cid) {
-	if (tcpc_camera_.use_count()) {
+	if (tcpc_camera_.use_count() && tcpc_camera_ != ptr) {
 		_gLog.Write(LOG_WARN, "ObservationSystem::CoupleCamera()",
 				"OBSS[%s:%s] had correlated camera", gid_.c_str(), uid_.c_str());
 		return false;
 	}
+	else if (tcpc_camera_ == ptr) return true;
 	else {
 		_gLog.Write("Camera[%s:%s:%s] was on-line", gid_.c_str(), uid_.c_str(), cid.c_str());
 		const TCPClient::CBSlot &slot = boost::bind(&ObservationSystem::receive_camera, this, _1, _2);
@@ -132,7 +134,6 @@ bool ObservationSystem::CoupleCamera(TcpCPtr ptr, const string& cid) {
 }
 
 int ObservationSystem::CoupleFocus(TcpCPtr ptr, const string& cid) {
-//	if (!tcpc_camera_.unique()) return 2;
 	if (!tcpc_camera_.unique()) {
 		cid_ = cid;
 		nfCamera_ = boost::make_shared<CameraInfo>();
