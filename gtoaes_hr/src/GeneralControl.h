@@ -32,7 +32,6 @@ protected:
 		PEER_CLIENT,
 		PEER_MOUNT,
 		PEER_CAMERA,
-		PEER_FOCUS,
 		PEER_ANNEX
 	};
 
@@ -49,28 +48,34 @@ protected:
 
 	struct EnvInfo {// 工作环境信息
 		string gid;			//< 组标志
-		TcpCPtr tcpclient;	//< 网络连接
-		int mode;		//< 系统工作模式
+		double siteLon;		//< 测站经度, 东经为正
+		double siteLat;		//< 测站纬度
+		double siteAlt;		//< 测站海拔
+		TcpCPtr tcpconn;	//< 网络连接
 		int slitState;	//< 天窗状态
+		int slitTry;	//< 天窗操作尝试次数
 		int rain;		//< 降水
+		int odt;		//< 天光信息
 
 	public:
 		EnvInfo() {
-			mode       = OBSS_ERROR;
-			slitState  = SS_ERROR;
-			rain       = RAIN_ERROR;
+			siteLon = siteLat = siteAlt = 0.0;
+			slitState	= SS_ERROR;
+			slitTry	= 0;
+			rain	= RAIN_ERROR;
+			odt		= 0;
 		}
 
 		EnvInfo* Get(const string &_gid) {
 			return gid == _gid ? this : NULL;
 		}
 
-		EnvInfo* Get(TcpCPtr client) {
-			return (tcpclient == client) ? this : NULL;
+		EnvInfo* Get(TcpCPtr connection) {
+			return (tcpconn == connection) ? this : NULL;
 		}
 
-		EnvInfo* Get(TCPClient* client) {
-			return (tcpclient.get() == client) ? this : NULL;
+		EnvInfo* Get(TCPClient* connection) {
+			return (tcpconn.get() == connection) ? this : NULL;
 		}
 	};
 
@@ -103,7 +108,6 @@ protected:
 	boost::mutex mtx_obss_;	//< 互斥锁: 观测系统
 	ObsSysVec obss_;		//< 观测系统集合
 	threadptr thrd_obss_;	//< 线程: 观测系统有效性
-	int odType_;			//< 时段标志
 	/* 数据库 */
 	boost::shared_ptr<DBCurl> dbt_; //< 数据库访问接口
 	/* 观测计划 */
@@ -215,10 +219,11 @@ protected:
 	 * @brief 改变天窗状态
 	 */
 	void change_slitstate(const string &gid, int state);
+	void change_slitstate(EnvInfo *nfenv);
 	/*!
 	 * @brief 改变降水状态
 	 */
-	void change_skystate();
+	void change_skystate(EnvInfo *nfenv);
 	/* 网络通信 */
 //////////////////////////////////////////////////////////////////////////////
 

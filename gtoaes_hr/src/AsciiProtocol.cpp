@@ -242,6 +242,34 @@ const char *AsciiProtocol::CompactPark(int &n) {
 	return output_compacted(APTYPE_PARK, n);
 }
 
+const char *AsciiProtocol::CompactGuide(apguide proto, int &n) {
+	if (!proto.use_count()
+			|| !(valid_ra(proto->ra) && valid_dec(proto->dec)))
+		return NULL;
+
+	string output;
+	compact_base(to_apbase(proto), output);
+	// 真实指向位置或位置偏差
+	join_kv(output, "ra",       proto->ra);
+	join_kv(output, "dec",      proto->dec);
+	// 当(ra,dec)和目标位置同时有效时, (ra,dec)指代真实位置而不是位置偏差
+	if (valid_ra(proto->objra) && valid_dec(proto->objdec)) {
+		join_kv(output, "objra",    proto->objra);
+		join_kv(output, "objdec",   proto->objdec);
+	}
+
+	return output_compacted(output, n);
+}
+
+const char *AsciiProtocol::CompactGuide(double ra, double dec, int &n) {
+	string output = APTYPE_GUIDE;
+	output += " ";
+	join_kv(output, "ra",    ra);
+	join_kv(output, "dec",   dec);
+
+	return output_compacted(output, n);
+}
+
 const char *AsciiProtocol::CompactAbortSlew(apabortslew proto, int &n) {
 	if (!proto.use_count()) return NULL;
 
@@ -457,6 +485,7 @@ apbase AsciiProtocol::Resolve(const char *rcvd) {
 		if (iequals(type, APTYPE_TAKIMG))        proto = resolve_takeimg(kvs);
 		else if (iequals(type, APTYPE_TRACK))    proto = resolve_track(kvs);
 	}
+	else if (iequals(type, APTYPE_GUIDE))    proto = resolve_guide(kvs);
 	else if (iequals(type, APTYPE_CAMERA))   proto = resolve_camera(kvs);
 	else if (iequals(type, APTYPE_EXPOSE))   proto = resolve_expose(kvs);
 	else if (iequals(type, APTYPE_LOADPLAN)) proto = resolve_loadplan(kvs);
@@ -563,6 +592,22 @@ apbase AsciiProtocol::resolve_track(likv &kvs) {
 
 apbase AsciiProtocol::resolve_park(likv &kvs) {
 	return to_apbase(boost::make_shared<ascii_proto_park>());
+}
+
+apbase AsciiProtocol::resolve_guide(likv &kvs) {
+	apguide proto = boost::make_shared<ascii_proto_guide>();
+	string keyword;
+
+	for (likv::iterator it = kvs.begin(); it != kvs.end(); ++it) {// 遍历键值对
+		keyword = (*it).keyword;
+		// 识别关键字
+		if      (iequals(keyword, "ra"))       proto->ra     = stod((*it).value);
+		else if (iequals(keyword, "dec"))      proto->dec    = stod((*it).value);
+		else if (iequals(keyword, "objra"))    proto->objra  = stod((*it).value);
+		else if (iequals(keyword, "objdec"))   proto->objdec = stod((*it).value);
+	}
+
+	return to_apbase(proto);
 }
 
 apbase AsciiProtocol::resolve_abortslew(likv &kvs) {

@@ -432,14 +432,15 @@ void ObservationSystem::on_new_protocol(const long, const long) {
 	else if (iequals(type, APTYPE_STOP))     process_autobs  (false);
 	else if (iequals(type, APTYPE_ABTPLAN))  interrupt_plan  ();
 	else if (iequals(type, APTYPE_HOMESYNC)) process_homesync(from_apbase<ascii_proto_home_sync>(proto));
-	else if (iequals(type, APTYPE_PRESLEW))  process_preslew ();
+//	else if (iequals(type, APTYPE_PRESLEW))  process_preslew ();
 	else if (!nfObss_->automode) {
-		if      (iequals(type, APTYPE_START))    process_autobs     ();
-		else if (iequals(type, APTYPE_ABTSLEW))  process_abortslew  ();
-		else if (iequals(type, APTYPE_ABTIMG))   process_abortimage ();
-		else if (iequals(type, APTYPE_SLEWTO))   process_slewto     (from_apbase<ascii_proto_slewto>      (proto));
-		else if (iequals(type, APTYPE_TRACK))    process_track      (from_apbase<ascii_proto_track>       (proto));
-		else if (iequals(type, APTYPE_TAKIMG))   process_takeimage  (from_apbase<ascii_proto_take_image>  (proto));
+		if      (iequals(type, APTYPE_GUIDE))       process_guide      (from_apbase<ascii_proto_guide>  (proto));
+		else if (iequals(type, APTYPE_START))       process_autobs     ();
+		else if (iequals(type, APTYPE_ABTSLEW))     process_abortslew  ();
+		else if (iequals(type, APTYPE_ABTIMG))      process_abortimage ();
+		else if (iequals(type, APTYPE_SLEWTO))      process_slewto     (from_apbase<ascii_proto_slewto>      (proto));
+		else if (iequals(type, APTYPE_TRACK))       process_track      (from_apbase<ascii_proto_track>       (proto));
+		else if (iequals(type, APTYPE_TAKIMG))      process_takeimage  (from_apbase<ascii_proto_take_image>  (proto));
 	}
 	else {
 		_gLog.Write(LOG_WARN, NULL, "illegal protocol[%s] for OBSS[%s:%s] was rejected",
@@ -541,6 +542,48 @@ void ObservationSystem::process_park() {
 				nfMount_->state == MOUNT_PARKING ? "Parking" : "Parked");
 	}
 #endif
+}
+
+void ObservationSystem::process_guide(apguide proto) {
+	if (!nfMount_.unique()) {
+		_gLog.Write(LOG_WARN, NULL, "%s[%s:%s] was rejected for mount was off-line",
+				APTYPE_GUIDE, gid_.c_str(), uid_.c_str());
+	}
+	else if (nfMount_->state != MOUNT_TRACKING) {
+		_gLog.Write(LOG_WARN, NULL, "%s[%s:%s] was rejected for mount was not in tracking mode",
+				APTYPE_GUIDE, gid_.c_str(), uid_.c_str());
+	}
+	else {
+		/*
+		 * 怀柔系统不执行导星. 当偏差量超出阈值时, 执行同步零点.
+		 * 同步零点后, 不触发执行重新定位.
+		 * 即设计目标是: 同步零点后, 下次指向精度可以达到期望
+		 */
+		double tsame(AS2D);	// 指向一致性
+		double tguide(2.0);	// 导星阈值
+		double ra(proto->ra), dec(proto->dec);
+		double ora(proto->objra), odec(proto->objdec);
+		double era, edec;
+		double dis(0.0);
+		bool legal(false);
+		if (valid_ra(ora) && valid_dec(odec)) {
+			era  = fabs(ora  - nfMount_->ora);
+			edec = fabs(odec - nfMount_->odc);
+			if (era > 180.0) era = 360.0 - era;
+			legal = era <= tsame && edec <= tsame;
+		}
+		if (legal) dis = ats_.SphereAngle(ra * D2R, dec * D2R, ora * D2R, odec * D2R) * R2D;
+		if (dis >= tguide) {
+			_gLog.Write("home_sync<%s:%s>: Object[%.4f, %.4f]degrees ==> Sky[%.4f, %.4f]degrees",
+					gid_.c_str(), uid_.c_str(),
+					ora, odec,
+					ra, dec);
+
+			int n;
+			const char *compacted = ascproto_->CompactHomeSync(ra, dec, n);
+			tcpc_mount_->Write(compacted, n);
+		}
+	}
 }
 
 void ObservationSystem::process_preslew() {
@@ -781,6 +824,9 @@ void ObservationSystem::thread_acqplan() {
 			if (plan.use_count()) {
 				plan_now_ = plan;
 				PostMessage(MSG_NEW_PLAN);
+			}
+			else {// 无计划时复位望远镜
+				process_park();
 			}
 		}
 		else if (plan_now_.use_count()) {// 检查当前计划有效性

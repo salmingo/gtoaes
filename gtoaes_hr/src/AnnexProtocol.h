@@ -22,11 +22,11 @@ using std::string;
 /*------------------ ASCII协议基类 ------------------*/
 struct annexproto_base {
 	string type;//< 协议类型
+	string gid;
 };
 typedef boost::shared_ptr<annexproto_base> annpbase;
 
 struct annexproto_rain : public annexproto_base {// 雨量
-	string gid;
 	int value;	//< 降水量
 
 public:
@@ -38,7 +38,6 @@ public:
 typedef boost::shared_ptr<annexproto_rain> annprain;
 
 struct annexproto_slit : public annexproto_base {// 天窗指令与状态
-	string gid;
 	int cmd;	//< 控制指令
 	int state;	//< 天窗状态
 
@@ -52,7 +51,6 @@ public:
 typedef boost::shared_ptr<annexproto_slit> annpslit;
 
 struct annexproto_focus : public annexproto_base {// 焦点位置
-	string gid;		//< 组标志
 	string uid;		//< 单元标志
 	string cid;		//< 相机标志
 	int position;	//< 焦点位置, 量纲: 微米
@@ -66,7 +64,6 @@ public:
 typedef boost::shared_ptr<annexproto_focus> annpfocus;
 
 struct annexproto_fwhm : public annexproto_base {// 半高全宽
-	string gid;		//< 组标志
 	string uid;		//< 单元标志
 	string cid;		//< 相机标志
 	double value;	//< 半高全宽, 量纲: 像素

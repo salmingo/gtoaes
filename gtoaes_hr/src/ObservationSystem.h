@@ -76,6 +76,7 @@ public:
 	 */
 	bool HasArrived() {
 		double err1, err2;
+		double tArrive(1.0);
 		if (coorsys == COORSYS_ALTAZ) {
 			err1 = fabs(azi - oaz);
 			err2 = fabs(alt - oal);
@@ -86,7 +87,7 @@ public:
 		}
 		if (err1 > 180) err1 = 360 - err1;
 		if (coorsys == COORSYS_GUIDE) return (!(err1 < 0.1 && err2 < 0.1));
-		else return (err1 < 0.5 && err2 < 0.5);
+		else return (err1 < tArrive && err2 < tArrive);
 	}
 
 	/*!
@@ -423,6 +424,13 @@ protected:
 	 * 该指令将触发停止观测计划
 	 */
 	void process_park();
+	/*!
+	 * @brief 导星
+	 * @param proto 通信协议
+	 * @note
+	 * 依据导星量, 生成发送给转台的导星指令或同步零点指令
+	 */
+	void process_guide(apguide proto);
 	/*!
 	 * @brief 预指向, 消除长时间静止带来的阻尼
 	 */

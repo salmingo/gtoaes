@@ -30,7 +30,6 @@ using namespace boost::placeholders;
 
 GeneralControl::GeneralControl() {
 	param_.LoadFile(gConfigPath);
-	odType_ = 0;
 }
 
 GeneralControl::~GeneralControl() {
@@ -118,7 +117,7 @@ void GeneralControl::network_accept(const TcpCPtr &client, const long ptr) {
 		client->UseBuffer();
 		// 在EnvInfo中维护网络连接
 		EnvInfo nfenv;
-		nfenv.tcpclient = client;
+		nfenv.tcpconn = client;
 		nfEnv_.push_back(nfenv);
 	}
 }
@@ -242,7 +241,7 @@ void GeneralControl::command_slit(const string &gid, int cmd) {
 			_gLog.Write("try to %s dome[%s] slit", cmd == SC_CLOSE ? "close" : "open", (*it).gid.c_str());
 			int n;
 			const char *s = annproto_->CompactSlit((*it).gid, cmd, n);
-			(*it).tcpclient->Write(s, n);
+			(*it).tcpconn->Write(s, n);
 		}
 	}
 }
@@ -300,6 +299,13 @@ void GeneralControl::process_protocol_annex(annpbase proto, TCPClient* client) {
 	for (EnvInfoVec::iterator it = nfEnv_.begin(); it != nfEnv_.end(); ++it) {
 		if ((nfenv = (*it).Get(client)) != NULL) break;
 	}
+	if (nfenv->gid.empty()) {
+		ObssTraitPtr trait = param_.GetObservationSystemTrait(proto->gid);
+		nfenv->gid = proto->gid;
+		nfenv->siteLon = trait->lon;
+		nfenv->siteLat = trait->lat;
+		nfenv->siteAlt = trait->alt;
+	}
 
 	// 依据协议类型分类处理
 	string type = proto->type;
@@ -308,7 +314,7 @@ void GeneralControl::process_protocol_annex(annpbase proto, TCPClient* client) {
 		annprain rain = static_pointer_cast<annexproto_rain>(proto);
 		if (rain->value != nfenv->rain) {
 			nfenv->rain = rain->value;
-			change_skystate();
+			change_skystate(nfenv);
 
 			if (dbt_.unique()) {
 				string tzt = to_iso_string(second_clock::local_time());
@@ -326,7 +332,7 @@ void GeneralControl::process_protocol_annex(annpbase proto, TCPClient* client) {
 
 		if (slit->state != nfenv->slitState) {// 当天窗状态发生变化时的关联操作
 			nfenv->slitState = slit->state;
-			change_slitstate(slit->gid, slit->state);
+			change_slitstate(nfenv);
 
 			if (dbt_.unique()) {
 				string tzt = to_iso_string(second_clock::local_time());
@@ -341,7 +347,7 @@ void GeneralControl::process_protocol_annex(annpbase proto, TCPClient* client) {
 		string cid = focus->cid;
 		ObsSysPtr obss = find_obss(gid, uid);
 		if (obss.use_count()) {
-			int rslt = obss->CoupleFocus(nfenv->tcpclient, cid);
+			int rslt = obss->CoupleFocus(nfenv->tcpconn, cid);
 			if (rslt == 1)  obss->NotifyFocus(cid, focus->position);
 			else if (!rslt) client->Close();
 		}
@@ -372,18 +378,34 @@ void GeneralControl::change_slitstate(const string &gid, int state) {
 //	}
 }
 
-void GeneralControl::change_skystate() {
-	EnvInfoVec::iterator it;
-	for (it = nfEnv_.begin(); it != nfEnv_.end() && (*it).rain != RAIN_RAINY; ++it);
-	int rain = it == nfEnv_.end() ? RAIN_CLEAR : RAIN_RAINY;
+void GeneralControl::change_slitstate(EnvInfo *nfenv) {
+	int state = nfenv->slitState;
+	if (state < SS_ERROR || state > SS_FREEZE) {
+		_gLog.Write(LOG_WARN, "GeneralControl::change_slitstate()", "undefined slit state[=%d]", state);
+		nfenv->tcpconn->Close();
+	}
+	else {
+		_gLog.Write("SLIT<%s> was %s", nfenv->gid.c_str(), SLIT_STATE_STR[state]);
 
-	_gLog.Write("Sky was %s", rain == RAIN_CLEAR ? "Clear" : "Rainy");
+		// 当天窗状态发生变化时, 望远镜复位, 触发终止观测计划
+		mutex_lock lck(mtx_obss_);
+		string gid, uid;
+		apbase proto = to_apbase(boost::make_shared<ascii_proto_park>());
+		for (ObsSysVec::iterator it = obss_.begin(); it != obss_.end(); ++it) {
+			(*it)->GetID(gid, uid);
+			if (nfenv->gid == gid) (*it)->NotifyAsciiProtocol(proto);
+		}
+	}
+}
+
+void GeneralControl::change_skystate(EnvInfo *nfenv) {
+	int rain = nfenv->rain == 0 ? RAIN_CLEAR : RAIN_RAINY;
+
+	_gLog.Write("Sky<%s> was %s", nfenv->gid.c_str(), rain == RAIN_CLEAR ? "Clear" : "Rainy");
 	/*
-	 * - 当发生降水时, 关闭天窗
 	 * - 当停止降水时, 继续观测
 	 */
-	if (rain == RAIN_RAINY) command_slit("", SC_CLOSE);
-	else if (odType_ >= OD_FLAT && obsplan_.size()) command_slit("", SC_OPEN);
+	if (rain == RAIN_CLEAR && nfenv->odt >= OD_FLAT && obsplan_.size()) command_slit(nfenv->gid, SC_OPEN);
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -472,7 +494,7 @@ void GeneralControl::on_close_annex(const long addr, const long) {
 	else
 		_gLog.Write("connection for annexed devices was broken");
 
-	if (nfenv->tcpclient.use_count() > 1) {
+	if (nfenv->tcpconn.use_count() > 1) {
 		mutex_lock lck1(mtx_obss_);
 		for (ObsSysVec::iterator itobss = obss_.begin(); itobss != obss_.end(); ++itobss) {
 			(*itobss)->DecoupleFocus();
@@ -524,7 +546,7 @@ ObsSysPtr GeneralControl::find_obss(const string &gid, const string &uid, bool c
 			if (param_.dbEnable) obss->SetDBUrl(param_.dbUrl.c_str());
 			/* 启动天文时段计算 */
 			if (!thrd_odt_.unique()) {
-				ats_.SetSite(trait->lon, trait->lat, trait->alt, trait->timezone);
+//				ats_.SetSite(trait->lon, trait->lat, trait->alt, trait->timezone);
 				thrd_odt_.reset(new boost::thread(boost::bind(&GeneralControl::thread_odt, this)));
 			}
 		}
@@ -710,11 +732,11 @@ ObsPlanPtr GeneralControl::acquire_new_plan(const string& gid, const string& uid
 	}
 
 	if (nfenv) {
-		int odt(odType_);
-		int slit_state = nfenv->slitState;
+		int odt(nfenv->odt);
+		int slit_state(nfenv->slitState);
 		if (!(((slit_state != SS_OPEN  && slit_state != SS_CLOSED)		// 天窗状态不是全开或全关
-					|| (odt == OD_DAY  && slit_state != SS_CLOSED)		// 白天 : 天窗没有完全关闭
-					|| (odt >= OD_FLAT && slit_state != SS_OPEN)))) {	// 夜间 : 天窗没有完全打开
+					|| (slit_state != SS_CLOSED && odt == OD_DAY)		// 白天 : 天窗没有完全关闭
+					|| (slit_state != SS_OPEN && odt >= OD_FLAT)))) {	// 夜间 : 天窗没有完全打开
 			int iimgtyp, td1, td2;
 			string gid1, uid1;
 			ptime now = second_clock::universal_time();
@@ -725,9 +747,9 @@ ObsPlanPtr GeneralControl::acquire_new_plan(const string& gid, const string& uid
 				gid1 = (*it)->gid;
 				uid1 = (*it)->uid;
 				if (((gid1 == gid && uid1 == uid) || (uid1.empty() && (gid1.empty() || gid1 == gid)))	// 标志一致
-					&& !((odt == OD_DAY && iimgtyp > IMGTYPE_DARK)			// 白天: 图像类型需要天光
-						|| (odt == OD_FLAT && iimgtyp != IMGTYPE_FLAT)		// 平场: 非平场类型
-						|| (odt == OD_NIGHT && iimgtyp < IMGTYPE_OBJECT))	// 夜间: 非夜间类型
+					&& !((iimgtyp > IMGTYPE_DARK && odt == OD_DAY)			// 白天: 图像类型需要天光
+						|| (iimgtyp != IMGTYPE_FLAT && odt == OD_FLAT)		// 平场: 非平场类型
+						|| (iimgtyp < IMGTYPE_OBJECT && odt == OD_NIGHT))	// 夜间: 非夜间类型
 					&& (*it)->state == OBSPLAN_CAT) { // 计划类型: 入库
 					td1 = ((*it)->btime - now).total_seconds();
 					td2 = ((*it)->etime - now).total_seconds();
@@ -800,42 +822,38 @@ void GeneralControl::thread_odt() {
 		/* 计算观测时段类型 */
 		ats_.SetUTC(day.year(), day.month(), daynew, (tmday.hours() + tmday.minutes() / 60.0) / 24.0);
 		ats_.SunPosition(ra, dec);
-		lmst = ats_.LocalMeanSiderealTime();
-		ats_.Eq2Horizon(lmst - ra, dec, azi, alt);
-		alt *= R2D;
-		odt = alt > odtDay ? OD_DAY : (alt < odtNight ? OD_NIGHT : OD_FLAT);
-		if (odt!= odType_) {
-			_gLog.Write("Enter %s duration", odt == OD_NIGHT ? "Night"
-					: (odt == OD_FLAT ? "Flat field" : "Daylight"));
-			if (odt == OD_DAY && odType_ != 0) {
-				mutex_lock lck(mtx_obss_);
-				apbase proto = to_apbase(boost::make_shared<ascii_proto_park>());
-				for (ObsSysVec::iterator it = obss_.begin(); it != obss_.end(); ++it) {
-					(*it)->NotifyAsciiProtocol(proto);
+		{// 遍历环境变量, 处理天光变化
+			mutex_lock lck_env;
+			int slitcmd;
+			for (EnvInfoVec::iterator it = nfEnv_.begin(); it != nfEnv_.end(); ++it) {
+				if (it->gid.empty()) continue;	// 还没有收到信息, 还没有填充测站位置
+				ats_.SetSite(it->siteLon, it->siteLat,it->siteAlt, 8);
+				lmst = ats_.LocalMeanSiderealTime();
+				ats_.Eq2Horizon(lmst - ra, dec, azi, alt);
+				alt *= R2D;
+				odt = alt > odtDay ? OD_DAY : (alt < odtNight ? OD_NIGHT : OD_FLAT);
+
+				if (odt != it->odt) {
+					_gLog.Write("[Group: %s] Enter %s duration", it->gid.c_str(),
+							odt == OD_NIGHT ? "Night"
+							: (odt == OD_FLAT ? "Flat field" : "Daylight"));
+
+					it->odt = odt;
+					it->slitTry = 0;
+				}
+				slitcmd = -1;
+				if (odt == OD_DAY && it->slitState == SS_OPEN) slitcmd = SC_CLOSE;
+				else if (odt > OD_DAY && !it->rain && it->slitState == SS_CLOSED && obsplan_.size()) slitcmd = SC_OPEN;
+				if (slitcmd != -1) {
+					if (++it->slitTry <= 3) command_slit(it->gid, slitcmd);
+					else if (it->slitTry == 4) {
+						_gLog.Write(LOG_FAULT, NULL, "Failed to %s dome[%s] slit",
+								slitcmd == SC_CLOSE ? "Close" : "Open",
+										it->gid.c_str());
+					}
 				}
 			}
-			odType_ = odt;
-
-//			if (nfEnv_.slitEnable && odt == OD_DAY && nfEnv_.slitState == SS_OPEN)
-//				command_slit(SC_CLOSE);
 		}
-		/*
-		 * @date 2019-10-25
-		 * HN
-		 * 由于环境监测状态不完备（风速、云量、雷电等），工作逻辑变更为：
-		 * - 手动打开天窗
-		 * - 监测雨量，自动关闭天窗
-		 * @date 2019-11-03
-		 * - 取消天窗控制功能
-		 * @date 2019-11-18
-		 * - 夜间进入白天, 当天窗状态判定为全开时, 尝试3次关闭天窗
-		 */
-//		if (nfEnv_.slitEnable) {
-//			cmd = -1;
-//			if (odt == OD_DAY && nfEnv_.slitState == SS_OPEN && ++delay > 1 && delay < 5) cmd = SC_CLOSE;
-//			else if (odt > OD_DAY && !nfEnv_.rain && nfEnv_.slitState == SS_CLOSED && nfEnv_.mode == OC_START && obsplan_.size()) cmd = SC_OPEN;
-//			if (cmd != -1) command_slit(cmd);
-//		}
 
 		/**
 		 * @date 2019-11-02

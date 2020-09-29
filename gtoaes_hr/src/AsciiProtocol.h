@@ -27,6 +27,7 @@ using std::list;
 #define APTYPE_SLEWTO	"slewto"
 #define APTYPE_TRACK	"track"
 #define APTYPE_PARK		"park"
+#define APTYPE_GUIDE	"guide"
 #define APTYPE_ABTSLEW	"abort_slew"
 #define APTYPE_PRESLEW	"preslew"
 #define APTYPE_MOUNT	"mount"
@@ -151,6 +152,21 @@ public:
 	}
 };
 typedef boost::shared_ptr<ascii_proto_park> appark;
+
+struct ascii_proto_guide : public ascii_proto_base {// 导星
+	double ra;		//< 指向位置对应的天球坐标-赤经, 或赤经偏差, 量纲: 角度
+	double dec;		//< 指向位置对应的天球坐标-赤纬, 或赤纬偏差, 量纲: 角度
+	double objra;	//< 目标赤经, 量纲: 角度
+	double objdec;	//< 目标赤纬, 量纲: 角度
+
+public:
+	ascii_proto_guide() {
+		type = APTYPE_GUIDE;
+		ra = dec = 1E30;
+		objra = objdec = 1E30;
+	}
+};
+typedef boost::shared_ptr<ascii_proto_guide> apguide;
 
 struct ascii_proto_abort_slew : public ascii_proto_base {// 中止指向
 public:
@@ -465,6 +481,11 @@ public:
 	const char *CompactPark(appark proto, int &n);
 	const char *CompactPark(int &n);
 	/**
+	 * @brief 封装导星指令
+	 */
+	const char *CompactGuide(apguide proto, int &n);
+	const char *CompactGuide(double ra, double dec, int &n);
+	/**
 	 * @brief 封装中止指向指令
 	 */
 	const char *CompactAbortSlew(apabortslew proto, int &n);
@@ -582,6 +603,10 @@ protected:
 	 * @brief 复位至安全位置, 到位后保持静止
 	 */
 	apbase resolve_park(likv &kvs);
+	/**
+	 * @brief 导星, 微量修正当前指向位置
+	 */
+	apbase resolve_guide(likv &kvs);
 	/**
 	 * @brief 中止指向过程
 	 */

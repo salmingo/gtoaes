@@ -154,11 +154,6 @@ enum {// 观测时间分类
 	OD_NIGHT	//< 夜间, 可执行非平场计划
 };
 
-enum {// 观测控制系统控制指令
-	OC_START = 1,	//< 启动自动观测流程
-	OC_STOP		//< 中止自动观测流程
-};
-
 enum {// 雨量传感
 	RAIN_CLEAR,	//< 晴朗
 	RAIN_RAINY,	//< 有雨

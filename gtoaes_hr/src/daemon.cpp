@@ -8,9 +8,10 @@
 #include <fcntl.h>
 #include <stdio.h>
 #include <unistd.h>
-#include <boost/bind.hpp>
-
+//#include <boost/bind/bind.hpp>
 #include "daemon.h"
+
+//using namespace boost::placeholders;
 
 #define write_lock(fd, offset, whence, len) lock_reg(fd, F_SETLK, F_WRLCK, offset, whence, len)
 #define FILE_MODE (S_IRWXU | S_IRWXG | S_IRWXO)
