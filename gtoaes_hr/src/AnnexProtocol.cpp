@@ -104,19 +104,20 @@ annpbase AnnexProtocol::Resolve(const char* rcvd) {
 	if      ((pos = sref.find(type_rain)) > 0) {
 		// 格式: g#<group_id>rain<value>%
 		annprain body = boost::make_shared<annexproto_rain>();
-		pos1 = pos - unit_len;
-		for (i = prefix.length(); i < pos1; ++i) body->gid += sref.at(i);
+		for (i = prefix.length(); i < pos; ++i) body->gid += sref.at(i);
 		for (i = pos + type_rain.length(), j = 0; sref.at(i) != sep; ++i, ++j) buff[j] = sref.at(i);
 		buff[j] = '\0';
 		body->value = atoi(buff);
+#ifdef NDEBUG
+		_gLog.Write("Rain<%s> value = %d", body->gid.c_str(), body->value);
+#endif
 		proto = static_pointer_cast<annexproto_base>(body);
 	}
 	else if ((pos = sref.find(type_slit)) > 0) {
 		annpslit body = boost::make_shared<annexproto_slit>();
 		// HN, 单圆顶系统. 格式: g#slit<value>%
 		// 怀柔: 每圆顶对应2望远镜. 格式: g#<group_id>slit<value>%
-		pos1 = pos - unit_len;
-		for (i = prefix.length(); i < pos1; ++i) body->gid += sref.at(i);
+		for (i = prefix.length(); i < pos; ++i) body->gid += sref.at(i);
 		/* 每望远镜对应一圆顶
 		// 格式: g#<group_id><unit_id>slit<value>%
 		pos1 = pos - unit_len;
@@ -126,6 +127,9 @@ annpbase AnnexProtocol::Resolve(const char* rcvd) {
 		for (j = 0, i = pos + type_slit.length(); i < n && j < slit_len; ++i, ++j) buff[j] = sref.at(i);
 		buff[j] = '\0';
 		body->state = atoi(buff);
+#ifdef NDEBUG
+		_gLog.Write("Dome slit<%s> state = %d", body->gid.c_str(), body->state);
+#endif
 		proto = static_pointer_cast<annexproto_base>(body);
 	}
 	else if ((pos = sref.find(type_focus)) > 0) {
@@ -138,6 +142,9 @@ annpbase AnnexProtocol::Resolve(const char* rcvd) {
 		for (j = 0; i < n && j < focus_len; ++i, ++j) buff[j] = sref.at(i);
 		buff[j] = '\0';
 		body->position = atoi(buff);
+#ifdef NDEBUG
+		_gLog.Write("Focuser<%s:%s:%s> position = %d", body->gid.c_str(), body->uid.c_str(), body->cid.c_str(), body->position);
+#endif
 		proto = static_pointer_cast<annexproto_base>(body);
 	}
 

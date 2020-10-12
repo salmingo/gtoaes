@@ -102,13 +102,13 @@ public:
 
 		ptree& node2 = pt.add("NTP", "");
 		node2.add("<xmlattr>.Enable",        false);
-		node2.add("<xmlattr>.IPv4",          "172.28.1.3");
-		node2.add("MaxDiff.<xmlattr>.Value", 100);
+		node2.add("<xmlattr>.IPv4",          "192.168.10.111");
+		node2.add("MaxDiff.<xmlattr>.Value", 1000);
 		node2.add("<xmlcomment>", "Difference is in millisec");
 
 		ptree& node3 = pt.add("Database", "");
 		node3.add("<xmlattr>.Enable",    false);
-		node3.add("URL.<xmlattr>.Addr",  "http://172.28.8.8:8080/gwebend/");
+		node3.add("URL.<xmlattr>.Addr",  "http://192.168.1.20:8080/gwebend/");
 
 		ptree& node4 = pt.add("ObsPlan", "");
 		node4.add("Location.<xmlattr>.Path",   "/home/wata/plan");
@@ -116,16 +116,16 @@ public:
 
 		ptree& node5 = pt.add("ObservationSytemTrait", "");
 		node5.add("ID.<xmlattr>.Group",          "001");
-		node5.add("Geosite.<xmlattr>.Name",      "Xinglong");
-		node5.add("Geosite.<xmlattr>.Lon",       117.57454166666667);
-		node5.add("Geosite.<xmlattr>.Lat",       40.395933333333333);
-		node5.add("Geosite.<xmlattr>.Alt",       900);
+		node5.add("Geosite.<xmlattr>.Name",      "HuaiRou");
+		node5.add("Geosite.<xmlattr>.Lon",       116.66056);
+		node5.add("Geosite.<xmlattr>.Lat",        40.35444);
+		node5.add("Geosite.<xmlattr>.Alt",       70);
 		node5.add("Geosite.<xmlattr>.Timezone",  8);
 
 		ptree& node6 = pt.add("MountLimit", "");
 		node6.add("ID.<xmlattr>.Group",   "001");
 		node6.add("ID.<xmlattr>.Unit",    "");
-		node6.add("Ele.<xmlattr>.Min",    10.0);
+		node6.add("Ele.<xmlattr>.Min",    25.0);
 
 		ptree& node7 = pt.add("SunCenterAlt", "");
 		node7.add("Daylight.<xmlattr>.Value", -6);
