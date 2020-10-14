@@ -235,6 +235,8 @@ struct ascii_proto_object : public ascii_proto_base {// 目标信息与曝光参
 	string objname;		//< 目标名
 	string btime;		//< 曝光起始时间, 格式: YYYYMMDDThhmmss
 	string etime;		//< 曝光结束时间
+	double  raobj;		//< 目标赤经, 量纲: 角度
+	double  decobj;		//< 目标赤纬, 量纲: 角度
 	/* 曝光控制信息 */
 	string imgtype;		//< 图像类型
 	string sabbr;		//< 目标名称缩略字, 用于文件名标志图像类型
@@ -246,6 +248,7 @@ public:
 	ascii_proto_object() {
 		type   = APTYPE_OBJECT;
 		plan_type = 0;
+		raobj = decobj = -1000.0;
 		expdur = 0.0;
 		frmcnt = -1;
 		iimgtyp = IMGTYPE_ERROR;

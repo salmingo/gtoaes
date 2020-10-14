@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <version>0.1</version>
-<date>20201012T020421</date>
+<date>20201013T084814</date>
 <NetworkServer>
     <Client Port="4010"/>
     <Mount Port="4011"/>
@@ -15,7 +15,7 @@
     <URL Addr="http://192.168.1.20:8080/gwebend/"/>
 </Database>
 <ObsPlan>
-    <Location Path="/home/wata/plan"/>
+    <Location Path="/Users/lxm/Public"/>
     <Check LocalTime="17:00"/>
 </ObsPlan>
 <ObservationSytemTrait>

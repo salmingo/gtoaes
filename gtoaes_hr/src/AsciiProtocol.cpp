@@ -383,6 +383,8 @@ const char *AsciiProtocol::CompactObject(apobject proto, int &n) {
 	join_kv(output, "objname",    proto->objname);
 	join_kv(output, "btime",      proto->btime);
 	join_kv(output, "etime",      proto->etime);
+	if (valid_ra(proto->raobj))   join_kv(output, "objra", proto->raobj);
+	if (valid_dec(proto->decobj)) join_kv(output, "objdec", proto->decobj);
 	join_kv(output, "imgtype",    proto->imgtype);
 	join_kv(output, "sabbr",      proto->sabbr);
 	join_kv(output, "iimgtyp",    proto->iimgtyp);
@@ -719,7 +721,11 @@ apbase AsciiProtocol::resolve_object(likv &kvs) {
 			if      (iequals(keyword, "imgtype"))     proto->imgtype   = (*it).value;
 			else if (iequals(keyword, "iimgtyp"))     proto->iimgtyp   = stoi((*it).value);
 		}
-		else if (iequals(keyword, "objname"))         proto->objname   = (*it).value;
+		else if ((ch = keyword[0] == 'o')) {
+			if (iequals(keyword, "objname"))          proto->objname   = (*it).value;
+			else if (iequals(keyword, "objra"))       proto->raobj     = stod((*it).value);
+			else if (iequals(keyword, "objdec"))      proto->decobj    = stod((*it).value);
+		}
 		else if (ch == 'p') {
 			if      (iequals(keyword, "plan_sn"))     proto->plan_sn   = (*it).value;
 			else if (iequals(keyword, "plan_type"))   proto->plan_type = stoi((*it).value);

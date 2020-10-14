@@ -754,6 +754,10 @@ void ObservationSystem::notify_obsplan() {
 	proto->objname   = plan_now_->objname;
 	proto->btime     = to_iso_string(plan_now_->btime);
 	proto->etime     = to_iso_string(plan_now_->etime);
+	if (plan_now_->coorsys == 2) {
+		proto->raobj     = plan_now_->coor1;
+		proto->decobj    = plan_now_->coor2;
+	}
 	proto->imgtype   = plan_now_->imgtype;
 	proto->sabbr     = plan_now_->sabbr;
 	proto->iimgtyp   = plan_now_->iimgtyp;
