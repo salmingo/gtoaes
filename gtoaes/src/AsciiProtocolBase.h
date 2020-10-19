@@ -44,19 +44,22 @@ struct ascii_proto_base {
 	likv kvs;		//< 未定义关键字的键值对
 
 public:
-	void set_id(const string& _1) {
-		gid = _1;
+	virtual ~ascii_proto_base() {
+		kvs.clear();
 	}
 
-	void set_id(const string& _1, const string& _2) {
-		gid = _1;
-		uid = _2;
-	}
+	ascii_proto_base &operator=(const ascii_proto_base &other) {
+		if (this != &other) {
+			type = other.type;
+			utc  = other.utc;
+			gid  = other.gid;
+			uid  = other.uid;
+			cid  = other.cid;
 
-	void set_id(const string& _1, const string& _2, const string& _3) {
-		gid = _1;
-		uid = _2;
-		cid = _3;
+			for (likv::const_iterator it = other.kvs.begin(); it != other.kvs.end(); ++it)
+				kvs.push_back(*it);
+		}
+		return *this;
 	}
 };
 typedef boost::shared_ptr<ascii_proto_base> apbase;

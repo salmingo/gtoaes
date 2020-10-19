@@ -25,14 +25,12 @@ typedef list<string> listring;	//< string列表
 #define APTYPE_REG		"register"
 #define APTYPE_UNREG	"unregister"
 #define APTYPE_OBSITE	"obsite"
-#define APTYPE_OBSSTYPE	"obsstype"
 #define APTYPE_START	"start"
 #define APTYPE_STOP		"stop"
 #define APTYPE_ENABLE	"enable"
 #define APTYPE_DISABLE	"disable"
-#define APTYPE_RELOAD	"reload"
-#define APTYPE_REBOOT	"reboot"
 #define APTYPE_APPPLAN	"append_plan"
+#define APTYPE_APPGWAC	"append_gwac"
 #define APTYPE_ABTPLAN	"abort_plan"
 #define APTYPE_CHKPLAN	"check_plan"
 #define APTYPE_PLAN		"plan"
@@ -59,7 +57,6 @@ typedef list<string> listring;	//< string列表
 
 /*--------------------------------- 声明通信协议 ---------------------------------*/
 struct ascii_proto_reg : public ascii_proto_base {// 注册设备/用户
-
 public:
 	ascii_proto_reg() {
 		type = APTYPE_REG;
@@ -77,7 +74,7 @@ typedef boost::shared_ptr<ascii_proto_unreg> apunreg;
 
 struct ascii_proto_obsite : public ascii_proto_base {// 测站位置
 	string  sitename;	//< 测站名称
-	double	lgt;		//< 地理经度, 量纲: 角度
+	double	lon;		//< 地理经度, 量纲: 角度
 	double	lat;		//< 地理纬度, 量纲: 角度
 	double	alt;		//< 海拔, 量纲: 米
 	int timezone;		//< 时区, 量纲: 小时
@@ -85,22 +82,11 @@ struct ascii_proto_obsite : public ascii_proto_base {// 测站位置
 public:
 	ascii_proto_obsite() {
 		type = APTYPE_OBSITE;
-		lgt = lat = alt = 0.0;
+		lon = lat = alt = 0.0;
 		timezone = 8;
 	}
 };
 typedef boost::shared_ptr<ascii_proto_obsite> apobsite;
-
-struct ascii_proto_obsstype : public ascii_proto_base {// 观测系统类型
-	int	obsstype;	//< 观测系统类型. 通知相机观测系统类型, 区别创建目录及文件名和文件头
-
-public:
-	ascii_proto_obsstype() {
-		type     = APTYPE_OBSSTYPE;
-		obsstype = INT_MIN;
-	}
-};
-typedef boost::shared_ptr<ascii_proto_obsstype> apobsst;
 
 struct ascii_proto_start : public ascii_proto_base {// 启动自动观测流程
 public:
@@ -134,22 +120,6 @@ public:
 };
 typedef boost::shared_ptr<ascii_proto_disable> apdisable;
 
-struct ascii_proto_reload : public ascii_proto_base {// 重新加载参数
-public:
-	ascii_proto_reload() {
-		type = APTYPE_RELOAD;
-	}
-};
-typedef boost::shared_ptr<ascii_proto_reload> apreload;
-
-struct ascii_proto_reboot : public ascii_proto_base {// 重新启动软件
-public:
-	ascii_proto_reboot() {
-		type = APTYPE_REBOOT;
-	}
-};
-typedef boost::shared_ptr<ascii_proto_reboot> apreboot;
-
 /* 观测计划 */
 /*!
  * @struct ascii_proto_append_plan 观测计划
@@ -157,7 +127,7 @@ typedef boost::shared_ptr<ascii_proto_reboot> apreboot;
  * 复用为通信协议和观测计划
  */
 struct ascii_proto_append_plan : public ascii_proto_base {
-	int		plan_sn;	//< 计划编号
+	string	plan_sn;	//< 计划编号
 	string	plan_time;	//< 计划生成时间
 	string	plan_type;	//< 计划类型
 	string	obstype;	//< 观测类型
@@ -174,13 +144,18 @@ struct ascii_proto_append_plan : public ascii_proto_base {
 	double	objdec;		//< 目标赤纬, 量纲: 角度
 	double	objepoch;	//< 目标位置坐标系
 	string	imgtype;	//< 图像类型
-	//<< 单望远镜多相机观测系统, 各相机使用不同参数
-	vector<string>		filter;		//< 滤光片名称或滤光片组合名称
-	double				expdur;		//< 曝光时间或曝光时间组合
-	double				delay;		//< 帧间延时, 量纲: 秒
-	int					frmcnt;		//< 总帧数
-	int					loopcnt;	//< 滤光片循环次数
-	//>> 单望远镜多相机观测系统, 各相机使用不同参数
+	/*------------ 曝光参数 -----------*/
+	//<< 单相机系统. 多相机时, 参数适用所有相机
+	string	filter;		//< 滤光片名称或滤光片组合名称
+	double	expdur;		//< 曝光时间或曝光时间组合
+	double	delay;		//< 帧间延时, 量纲: 秒
+	int		frmcnt;		//< 总帧数
+	//>> 单相机系统
+	//<< 多相机系统
+	//>> 多相机系统
+	/*------------ 曝光参数 -----------*/
+	int		loopcnt;	//< 曝光参数循环次数
+
 	int		priority;	//< 优先级
 	string	begin_time;	//< 曝光开始时间
 	string	end_time;	//< 曝光结束时间
@@ -189,7 +164,6 @@ struct ascii_proto_append_plan : public ascii_proto_base {
 public:
 	ascii_proto_append_plan() {
 		type = APTYPE_APPPLAN;
-		plan_sn = -1;
 		ra = dec = 1E30;
 		epoch = 2000.0;
 		objra = objdec = 1E30;
@@ -234,13 +208,10 @@ public:
 			begin_time	= ap.begin_time;
 			end_time	= ap.end_time;
 			pair_id		= ap.pair_id;
+			filter		= ap.filter;
 			expdur		= ap.expdur;
 			delay		= ap.delay;
 			frmcnt		= ap.frmcnt;
-
-			for (i = 0, n = ap.filter.size(); i < n; ++i) {// 复制滤光片
-				filter.push_back(ap.filter[i]);
-			}
 		}
 		return *this;
 	}
@@ -248,44 +219,33 @@ public:
 typedef boost::shared_ptr<ascii_proto_append_plan> apappplan;
 
 struct ascii_proto_abort_plan : public ascii_proto_base {// 中止并删除指定计划
-	int plan_sn;	//< 计划编号
+	string plan_sn;	//< 计划编号
 
 public:
 	ascii_proto_abort_plan() {
 		type = APTYPE_ABTPLAN;
-		plan_sn = -1;
 	}
 };
 typedef boost::shared_ptr<ascii_proto_abort_plan> apabtplan;
 
 struct ascii_proto_check_plan : public ascii_proto_base {// 检查关机计划执行状态
-	int plan_sn;	//< 计划编号
+	string plan_sn;	//< 计划编号
 
 public:
 	ascii_proto_check_plan() {
 		type = APTYPE_CHKPLAN;
-		plan_sn = -1;
 	}
 };
 typedef boost::shared_ptr<ascii_proto_check_plan> apchkplan;
 
 struct ascii_proto_plan : public ascii_proto_base {// 观测计划执行状态
-	int plan_sn;	//< 计划编号
+	string plan_sn;	//< 计划编号
 	int state;		//< 状态
 
 public:
 	ascii_proto_plan() {
 		type    = APTYPE_PLAN;
-		plan_sn = INT_MIN;
 		state   = 0;
-	}
-
-	ascii_proto_plan& operator=(const ascii_proto_append_plan &plan) {
-		plan_sn = plan.plan_sn;
-		gid     = plan.gid;
-		uid     = plan.uid;
-
-		return *this;
 	}
 };
 typedef boost::shared_ptr<ascii_proto_plan> applan;
@@ -442,7 +402,7 @@ typedef boost::shared_ptr<ascii_proto_abort_image> apabortimg;
 /* 相机 -- 底层 */
 struct ascii_proto_object : public ascii_proto_base {// 目标信息与曝光参数
 	/* 观测目标描述信息 */
-	int    plan_sn;		//< 计划编号, [0, INT_MAX - 1). INT_MAX保留用于手动
+	string plan_sn;		//< 计划编号
 	string plan_time;	//< 计划生成时间
 	string plan_type;	//< 计划类型
 	string observer;	//< 观测者
@@ -469,14 +429,12 @@ struct ascii_proto_object : public ascii_proto_base {// 目标信息与曝光参
 	double delay;		//< 帧间延迟, 量纲: 秒
 	int    frmcnt;		//< 曝光帧数
 	int    loopcnt;		//< 滤光片循环次数
-	int    ifilter;		//< 滤光片索引
 	int    ifrm;		//< 曝光起始索引
 	int    iloop;		//< 循环索引
 
 public:
 	ascii_proto_object() {
 		type = APTYPE_OBJECT;
-		plan_sn = INT_MIN;
 		ra = dec = 1E30;
 		epoch = 2000.0;
 		objra = objdec = 1E30;
@@ -487,7 +445,6 @@ public:
 		delay    = 0.0;
 		frmcnt   = 0;
 		loopcnt  = 1;
-		ifilter  = 0;
 		ifrm     = 0;
 		iloop    = 0;
 	}
@@ -519,7 +476,6 @@ public:
 		delay		= plan.delay;
 		frmcnt		= plan.frmcnt;
 		loopcnt     = plan.loopcnt;
-		ifilter		= 0;
 		ifrm		= 0;
 		iloop       = 0;
 	}
@@ -557,7 +513,6 @@ struct ascii_proto_camera : public ascii_proto_base {// 相机信息
 	double	delay;		//< 延迟时间, 量纲: 秒
 	int		frmcnt;		//< 总帧数
 	int		loopcnt;	//< 循环次数
-	int		ifilter;	//< 滤光片索引
 	int		ifrm;		//< 帧编号
 	int		iloop;		//< 循环索引
 
@@ -573,7 +528,6 @@ public:
 		delay   = 0.0;
 		frmcnt  = 0;
 		loopcnt = 0;
-		ifilter = 0;
 		ifrm    = 0;
 		iloop   = 0;
 	}
@@ -585,7 +539,6 @@ public:
 		delay   = obj.delay;
 		frmcnt  = obj.frmcnt;
 		loopcnt = obj.loopcnt;
-		ifilter = obj.ifilter;
 		ifrm    = obj.ifrm;
 		iloop   = obj.iloop;
 
@@ -632,8 +585,8 @@ struct ascii_proto_obss : public ascii_proto_base {
 	};
 
 	int state;		//< 系统工作状态
-	int op_sn;		//< 在执行观测计划编号
-	string op_time;	//< 计划开始执行时间
+	string plan_sn;	//< 在执行观测计划编号
+	string op_time;	//< 计划开始执行时间, CCYY-MM-DDThh:mm:ss.ssssss
 	int mount;		//< 望远镜工作状态
 	vector<camera_state> camera;	//< 相机工作状态
 
@@ -641,10 +594,8 @@ public:
 	ascii_proto_obss() {
 		type = APTYPE_OBSS;
 		state   = -1;
-		op_sn   = -1;
 		mount   = -1;
 	}
-
 };
 typedef boost::shared_ptr<ascii_proto_obss> apobss;
 
@@ -761,10 +712,6 @@ public:
 	 */
 	const char *CompactObsSite(apobsite proto, int &n);
 	/*!
-	 * @brief 封装终端参数
-	 */
-	const char *CompactObssType(int type, int &n);
-	/*!
 	 * @brief 封装开机自检
 	 */
 	const char *CompactStart(apstart proto, int &n);
@@ -780,14 +727,6 @@ public:
 	 * @brief 禁用设备
 	 */
 	const char *CompactDisable(apdisable proto, int &n);
-	/*!
-	 * @brief 重新加载参数
-	 */
-	const char *CompactReload(apreload proto, int &n);
-	/*!
-	 * @brief 重新启动程序
-	 */
-	const char *CompactReboot(apreboot proto, int &n);
 	/*!
 	 * @brief 观测系统工作状态
 	 */
@@ -953,10 +892,6 @@ protected:
 	 * @brief 解析测站参数
 	 */
 	apbase resolve_obsite(likv &kvs);
-	/*!
-	 * @brief 解析观测系统类型
-	 */
-	apbase resolve_obsstype(likv &kvs);
 	/**
 	 * @brief 开机自检
 	 * */

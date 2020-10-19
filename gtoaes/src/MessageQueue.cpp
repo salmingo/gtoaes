@@ -1,76 +1,76 @@
-/*
- * @file MessageQueue.cpp 定义文件, 基于boost::interprocess::ipc::message_queue封装消息队列
+/*!
+ * @file MessageQueue.h 声明文件, 基于boost::interprocess::ipc::message_queue封装消息队列
  * @version 0.2
  * @date 2017-10-02
+ * - 优化消息队列实现方式
+ * @date 2020-10-01
+ * - 优化
  */
 
-#include <stdio.h>
-#include <boost/bind.hpp>
-#include <boost/make_shared.hpp>
+#include <boost/bind/bind.hpp>
 #include "MessageQueue.h"
-#include "GLog.h"
 
-#define MQFUNC_SIZE		1024
-int MessageQueue::id_ = 0;
+using namespace boost::placeholders;
+using namespace boost::interprocess;
 
-MessageQueue::MessageQueue() {
-	funcs_.reset(new CallbackFunc[MQFUNC_SIZE]);
+MessageQueue::MessageQueue()
+	: szFunc_ (128) {
+	funcs_.reset(new CallbackFunc[szFunc_]);
 }
 
 MessageQueue::~MessageQueue() {
+	Stop();
 }
 
-bool MessageQueue::RegisterMessage(const long id, const CBSlot& slot) {
-	long pos(id - MSG_USER);
-	bool rslt = pos >= 0 && pos < MQFUNC_SIZE;
-
-	if (rslt) funcs_[pos].connect(slot);
-	return rslt;
-}
-
-void MessageQueue::PostMessage(const long id, const long p1, const long p2) {
-	if (mq_.unique()) {
-		MSG_UNIT msg(id, p1, p2);
-		mq_->send(&msg, sizeof(MSG_UNIT), 1);
-	}
-}
-
-void MessageQueue::SendMessage(const long id, const long p1, const long p2) {
-	if (mq_.unique()) {
-		MSG_UNIT msg(id, p1, p2);
-		mq_->send(&msg, sizeof(MSG_UNIT), 10);
-	}
-}
-
-bool MessageQueue::Start(const char* name) {
-	if (thrdmsg_.unique()) return true;
+bool MessageQueue::Start(const char *name) {
+	if (thrd_msg_.unique()) return true;
 
 	try {
-		char mqname[200];
-		sprintf (mqname, "%s_%d", name, ++id_);
-		message_queue::remove(mqname);
-		mq_.reset(new message_queue(boost::interprocess::create_only, mqname, 1024, sizeof(MSG_UNIT)));
-		thrdmsg_.reset(new boost::thread(boost::bind(&MessageQueue::thread_message, this)));
-
+		MQ::remove(name);
+		mqptr_.reset(new MQ(create_only, name, szFunc_, sizeof(Message)));
+		thrd_msg_.reset(new boost::thread(boost::bind(&MessageQueue::thread_message, this)));
 		return true;
 	}
-	catch(boost::interprocess::interprocess_exception& ex) {
-		_gLog->Write(LOG_FAULT, "MessageQueue::Start", "failed to create message queue [%s] for %s",
-				name, ex.what());
+	catch(interprocess_exception &ex) {
+		errmsg_ = ex.what();
 		return false;
 	}
 }
 
 void MessageQueue::Stop() {
-	if (thrdmsg_.unique()) {
+	if (thrd_msg_.unique()) {
 		SendMessage(MSG_QUIT);
-		thrdmsg_->join();
-		thrdmsg_.reset();
+		thrd_msg_->join();
+		thrd_msg_.reset();
 	}
-	if (mq_.unique()) mq_.reset();
 }
 
-void MessageQueue::interrupt_thread(threadptr& thrd) {
+bool MessageQueue::RegisterMessage(const long id, const CBSlot& slot) {
+	long pos(id - MSG_USER);
+	bool rslt = pos >= 0 && pos < szFunc_;
+	if (rslt) funcs_[pos].connect(slot);
+	return rslt;
+}
+
+void MessageQueue::PostMessage(const long id, const long par1, const long par2) {
+	if (mqptr_.unique()) {
+		Message msg(id, par1, par2);
+		mqptr_->send(&msg, sizeof(Message), 1);
+	}
+}
+
+void MessageQueue::SendMessage(const long id, const long par1, const long par2) {
+	if (mqptr_.unique()) {
+		Message msg(id, par1, par2);
+		mqptr_->send(&msg, sizeof(Message), 10);
+	}
+}
+
+const char *MessageQueue::GetError() {
+	return errmsg_.c_str();
+}
+
+void MessageQueue::interrupt_thread(ThreadPtr& thrd) {
 	if (thrd.unique()) {
 		thrd->interrupt();
 		thrd->join();
@@ -79,15 +79,16 @@ void MessageQueue::interrupt_thread(threadptr& thrd) {
 }
 
 void MessageQueue::thread_message() {
-	MSG_UNIT msg;
-	message_queue::size_type szrcv;
-	message_queue::size_type szmsg = sizeof(MSG_UNIT);
+	Message msg;
+	MQ::size_type szrcv;
+	MQ::size_type szmsg = sizeof(Message);
 	uint32_t priority;
 	long pos;
 
 	do {
-		mq_->receive(&msg, szmsg, szrcv, priority);
-		if ((pos = msg.id - MSG_USER) >= 0 && pos < MQFUNC_SIZE)
-			(funcs_[pos])(msg.par1, msg.par2);
+		mqptr_->receive(&msg, szmsg, szrcv, priority);
+		if ((pos = msg.id - MSG_USER) >= 0) {
+			if (pos < szFunc_) (funcs_[pos])(msg.par1, msg.par2);
+		}
 	} while(msg.id != MSG_QUIT);
 }
