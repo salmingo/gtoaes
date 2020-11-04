@@ -560,7 +560,7 @@ void ObservationSystem::process_guide(apguide proto) {
 		 * 即设计目标是: 同步零点后, 下次指向精度可以达到期望
 		 */
 		double tsame(AS2D);	// 指向一致性
-		double tguide(2.0);	// 导星阈值
+		double tguide(2.0);	// 导星阈值, 量纲: 角度
 		double ra(proto->ra), dec(proto->dec);
 		double ora(proto->objra), odec(proto->objdec);
 		double era, edec;

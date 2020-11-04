@@ -15,26 +15,44 @@ using std::string;
  * @struct OBSSParam 观测系统参数
  */
 struct OBSSParam {
-	string		gid;		/// 组标志
-	OBSS_TYPE	type;		/// 观测系统类型
-	string		sitename;	/// 测站名称
-	double		sitelon;	/// 地理经度, 东经为正, 量纲: 角度
-	double 		sitelat;	/// 地理纬度, 北纬为正, 量纲: 角度
-	double		sitealt;	/// 海拔高度, 量纲: 米
-	int			timezone;	/// 时区, 量纲: 小时
-	double		elelimit;	/// 水平限位, 最低仰角, 量纲: 角度
+	string		gid;		///< 组标志
+	string		siteName;	///< 测站名称
+	double		siteLon;	///< 地理经度, 东经为正, 量纲: 角度
+	double 		siteLat;	///< 地理纬度, 北纬为正, 量纲: 角度
+	double		siteAlt;	///< 海拔高度, 量纲: 米
+	int			timeZone;	///< 时区, 量纲: 小时
+	double		eleLimit;	///< 水平限位, 最低仰角, 量纲: 角度
+	/* 天窗与随动圆顶 */
+	bool		useDomeFollow;	///< 使用: 随动圆顶
+	bool		useDomeSlit;	///< 使用: 天窗
+	int			opDomeSlit;		///< 执行对象: 圆顶、天窗
+	/* 镜盖 */
+	bool		useMirrorCover;	///< 使用: 镜盖
+	int			opMirrorCover;	///< 执行对象: 镜盖
+	/* 转台 */
+	bool		useHomeSync;	///< 使用: 同步零点
+	bool		useGuide;		///< 使用: 导星
+	/* 调焦 */
+	bool		useAutoFocus;	///< 使用: 自动调焦
+	int			opAutoFocus;	///< 执行对象: 自动调焦
+	/* 消旋 */
+	bool		useTermDerot;	///< 使用: 终端消旋
+	int			opTermDerot;	///< 执行对象
 
 public:
 	OBSSParam & operator=(const OBSSParam &other) {
 		if (this != &other) {
 			gid			= other.gid;
-			type		= other.type;
-			sitename	= other.sitename;
-			sitelon		= other.sitelon;
-			sitelat		= other.sitelat;
-			sitealt		= other.sitealt;
-			timezone	= other.timezone;
-			elelimit	= other.elelimit;
+			siteName	= other.siteName;
+			siteLon		= other.siteLon;
+			siteLat		= other.siteLat;
+			siteAlt		= other.siteAlt;
+			timeZone	= other.timeZone;
+			eleLimit	= other.eleLimit;
+			useHomeSync = false;
+			useGuide    = false;
+			useAutoFocus= false;
+			opAutoFocus = -1;
 		}
 		return *this;
 	}
@@ -53,19 +71,11 @@ public:
 public:
 	/* 网络服务端口 */
 	int portClient;
-	/**
-	 * portTele:        通用望远镜
-	 * portMount:       GWAC转台
-	 * portTeleAnnex:   通用望远镜附属设备
-	 * portMountAnnex:  GWAC转台附属设备端口, 镜盖+调焦+天窗
-	 * portCameraAnnex: GWAC相机附属设备端口, 温控+真空
-	 */
-	int portTele;
 	int portMount;
 	int portCamera;
-	int portTeleAnnex;
 	int portMountAnnex;
 	int portCameraAnnex;
+
 	/* NTP时间服务器 */
 	bool ntpEnable;
 	string ntpHost;

@@ -5,9 +5,10 @@
  */
 
 #include "ObservationSystemGWAC.h"
+
+#include "../Parameter.h"
 #include "GLog.h"
 #include "ADefine.h"
-#include "parameter.h"
 
 using namespace AstroUtil;
 using namespace boost;

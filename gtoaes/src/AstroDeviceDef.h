@@ -2,108 +2,288 @@
  * @file AstroDeviceDef.h 声明与光学天文望远镜观测相关的状态、指令、类型等相关的常量
  * @version 0.1
  * @date 2017-11-24
+ * @version 0.2
+ * @date 2020-11-01
+ * @note
+ * - 重新定义enum类型名称和数值
+ * - 重新定义enum类型对应字符串的获取方式
  */
 
 #ifndef ASTRO_DEVICE_DEFINE_H_
 #define ASTRO_DEVICE_DEFINE_H_
 
+#include <string.h>
+
 /* 状态与指令 */
-enum TELESCOPE_STATE {// 转台状态
-	TELESCOPE_ERROR,		//< 错误
-	TELESCOPE_FREEZE,		//< 静止
-	TELESCOPE_HOMING,		//< 找零
-	TELESCOPE_HOMED,		//< 找到零点
-	TELESCOPE_PARKING,		//< 复位
-	TELESCOPE_PARKED,		//< 已复位
-	TELESCOPE_SLEWING,		//< 指向
-	TELESCOPE_TRACKING		//< 跟踪
+/*!
+ * @class StateMount 定义: 转台状态
+ */
+class StateMount {
+protected:
+	static const char* desc[];
+
+public:
+	enum {// 转台状态
+		ERROR,		//< 错误
+		FREEZE,		//< 静止
+		HOMING,		//< 找零
+		HOMED,		//< 找到零点
+		PARKING,	//< 复位
+		PARKED,		//< 已复位
+		SLEWING,	//< 指向
+		TRACKING	//< 跟踪
+	};
+
+public:
+	static const char* ToString(int state) {
+		if (state < ERROR || state > TRACKING)
+			state = TRACKING + 1;
+		return desc[state];
+	}
+};
+const char* StateMount::desc[] = {
+	"Error",
+	"Freeze",
+	"Homing",
+	"Homed",
+	"Parking",
+	"Parked",
+	"Slewing",
+	"Tracking",
+	"Unknown"
 };
 
-enum MIRRORCOVER_COMMAND {// 镜盖指令
-	MCC_CLOSE,	//< 关闭镜盖
-	MCC_OPEN	//< 打开镜盖
+/*!
+ * @class CommandMirrorCover 定义: 镜盖指令
+ */
+class CommandMirrorCover {
+protected:
+	static const char* desc[];
+
+public:
+	enum {// 镜盖指令
+		CLOSE,	//< 关闭镜盖
+		OPEN	//< 打开镜盖
+	};
+
+public:
+	static const char* ToString(int cmd) {
+		if (cmd < CLOSE || cmd > OPEN)
+			cmd = OPEN + 1;
+		return desc[cmd];
+	}
+};
+const char* CommandMirrorCover::desc[] = {
+	"close",
+	"open",
+	"unknown"
 };
 
-enum MIRRORCOVER_STATE {// 镜盖状态
-	MC_ERROR,		// 错误
-	MC_OPENING,		// 正在打开
-	MC_OPEN,		// 已打开
-	MC_CLOSING,		// 正在关闭
-	MC_CLOSED		// 已关闭
-};
+typedef CommandMirrorCover CommandMC;
 
-static const char *MIRRORCOVER_STATE_STR[] = {
+/*!
+ * @class StateMirrorCover 定义: 镜盖状态
+ */
+class StateMirrorCover {
+protected:
+	static const char* desc[];
+
+public:
+	enum {// 镜盖状态
+		ERROR,		// 错误
+		OPENING,	// 正在打开
+		OPEN,		// 已打开
+		CLOSING,	// 正在关闭
+		CLOSED		// 已关闭
+	};
+
+public:
+	static const char* ToString(int state) {
+		if (state < ERROR || state > CLOSED)
+			state = CLOSED + 1;
+		return desc[state];
+	}
+};
+const char* StateMirrorCover::desc[] = {
 	"Error",
 	"Opening",
 	"Opened",
 	"Closing",
-	"Closed"
+	"Closed",
+	"Unknown"
 };
+typedef StateMirrorCover StateMC;
 
-enum FOCUSER_STATE {// 调焦器状态
-	FOCUS_ERROR,	//< 错误
-	FOCUS_FREEZE,	//< 静止
-	FOCUS_MOVING	//< 定位
-};
-
-enum IMAGE_TYPE {// 图像类型
-	IMGTYPE_ERROR,		// 错误
-	IMGTYPE_BIAS,		// 本底
-	IMGTYPE_DARK,		// 暗场
-	IMGTYPE_FLAT,		// 平场
-	IMGTYPE_OBJECT,		// 目标
-	IMGTYPE_FOCUS		// 调焦
-};
-
-enum EXPOSE_COMMAND {// 相机控制指令
-	EXPOSE_INIT,	//< 初始化
-	EXPOSE_START,	//< 开始曝光
-	EXPOSE_STOP,	//< 中止曝光
-	EXPOSE_PAUSE,	//< 暂停曝光
-	EXPOSE_RESUME	//< EXPOSE_START分支: 当处理暂停过程中收到开始曝光指令, 指令记录为RESUME
-};
-
-enum CAMCTL_STATUS {// 相机工作状态
-	CAMCTL_ERROR       = 0x0,	// 错误
-	CAMCTL_IDLE        = 0x1,	// 空闲
-	CAMCTL_EXPOSE      = 0x2,	// 曝光过程中
-	CAMCTL_COMPLETE    = 0x4,	// 已完成曝光
-	CAMCTL_ABORT       = 0x8,	// 已中止曝光
-	CAMCTL_PAUSE       = 0x10,	// 已暂停曝光
-	CAMCTL_WAIT_TIME   = 0x20,	// 等待曝光流传起始时间到达
-	CAMCTL_WAIT_SYNC   = 0x40,	// 完成曝光, 等待其它相机完成曝光
-	CAMCTL_WAIT_FLAT   = 0x80	// 平场间等待--等待转台重新指向
-};
-
-/**
- * @brief 观测系统类型
- * 以维护观测计划的方式区分观测系统
- * - 观测计划直接投递到观测系统, 打断正在执行的计划
- * - 观测计划以队列形式存储在内存中
+/*!
+ * @class StateFocus 调焦器工作状态
  */
-enum OBSS_TYPE {// 观测系统类型
-	OBSST_UNKNOWN,	//< 初始化
-	OBSST_NORMAL,	//< 类型1: 观测计划直接投递到观测系统, 并中断当前正在执行的计划
-	OBSST_QUEUE		//< 类型2: 以队列形式维护观测计划
+class StateFocus {
+protected:
+	static const char* desc[];
+
+public:
+	enum {// 调焦器状态
+		ERROR,	//< 错误
+		FREEZE,	//< 静止
+		MOVING	//< 定位
+	};
+
+public:
+	static const char* ToString(int state) {
+		if (state < ERROR || state > MOVING)
+			state = MOVING + 1;
+		return desc[state];
+	}
+};
+const char* StateFocus::desc[] = {
+	"Error",
+	"Freeze",
+	"Moving"
+	"Unknown"
 };
 
-enum OBSS_STATUS {// 观测系统状态
-	OBSS_ERROR,		//< 错误
-	OBSS_RUN,		//< 准备就绪, 可以处理指令及观测计划
-	OBSS_STOP		//< 停用
+/*!
+ * @class TypeImage 定义: 图像类型
+ */
+class TypeImage {
+protected:
+	static const char* desc[];
+
+public:
+	enum {// 图像类型
+		ERROR,	// 错误
+		BIAS,	// 本底
+		DARK,	// 暗场
+		FLAT,	// 平场
+		OBJECT,	// 目标
+		LIGHT,	// 天光
+		FOCUS	// 调焦
+	};
+
+public:
+	static const char* ToString(int type) {
+		if (type < BIAS || type > FOCUS)
+			type = 0;
+		return desc[type];
+	}
+
+	static int FromString(const char* imgtype) {
+		int type;
+		for (type = BIAS; type <= FOCUS && strcmp(desc[type], imgtype); ++type);
+		return type > FOCUS ? ERROR : type;
+	}
+};
+const char* TypeImage::desc[] = {
+	"ERROR",
+	"BIAS",
+	"DARK"
+	"FLAT",
+	"OBJECT"
+	"LIGHT",
+	"FOCUS"
 };
 
-enum OBSPLAN_STATUS {// 观测计划状态
-	OBSPLAN_CAT,		// 入库
-	OBSPLAN_INT,		// 中断
-	OBSPLAN_WAIT,		// 等待执行
-	OBSPLAN_RUN,		// 执行中
-	OBSPLAN_OVER,		// 完成
-	OBSPLAN_ABANDON,	// 自动抛弃
-	OBSPLAN_DELETE		// 手动删除
-};
+/*!
+ * @class CommandExpose 定义: 相机控制接口级的控制指令
+ */
+class CommandExpose {
+protected:
+	static const char* desc[];
 
-static const char *OBSPLAN_STATUS_STR[] = {
+public:
+	enum {// 相机控制指令
+		ERROR,	//< 错误
+		INIT,	//< 初始化
+		START,	//< 开始曝光
+		STOP,	//< 中止曝光
+		PAUSE,	//< 暂停曝光
+		RESUME	//< EXPOSE_START分支: 当处理暂停过程中收到开始曝光指令, 指令记录为RESUME
+	};
+
+public:
+	static const char* ToString(int cmd) {
+		if (cmd < INIT || cmd > RESUME)
+			cmd = ERROR;
+		return desc[cmd];
+	}
+};
+const char* CommandExpose::desc[] = {
+	"unknown",
+	"init",
+	"start",
+	"stop",
+	"pause",
+	"resume"
+};
+typedef CommandExpose CommandExp;
+
+/*!
+ * @class StateCameraControl 定义: 相机控制接口工作状态
+ */
+class StateCameraControl {
+protected:
+	static const char* desc[];
+
+public:
+	enum {// 相机工作状态
+		ERROR,			// 错误
+		IDLE,			// 空闲
+		EXPOSING,		// 曝光过程中
+		IMAGEREADY,		// 已完成曝光
+		ABORTED,		// 已中止曝光
+		PAUSEED,		// 已暂停曝光
+		WAITING_TIME,	// 等待曝光流传起始时间到达
+		WAITING_SYNC,	// 完成曝光, 等待其它相机完成曝光
+		WAITING_FLAT	// 平场间等待--等待转台重新指向
+	};
+
+public:
+	static const char* ToString(int state) {
+		if (state < IDLE || state > WAITING_FLAT)
+			state = ERROR;
+		return desc[state];
+	}
+};
+const char* StateCameraControl::desc[] = {
+	"Error",
+	"Idle",
+	"Exposing",
+	"Image Ready",
+	"Aborted",
+	"Paused",
+	"Waiting until Time",
+	"Waiting for sync",
+	"Waiting during FLAT"
+};
+typedef StateCameraControl StateCamCtl;	// 类名称缩写
+
+/*!
+ * class StateObservationPlan 定义: 观测计划工作状态
+ */
+class StateObservationPlan {
+protected:
+	static const char *desc[];
+
+public:
+	enum {// 观测计划状态
+		ERROR,		// 错误
+		CATALOGED,	// 入库
+		INTERRUPTED,// 中断
+		WAITING,	// 等待执行
+		RUNNING,	// 执行中
+		OVER,		// 完成
+		ABANDONED,	// 自动抛弃
+		DELETED		// 手动删除
+	};
+
+public:
+	static const char* ToString(int state) {
+		if (state < CATALOGED || state > DELETED)
+			state = ERROR;
+		return desc[state];
+	}
+};
+const char *StateObservationPlan::desc[] = {
 	"error",
 	"cataloged",
 	"interrupted",
@@ -113,11 +293,83 @@ static const char *OBSPLAN_STATUS_STR[] = {
 	"abandoned",
 	"deleted"
 };
+typedef StateObservationPlan StateObsPlan;	// 类名称缩写
 
-enum OBSERVATION_DURATION {// 观测时间分类
-	OD_DAY,		//< 白天, 可执行BIAS\DARK\FOCUS计划
-	OD_FLAT,	//< 平场, 可执行平场计划
-	OD_NIGHT	//< 夜间, 可执行非平场计划
+/*!
+ * @class TypeObservationDuration 定义: 观测时段类型
+ * @note
+ * 将每天分为三个时段: 白天; 夜晚; 平场时间(晨昏)
+ */
+class TypeObservationDuration {
+protected:
+	static const char* desc[];
+
+public:
+	enum {// 观测时间分类
+		ERROR,
+		DAYTIME,//< 白天, 可执行BIAS\DARK\FOCUS计划
+		FLAT,	//< 平场, 可执行平场计划
+		NIGHT	//< 夜间, 可执行非平场计划
+	};
+
+public:
+	static const char* ToString(int type) {
+		if (type < DAYTIME || type > NIGHT)
+			type = ERROR;
+		return desc[type];
+	}
+
+	static int FromString(const char* name) {
+		int type;
+		for (type = DAYTIME; type <= NIGHT && strcmp(name, desc[type]); ++type);
+		return type > NIGHT ? ERROR : type;
+	}
 };
+const char* TypeObservationDuration::desc[] = {
+	"unknown",
+	"daytime",
+	"flat",
+	"night"
+};
+typedef TypeObservationDuration TypeOD;	///< 类名称缩写
+
+/*!
+ * @class AutoFocusOperator
+ * @brief 定义: 自动调焦执行机构
+ */
+class AutoFocusOperator {
+protected:
+	static const char* desc[];
+
+public:
+	enum {///< 定义执行机构
+		ERROR,
+		MOUNT,			///< 转台
+		CAMERA,			///< 相机
+		MOUNTANNEX,		///< 转台附属
+		CAMERAANNEX		///< 相机附属
+	};
+
+public:
+	static const char* ToString(int type) {
+		if (type < MOUNT || type > CAMERAANNEX)
+			type = ERROR;
+		return desc[type];
+	}
+
+	static int FromString(const char* name) {
+		int type;
+		for (type = MOUNT; type <= CAMERAANNEX && strcmp(name, desc[type]); ++type);
+		return type > CAMERAANNEX ? ERROR : type;
+	}
+};
+const char* AutoFocusOperator::desc[] = {
+	"unknown",
+	"mount",
+	"camera",
+	"mount-annex",
+	"camera-annex"
+};
+typedef AutoFocusOperator AutoFcsOp;	///< 类名称缩写
 
 #endif

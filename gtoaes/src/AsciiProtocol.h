@@ -29,8 +29,8 @@ typedef list<string> listring;	//< string列表
 #define APTYPE_STOP		"stop"
 #define APTYPE_ENABLE	"enable"
 #define APTYPE_DISABLE	"disable"
-#define APTYPE_APPPLAN	"append_plan"
-#define APTYPE_APPGWAC	"append_gwac"
+#define APTYPE_APPPLAN	"append_plan"	// 追加计划, 计划进入队列
+#define APTYPE_IMPPLAN	"implent_plan"	// 执行计划, 计划优先级最高的话, 立即执行
 #define APTYPE_ABTPLAN	"abort_plan"
 #define APTYPE_CHKPLAN	"check_plan"
 #define APTYPE_PLAN		"plan"
@@ -40,7 +40,7 @@ typedef list<string> listring;	//< string列表
 #define APTYPE_PARK		"park"
 #define APTYPE_GUIDE	"guide"
 #define APTYPE_ABTSLEW	"abort_slew"
-#define APTYPE_TELE		"telescope"
+#define APTYPE_MOUNT	"mount"
 #define APTYPE_FWHM		"fwhm"
 #define APTYPE_FOCUS	"focus"
 #define APTYPE_MCOVER	"mcover"

@@ -17,9 +17,9 @@
 #include <deque>
 #include "MessageQueue.h"
 #include "NTPClient.h"
-#include "Parameter.h"
 #include "tcpasio.h"
 #include "AsciiProtocol.h"
+#include "Parameter.h"
 
 class GeneralControl : public MessageQueue {
 /* 构造函数 */

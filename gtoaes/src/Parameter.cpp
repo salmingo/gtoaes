@@ -7,8 +7,8 @@
 #include <boost/algorithm/string.hpp>
 #include <boost/date_time/posix_time/posix_time.hpp>
 #include <boost/foreach.hpp>
-#include "Parameter.h"
 #include "globaldef.h"
+#include "Parameter.h"
 
 using namespace boost::posix_time;
 using namespace boost::property_tree;
@@ -169,7 +169,7 @@ bool Parameter::GetParamOBSS(const string &gid, OBSSParam &param) {
 	return it != itend;
 }
 
-/*
+/*!
  * 返回值:
  * -1 : 参数错误
  * -2 : 写入配置文件错误

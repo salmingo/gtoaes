@@ -31,9 +31,6 @@
 const char gLogDir[]    = "/var/log/gtoaes";
 const char gLogPrefix[] = "gtoaes_";
 
-const char gLogPlanDir[]    = "/var/log/gtoaes_plan";
-const char gLogPlanPrefix[] = "plan_";
-
 // 软件配置文件
 const char gConfigPath[] = "/usr/local/etc/gtoaes.xml";
 

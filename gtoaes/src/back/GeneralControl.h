@@ -13,12 +13,12 @@
 
 #include <boost/container/stable_vector.hpp>
 #include <boost/container/deque.hpp>
+#include "../Parameter.h"
 #include "MessageQueue.h"
 #include "NTPClient.h"
 #include "tcpasio.h"
 #include "AsciiProtocol.h"
 #include "MountProtocol.h"
-#include "parameter.h"
 #include "ObservationSystemGWAC.h"
 #include "ObservationSystemNormal.h"
 #include "ObservationPlan.h"
