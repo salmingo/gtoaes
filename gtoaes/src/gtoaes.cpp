@@ -57,8 +57,6 @@
 GLog _gLog(gLogDir, gLogPrefix);		/// 工作日志
 
 int main(int argc, char **argv) {
-	_gLog = boost::make_shared<GLog>();
-
 	if (argc >= 2) {// 处理命令行参数
 		if (strcmp(argv[1], "-d") == 0) {
 			Parameter param;

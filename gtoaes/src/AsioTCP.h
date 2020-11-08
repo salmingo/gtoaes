@@ -185,17 +185,18 @@ using TcpCPtr = TcpClient::Pointer;
 
 /////////////////////////////////////////////////////////////////////
 /*--------------------- 服务器 ---------------------*/
-class TcpServer {
+class TcpServer : public boost::enable_shared_from_this<TcpServer> {
 protected:
 	using TCP = boost::asio::ip::tcp;
 
 public:
+	using Pointer = boost::shared_ptr<TcpServer>;
 	/*!
 	 * @brief 声明回调函数及插槽
 	 * @param 1 客户端对象
 	 * @param 2 实例指针
 	 */
-	using CallbackFunc = boost::signals2::signal<void (const TcpCPtr, const TcpServer*)>;
+	using CallbackFunc = boost::signals2::signal<void (const TcpCPtr, const Pointer)>;
 	using CBSlot = CallbackFunc::slot_type;
 
 protected:
@@ -206,6 +207,16 @@ protected:
 public:
 	TcpServer();
 	virtual ~TcpServer();
+
+	/*!
+	 * @brief 创建一个实例
+	 * @return
+	 * 实例指针
+	 */
+	static Pointer Create() {
+		return Pointer(new TcpServer);
+	}
+
 	/*!
 	 * @brief 注册accept回调函数, 处理服务器收到的网络连接请求
 	 * @param slot 函数插槽

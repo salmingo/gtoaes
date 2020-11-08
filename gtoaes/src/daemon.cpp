@@ -8,12 +8,13 @@
 #include <fcntl.h>
 #include <stdio.h>
 #include <unistd.h>
-#include <boost/bind.hpp>
-
+#include <boost/bind/bind.hpp>
 #include "daemon.h"
 
 #define write_lock(fd, offset, whence, len) lock_reg(fd, F_SETLK, F_WRLCK, offset, whence, len)
 #define FILE_MODE (S_IRWXU | S_IRWXG | S_IRWXO)
+
+using namespace boost::placeholders;
 
 int lock_reg(int fd, int cmd, int type, off_t offset, int whence, off_t len) {
 	struct flock lock;

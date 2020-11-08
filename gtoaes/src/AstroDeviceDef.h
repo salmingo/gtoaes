@@ -12,36 +12,58 @@
 #ifndef ASTRO_DEVICE_DEFINE_H_
 #define ASTRO_DEVICE_DEFINE_H_
 
+#include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 
 /* 状态与指令 */
-/*!
- * @class StateMount 定义: 转台状态
- */
-class StateMount {
-protected:
-	static const char* desc[];
+/////////////////////////////////////////////////////////////////////////////
+static const char* coorsys_desc[] = {
+	"AltAzimuth",
+	"Equatorial",
+	"TwoLineElement"
+};
 
+/*!
+ * @class TypeCoorSys
+ * @breif 定义: 坐标系类型
+ */
+class TypeCoorSys {
 public:
-	enum {// 转台状态
-		ERROR,		//< 错误
-		FREEZE,		//< 静止
-		HOMING,		//< 找零
-		HOMED,		//< 找到零点
-		PARKING,	//< 复位
-		PARKED,		//< 已复位
-		SLEWING,	//< 指向
-		TRACKING	//< 跟踪
+	enum {///< 坐标系类型
+		COORSYS_MIN = -1,
+		COORSYS_ALTAZ,	///< 地平系
+		COORSYS_EQUA,	///< 赤道系
+		COORSYS_ORBIT,	///< 引导
+		COORSYS_MAX
 	};
 
 public:
-	static const char* ToString(int state) {
-		if (state < ERROR || state > TRACKING)
-			state = TRACKING + 1;
-		return desc[state];
+	static bool IsValid(int type) {
+		return type > COORSYS_MIN && type < COORSYS_MAX;
+	}
+
+	static const char* ToString(int type) {
+		return IsValid(type) ? coorsys_desc[type] : NULL;
+	}
+
+	static int FromString(const char* name) {
+		int type(COORSYS_MIN);
+
+		if (name) {
+			if (isdigit(name[0])) {
+				type = atoi(name);
+			}
+			else {
+				for (type = COORSYS_MIN + 1; type < COORSYS_MAX && strcmp(name, coorsys_desc[type]); ++type);
+			}
+		}
+		return IsValid(type) ? type : COORSYS_MIN;
 	}
 };
-const char* StateMount::desc[] = {
+
+/////////////////////////////////////////////////////////////////////////////
+static const char* mount_desc[] = {
 	"Error",
 	"Freeze",
 	"Homing",
@@ -49,132 +71,276 @@ const char* StateMount::desc[] = {
 	"Parking",
 	"Parked",
 	"Slewing",
-	"Tracking",
-	"Unknown"
+	"Tracking"
 };
 
 /*!
- * @class CommandMirrorCover 定义: 镜盖指令
+ * @class StateMount
+ * @brief 定义: 转台状态
  */
-class CommandMirrorCover {
-protected:
-	static const char* desc[];
-
+class StateMount {
 public:
-	enum {// 镜盖指令
-		CLOSE,	//< 关闭镜盖
-		OPEN	//< 打开镜盖
+	enum {// 转台状态
+		MOUNT_MIN = -1,
+		MOUNT_ERROR,	///< 错误
+		MOUNT_FREEZE,	///< 静止
+		MOUNT_HOMING,	///< 找零
+		MOUNT_HOMED,	///< 找到零点
+		MOUNT_PARKING,	///< 复位
+		MOUNT_PARKED,	///< 已复位
+		MOUNT_SLEWING,	///< 指向
+		MOUNT_TRACKING,	///< 跟踪
+		MOUNT_MAX
 	};
 
 public:
-	static const char* ToString(int cmd) {
-		if (cmd < CLOSE || cmd > OPEN)
-			cmd = OPEN + 1;
-		return desc[cmd];
+	static bool IsValid(int state) {
+		return state > MOUNT_MIN && state < MOUNT_MAX;
+	}
+
+	static const char* ToString(int state) {
+		return IsValid(state) ? mount_desc[state] : NULL;
+	}
+
+	static int FromString(const char* name) {
+		int state(MOUNT_MIN);
+
+		if (name) {
+			if (isdigit(name[0])) {
+				state = atoi(name);
+			}
+			else {
+				for (state = MOUNT_MIN + 1; state < MOUNT_MAX && strcmp(name, mount_desc[state]); ++state);
+			}
+		}
+		return IsValid(state) ? state : MOUNT_MIN;
 	}
 };
-const char* CommandMirrorCover::desc[] = {
+
+/////////////////////////////////////////////////////////////////////////////
+static const char* slitc_desc[] = {
 	"close",
 	"open",
-	"unknown"
+	"stop"
 };
 
-typedef CommandMirrorCover CommandMC;
-
-/*!
- * @class StateMirrorCover 定义: 镜盖状态
- */
-class StateMirrorCover {
-protected:
-	static const char* desc[];
-
+class CommandSlit {
 public:
-	enum {// 镜盖状态
-		ERROR,		// 错误
-		OPENING,	// 正在打开
-		OPEN,		// 已打开
-		CLOSING,	// 正在关闭
-		CLOSED		// 已关闭
+	enum {// 镜盖指令
+		SLITC_MIN = -1,
+		SLITC_CLOSE,	///< 关闭
+		SLITC_OPEN,	///< 打开
+		SLITC_STOP,	///< 停止
+		SLITC_MAX
 	};
 
 public:
-	static const char* ToString(int state) {
-		if (state < ERROR || state > CLOSED)
-			state = CLOSED + 1;
-		return desc[state];
+	static bool IsValid(int cmd) {
+		return cmd > SLITC_MIN && cmd < SLITC_MAX;
+	}
+
+	static const char* ToString(int cmd) {
+		return IsValid(cmd) ? slitc_desc[cmd] : NULL;
+	}
+
+	static int FromString(const char* name) {
+		int cmd(SLITC_MIN);
+
+		if (name) {
+			if (isdigit(name[0])) {
+				cmd = atoi(name);
+			}
+			else {
+				for (cmd = SLITC_MIN + 1; cmd < SLITC_MAX && strcmp(name, slitc_desc[cmd]); ++cmd);
+			}
+		}
+		return IsValid(cmd) ? cmd : SLITC_MIN;
 	}
 };
-const char* StateMirrorCover::desc[] = {
+
+static const char* slit_desc[] = {
 	"Error",
 	"Opening",
 	"Opened",
 	"Closing",
-	"Closed",
-	"Unknown"
+	"Closed"
 };
-typedef StateMirrorCover StateMC;
 
-/*!
- * @class StateFocus 调焦器工作状态
- */
-class StateFocus {
-protected:
-	static const char* desc[];
-
+class StateSlit {
 public:
-	enum {// 调焦器状态
-		ERROR,	//< 错误
-		FREEZE,	//< 静止
-		MOVING	//< 定位
+	enum {// 镜盖指令
+		SLIT_MIN = -1,
+		SLIT_ERROR,		///< 错误
+		SLIT_OPENING,	///< 打开中
+		SLIT_OPENED,	///< 已打开
+		SLIT_CLOSING,	///< 关闭中
+		SLIT_CLOSED,	///< 已关闭
+		SLIT_MAX
 	};
 
 public:
+	static bool IsValid(int state) {
+		return state > SLIT_MIN && state < SLIT_MAX;
+	}
+
 	static const char* ToString(int state) {
-		if (state < ERROR || state > MOVING)
-			state = MOVING + 1;
-		return desc[state];
+		return IsValid(state) ? slit_desc[state] : NULL;
+	}
+
+	static int FromString(const char* name) {
+		int state(SLIT_MIN);
+
+		if (name) {
+			if (isdigit(name[0])) {
+				state = atoi(name);
+			}
+			else {
+				for (state = SLIT_MIN + 1; state < SLIT_MAX && strcmp(name, slit_desc[state]); ++state);
+			}
+		}
+		return IsValid(state) ? state : SLIT_MIN;
 	}
 };
-const char* StateFocus::desc[] = {
+
+/////////////////////////////////////////////////////////////////////////////
+static const char* mcc_desc[] = {
+	"close",
+	"open"
+};
+
+/*!
+ * @class CommandMirrorCover
+ * @brief 定义: 镜盖指令
+ */
+class CommandMirrorCover {
+public:
+	enum {// 镜盖指令
+		MCC_MIN = -1,
+		MCC_CLOSE,	///< 关闭镜盖
+		MCC_OPEN,	///< 打开镜盖
+		MCC_MAX
+	};
+
+public:
+	static bool IsValid(int cmd) {
+		return cmd > MCC_MIN && cmd < MCC_MAX;
+	}
+
+	static const char* ToString(int cmd) {
+		return IsValid(cmd) ? mcc_desc[cmd] : NULL;
+	}
+
+	static int FromString(const char* name) {
+		int cmd(MCC_MIN);
+
+		if (name) {
+			if (isdigit(name[0])) {
+				cmd = atoi(name);
+			}
+			else {
+				for (cmd = MCC_MIN + 1; cmd < MCC_MAX && strcmp(name, mcc_desc[cmd]); ++cmd);
+			}
+		}
+		return IsValid(cmd) ? cmd : MCC_MIN;
+	}
+};
+
+/////////////////////////////////////////////////////////////////////////////
+static const char* mc_desc[] = {
+	"Error",
+	"Opening",
+	"Opened",
+	"Closing",
+	"Closed"
+};
+
+/*!
+ * @class StateMirrorCover
+ * @brief 定义: 镜盖状态
+ */
+class StateMirrorCover {
+public:
+	enum {///< 镜盖状态
+		MC_MIN = -1,
+		MC_ERROR,	///< 错误
+		MC_OPENING,	///< 正在打开
+		MC_OPEN,	///< 已打开
+		MC_CLOSING,	///< 正在关闭
+		MC_CLOSED,	///< 已关闭
+		MC_MAX
+	};
+
+public:
+	static bool IsValid(int state) {
+		return state > MC_MIN && state < MC_MAX;
+	}
+
+	static const char* ToString(int state) {
+		return IsValid(state) ? mc_desc[state] : NULL;
+	}
+
+	static int FromString(const char* name) {
+		int state(MC_MIN);
+
+		if (name) {
+			if (isdigit(name[0])) {
+				state = atoi(name);
+			}
+			else {
+				for (state = MC_MIN + 1; state < MC_MAX && strcmp(name, mc_desc[state]); ++state);
+			}
+		}
+		return IsValid(state) ? state : MC_MIN;
+	}
+};
+
+/////////////////////////////////////////////////////////////////////////////
+static const char* focus_desc[] = {
 	"Error",
 	"Freeze",
 	"Moving"
-	"Unknown"
 };
 
 /*!
- * @class TypeImage 定义: 图像类型
+ * @class StateFocus
+ * @brief 调焦器工作状态
  */
-class TypeImage {
-protected:
-	static const char* desc[];
-
+class StateFocus {
 public:
-	enum {// 图像类型
-		ERROR,	// 错误
-		BIAS,	// 本底
-		DARK,	// 暗场
-		FLAT,	// 平场
-		OBJECT,	// 目标
-		LIGHT,	// 天光
-		FOCUS	// 调焦
+	enum {///< 调焦器状态
+		FOCUS_MIN = -1,
+		FOCUS_ERROR,	///< 错误
+		FOCUS_FREEZE,	///< 静止
+		FOCUS_MOVING,	///< 定位
+		FOCUS_MAX
 	};
 
 public:
-	static const char* ToString(int type) {
-		if (type < BIAS || type > FOCUS)
-			type = 0;
-		return desc[type];
+	static bool IsValid(int state) {
+		return state > FOCUS_MIN && state < FOCUS_MAX;
 	}
 
-	static int FromString(const char* imgtype) {
-		int type;
-		for (type = BIAS; type <= FOCUS && strcmp(desc[type], imgtype); ++type);
-		return type > FOCUS ? ERROR : type;
+	static const char* ToString(int state) {
+		return IsValid(state) ? focus_desc[state] : NULL;
+	}
+
+	static int FromString(const char* name) {
+		int state(FOCUS_MIN);
+
+		if (name) {
+			if (isdigit(name[0])) {
+				state = atoi(name);
+			}
+			else {
+				for (state = FOCUS_MIN + 1; state < FOCUS_MAX && strcmp(name, focus_desc[state]); ++state);
+			}
+		}
+		return IsValid(state) ? state : FOCUS_MIN;
 	}
 };
-const char* TypeImage::desc[] = {
-	"ERROR",
+
+/////////////////////////////////////////////////////////////////////////////
+static const char* imgtyp_desc[] = {
 	"BIAS",
 	"DARK"
 	"FLAT",
@@ -184,67 +350,96 @@ const char* TypeImage::desc[] = {
 };
 
 /*!
- * @class CommandExpose 定义: 相机控制接口级的控制指令
+ * @class TypeImage 定义: 图像类型
  */
-class CommandExpose {
-protected:
-	static const char* desc[];
-
+class TypeImage {
 public:
-	enum {// 相机控制指令
-		ERROR,	//< 错误
-		INIT,	//< 初始化
-		START,	//< 开始曝光
-		STOP,	//< 中止曝光
-		PAUSE,	//< 暂停曝光
-		RESUME	//< EXPOSE_START分支: 当处理暂停过程中收到开始曝光指令, 指令记录为RESUME
+	enum {///< 图像类型
+		IMGTYP_MIN = -1,
+		IMGTYP_BIAS,	///< 本底
+		IMGTYP_DARK,	///< 暗场
+		IMGTYP_FLAT,	///< 平场
+		IMGTYP_OBJECT,	///< 目标
+		IMGTYP_LIGHT,	///< 天光
+		IMGTYP_FOCUS,	///< 调焦
+		IMGTYP_MAX
 	};
 
 public:
-	static const char* ToString(int cmd) {
-		if (cmd < INIT || cmd > RESUME)
-			cmd = ERROR;
-		return desc[cmd];
+	static bool IsValid(int type) {
+		return type > IMGTYP_MIN && type < IMGTYP_MAX;
+	}
+
+	static const char* ToString(int type) {
+		return IsValid(type) ? imgtyp_desc[type] : NULL;
+	}
+
+	static int FromString(const char* name) {
+		int type(IMGTYP_MIN);
+
+		if (name) {
+			if (isdigit(name[0])) {
+				type = atoi(name);
+			}
+			else {
+				for (type = IMGTYP_MIN + 1; type < IMGTYP_MAX && strcmp(name, imgtyp_desc[type]); ++type);
+			}
+		}
+		return IsValid(type) ? type : IMGTYP_MIN;
 	}
 };
-const char* CommandExpose::desc[] = {
-	"unknown",
+
+/////////////////////////////////////////////////////////////////////////////
+static const char* exp_desc[] = {
 	"init",
 	"start",
 	"stop",
 	"pause",
 	"resume"
 };
-typedef CommandExpose CommandExp;
 
 /*!
- * @class StateCameraControl 定义: 相机控制接口工作状态
+ * @class CommandExpose
+ * @brief 定义: 相机控制接口级的控制指令
  */
-class StateCameraControl {
-protected:
-	static const char* desc[];
-
+class CommandExpose {
 public:
-	enum {// 相机工作状态
-		ERROR,			// 错误
-		IDLE,			// 空闲
-		EXPOSING,		// 曝光过程中
-		IMAGEREADY,		// 已完成曝光
-		ABORTED,		// 已中止曝光
-		PAUSEED,		// 已暂停曝光
-		WAITING_TIME,	// 等待曝光流传起始时间到达
-		WAITING_SYNC,	// 完成曝光, 等待其它相机完成曝光
-		WAITING_FLAT	// 平场间等待--等待转台重新指向
+	enum {///< 相机控制指令
+		EXP_MIN = -1,
+		EXP_INIT,	///< 初始化
+		EXP_START,	///< 开始曝光
+		EXP_STOP,	///< 中止曝光
+		EXP_PAUSE,	///< 暂停曝光
+		EXP_RESUME,	///< EXPOSE_START分支: 当处理暂停过程中收到开始曝光指令, 指令记录为RESUME
+		EXP_MAX
 	};
 
 public:
-	static const char* ToString(int state) {
-		if (state < IDLE || state > WAITING_FLAT)
-			state = ERROR;
-		return desc[state];
+	static bool IsValid(int cmd) {
+		return cmd > EXP_MIN && cmd < EXP_MAX;
+	}
+
+	static const char* ToString(int cmd) {
+		return IsValid(cmd) ? exp_desc[cmd] : NULL;
+	}
+
+	static int FromString(const char* name) {
+		int cmd(EXP_MIN);
+
+		if (name) {
+			if (isdigit(name[0])) {
+				cmd = atoi(name);
+			}
+			else {
+				for (cmd = EXP_MIN + 1; cmd < EXP_MAX && strcmp(name, exp_desc[cmd]); ++cmd);
+			}
+		}
+		return IsValid(cmd) ? cmd : EXP_MIN;
 	}
 };
-const char* StateCameraControl::desc[] = {
+
+/////////////////////////////////////////////////////////////////////////////
+static const char* camctl_desc[] = {
 	"Error",
 	"Idle",
 	"Exposing",
@@ -255,35 +450,53 @@ const char* StateCameraControl::desc[] = {
 	"Waiting for sync",
 	"Waiting during FLAT"
 };
-typedef StateCameraControl StateCamCtl;	// 类名称缩写
 
 /*!
- * class StateObservationPlan 定义: 观测计划工作状态
+ * @class StateCameraControl
+ * @brief 定义: 相机控制接口工作状态
  */
-class StateObservationPlan {
-protected:
-	static const char *desc[];
-
+class StateCameraControl {
 public:
-	enum {// 观测计划状态
-		ERROR,		// 错误
-		CATALOGED,	// 入库
-		INTERRUPTED,// 中断
-		WAITING,	// 等待执行
-		RUNNING,	// 执行中
-		OVER,		// 完成
-		ABANDONED,	// 自动抛弃
-		DELETED		// 手动删除
+	enum {///< 相机调度状态
+		CAMCTL_MIN = -1,
+		CAMCTL_ERROR,			///< 错误
+		CAMCTL_IDLE,			///< 空闲
+		CAMCTL_EXPOSING,		///< 曝光过程中
+		CAMCTL_IMAGEREADY,		///< 已完成曝光
+		CAMCTL_ABORTED,			///< 已中止曝光
+		CAMCTL_PAUSEED,			///< 已暂停曝光
+		CAMCTL_WAITING_TIME,	///< 等待曝光流传起始时间到达
+		CAMCTL_WAITING_SYNC,	///< 完成曝光, 等待其它相机完成曝光
+		CAMCTL_WAITING_FLAT,	///< 平场间等待--等待转台重新指向
+		CAMCTL_MAX
 	};
 
 public:
+	static bool IsValid(int state) {
+		return state > CAMCTL_MIN && state < CAMCTL_MAX;
+	}
+
 	static const char* ToString(int state) {
-		if (state < CATALOGED || state > DELETED)
-			state = ERROR;
-		return desc[state];
+		return IsValid(state) ? camctl_desc[state] : NULL;
+	}
+
+	static int FromString(const char* name) {
+		int state(CAMCTL_MIN);
+
+		if (name) {
+			if (isdigit(name[0])) {
+				state = atoi(name);
+			}
+			else {
+				for (state = CAMCTL_MIN + 1; state < CAMCTL_MAX && strcmp(name, camctl_desc[state]); ++state);
+			}
+		}
+		return IsValid(state) ? state : CAMCTL_MIN;
 	}
 };
-const char *StateObservationPlan::desc[] = {
+
+/////////////////////////////////////////////////////////////////////////////
+static const char *obsplan_desc[] = {
 	"error",
 	"cataloged",
 	"interrupted",
@@ -293,83 +506,142 @@ const char *StateObservationPlan::desc[] = {
 	"abandoned",
 	"deleted"
 };
-typedef StateObservationPlan StateObsPlan;	// 类名称缩写
 
 /*!
- * @class TypeObservationDuration 定义: 观测时段类型
- * @note
- * 将每天分为三个时段: 白天; 夜晚; 平场时间(晨昏)
+ * class StateObservationPlan
+ * @brief 定义: 观测计划工作状态
  */
-class TypeObservationDuration {
-protected:
-	static const char* desc[];
-
+class StateObservationPlan {
 public:
-	enum {// 观测时间分类
-		ERROR,
-		DAYTIME,//< 白天, 可执行BIAS\DARK\FOCUS计划
-		FLAT,	//< 平场, 可执行平场计划
-		NIGHT	//< 夜间, 可执行非平场计划
+	enum {///< 观测计划状态
+		OBSPLAN_MIN = -1,
+		OBSPLAN_CATALOGED,	///< 入库
+		OBSPLAN_INTERRUPTED,///< 中断
+		OBSPLAN_WAITING,	///< 等待执行
+		OBSPLAN_RUNNING,	///< 执行中
+		OBSPLAN_OVER,		///< 完成
+		OBSPLAN_ABANDONED,	///< 自动抛弃
+		OBSPLAN_DELETED,	///< 手动删除
+		OBSPLAN_MAX
 	};
 
 public:
-	static const char* ToString(int type) {
-		if (type < DAYTIME || type > NIGHT)
-			type = ERROR;
-		return desc[type];
+	static bool IsValid(int state) {
+		return state > OBSPLAN_MIN && state < OBSPLAN_MAX;
+	}
+
+	static const char* ToString(int state) {
+		return IsValid(state) ? obsplan_desc[state] : NULL;
 	}
 
 	static int FromString(const char* name) {
-		int type;
-		for (type = DAYTIME; type <= NIGHT && strcmp(name, desc[type]); ++type);
-		return type > NIGHT ? ERROR : type;
+		int state(OBSPLAN_MIN);
+
+		if (name) {
+			if (isdigit(name[0])) {
+				state = atoi(name);
+			}
+			else {
+				for (state = OBSPLAN_MIN + 1; state < OBSPLAN_MAX && strcmp(name, obsplan_desc[state]); ++state);
+			}
+		}
+		return IsValid(state) ? state : OBSPLAN_MIN;
 	}
 };
-const char* TypeObservationDuration::desc[] = {
-	"unknown",
+
+/////////////////////////////////////////////////////////////////////////////
+static const char* odt_desc[] = {
 	"daytime",
 	"flat",
 	"night"
 };
-typedef TypeObservationDuration TypeOD;	///< 类名称缩写
 
 /*!
- * @class AutoFocusOperator
- * @brief 定义: 自动调焦执行机构
+ * @class TypeObservationDuration
+ * @brief 定义: 观测时段类型
+ * @note
+ * 将每天分为三个时段: 白天; 夜晚; 平场时间(晨昏)
  */
-class AutoFocusOperator {
-protected:
-	static const char* desc[];
-
+class TypeObservationDuration {
 public:
-	enum {///< 定义执行机构
-		ERROR,
-		MOUNT,			///< 转台
-		CAMERA,			///< 相机
-		MOUNTANNEX,		///< 转台附属
-		CAMERAANNEX		///< 相机附属
+	enum {///< 观测时间分类
+		ODT_MIN = -1,
+		ODT_DAYTIME,///< 白天, 可执行BIAS\DARK\FOCUS计划
+		ODT_FLAT,	///< 平场, 可执行平场计划
+		ODT_NIGHT,	///< 夜间, 可执行非平场计划
+		ODT_MAX
 	};
 
 public:
+	static bool IsValid(int type) {
+		return type > ODT_MIN && type < ODT_MAX;
+	}
+
 	static const char* ToString(int type) {
-		if (type < MOUNT || type > CAMERAANNEX)
-			type = ERROR;
-		return desc[type];
+		return IsValid(type) ? odt_desc[type] : NULL;
 	}
 
 	static int FromString(const char* name) {
-		int type;
-		for (type = MOUNT; type <= CAMERAANNEX && strcmp(name, desc[type]); ++type);
-		return type > CAMERAANNEX ? ERROR : type;
+		int type(ODT_MIN);
+
+		if (name) {
+			if (isdigit(name[0])) {
+				type = atoi(name);
+			}
+			else {
+				for (type = ODT_MIN + 1; type < ODT_MAX && strcmp(name, odt_desc[type]); ++type);
+			}
+		}
+		return IsValid(type) ? type : ODT_MIN;
 	}
 };
-const char* AutoFocusOperator::desc[] = {
-	"unknown",
+
+/////////////////////////////////////////////////////////////////////////////
+static const char* opobs_desc[] = {
 	"mount",
 	"camera",
 	"mount-annex",
-	"camera-annex"
+	"camera-annex",
+	"environment"
 };
-typedef AutoFocusOperator AutoFcsOp;	///< 类名称缩写
+
+/*!
+ * @class ObservationOperator
+ * @brief 定义: 天文观测指令执行对象
+ */
+class ObservationOperator {
+public:
+	enum {///< 定义执行机构
+		OPOBS_MIN = -1,
+		OPOBS_MOUNT,		///< 转台
+		OPOBS_CAMERA,		///< 相机
+		OPOBS_MOUNTANNEX,	///< 转台附属
+		OPOBS_CAMERAANNEX,	///< 相机附属
+		OPOBS_ENVIRONMENT,	///< 环境监测
+		OPOBS_MAX
+	};
+
+public:
+	static bool IsValid(int type) {
+		return type > OPOBS_MIN && type < OPOBS_MAX;
+	}
+
+	static const char* ToString(int type) {
+		return IsValid(type) ? opobs_desc[type] : NULL;
+	}
+
+	static int FromString(const char* name) {
+		int type(OPOBS_MIN);
+		if (name) {
+			if (isdigit(name[0])) {
+				type = atoi(name);
+			}
+			else {
+				for (type = OPOBS_MIN + 1; type < OPOBS_MAX && strcmp(name, opobs_desc[type]); ++type);
+			}
+		}
+		return IsValid(type) ? type : OPOBS_MIN;
+	}
+};
 
 #endif

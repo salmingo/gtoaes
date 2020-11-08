@@ -705,12 +705,8 @@ bool GeneralControl::resolve_obsplan(const char *filepath) {
 				plan->expdur  = atof(token);
 			}
 			else {// MODE3
-				int frmcnt;
-				double expdur;
 				token = strtok(NULL, seps); plan->expdur = atof(token);
-				token = strtok(NULL, seps); frmcnt = atoi(token);
-				token = strtok(NULL, seps); expdur = atof(token);
-				token = strtok(NULL, seps); frmcnt = atoi(token);
+				token = strtok(NULL, seps); plan->frmcnt = atoi(token);
 			}
 			plan->objname   = "point";
 			plan->plan_type = PLANTYPE_POINT;

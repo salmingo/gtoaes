@@ -8,6 +8,7 @@
  * - 更新时钟
  * @version 1.0
  * @date 2020-07-05
+ * - 观测系统建立后生命周期同主程序. 每日按照活跃度降序排序
  */
 
 #ifndef SRC_GENERALCONTROL_H_
@@ -15,13 +16,15 @@
 
 #include <vector>
 #include <deque>
-#include "MessageQueue.h"
-#include "NTPClient.h"
-#include "tcpasio.h"
-#include "AsciiProtocol.h"
 #include "Parameter.h"
+#include "NTPClient.h"
+#include "AsioTCP.h"
+#include "AsioUDP.h"
+#include "AsciiProtocol.h"
+#include "ObservationPlan.h"
 
-class GeneralControl : public MessageQueue {
+//////////////////////////////////////////////////////////////////////////////
+class GeneralControl {
 /* 构造函数 */
 public:
 	GeneralControl();
@@ -29,109 +32,93 @@ public:
 
 //< 数据类型
 protected:
+	//////////////////////////////////////////////////////////////////////////////
 	typedef std::vector<TcpCPtr> TcpCVec;		//< 网络连接存储区
-
-	/*!
-	 * @note
-	 * 2017年
-	 * - 每台相机使用一条网络连接
-	 * - 每台转台使用一条网络连接(Normal)
-	 * - 多个转台使用一条网络连接(GWAC)
-	 * - 多个调焦(+镜盖)使用一条网络连接(GWAC)
-	 * - 多个温控使用一条网络连接(GWAC-GY)
-	 * - 多个真空器使用一条网络连接(GWAC-GY)
-	 */
-	enum MSG_GC {// 总控服务消息
-		MSG_RECEIVE_CLIENT = MSG_USER,	//< 收到客户端信息
-		MSG_RECEIVE_TELE,			//< 收到通用望远镜信息
-		MSG_RECEIVE_MOUNT,			//< 收到通用望远镜信息
-		MSG_RECEIVE_CAMERA,			//< 收到相机信息
-		MSG_RECEIVE_TELE_ANNEX,		//< 收到镜盖+调焦信息
-		MSG_RECEIVE_MOUNT_ANNEX,	//< 收到镜盖+调焦信息
-		MSG_RECEIVE_CAMERA_ANNEX,	//< 收到温控+真空信息(GWAC-GY相机: 2017年)
-		MSG_CLOSE_CLIENT,			//< 客户端断开网络连接
-		MSG_CLOSE_TELE,				//< 通用望远镜断开网络连接
-		MSG_CLOSE_MOUNT,			//< GWAC望远镜断开网络连接
-		MSG_CLOSE_CAMERA,			//< 相机断开网络连接
-		MSG_CLOSE_TELE_ANNEX,		// < 镜盖+调焦断开网络连接
-		MSG_CLOSE_MOUNT_ANNEX,		// < 镜盖+调焦断开网络连接
-		MSG_CLOSE_CAMERA_ANNEX,		//< 温控断开网络连接
-		MSG_ACQUIRE_PLAN,			//< 申请观测计划
-		MSG_LAST	//< 占位, 不使用
-	};
+	using MtxLck = boost::unique_lock<boost::mutex>;	//< 信号灯互斥锁
+	using ThreadPtr = boost::shared_ptr<boost::thread>;	//< boost线程指针
 
 	enum {// 对应主机类型
 		PEER_CLIENT,			//< 客户端
-		PEER_TELE,				//< 通用望远镜
 		PEER_MOUNT,				//< GWAC望远镜
 		PEER_CAMERA,			//< 相机
-		PEER_TELE_ANNEX,		//< 镜盖+调焦+天窗(通用)
 		PEER_MOUNT_ANNEX,		//< 镜盖+调焦+天窗(GWAC)
 		PEER_CAMERA_ANNEX,		//< 温控+真空(GWAC-GY)
 		PEER_LAST		//< 占位, 不使用
 	};
 
-	struct AcquirePlan {// 申请观测计划参数
-		int type;	//< 观测系统类型, 两类: gwac; normal
-		string gid;	//< 组标志
-		string uid;	//< 单元标志
+	/*!
+	 * @struct network_event
+	 * @brief 网络事件
+	 */
+	struct network_event {
+		using Pointer = boost::shared_ptr<network_event>;
+
+		int peer;		///< 主机类型
+		TcpCPtr tcpc;	///< 网络连接
+		int type;		///< 事件类型. 0: 接收信息; 其它: 关闭
 
 	public:
-		AcquirePlan() {
-			type = 0;
+		network_event(int _peer, TcpCPtr _tcpc, int _type) {
+			peer = _peer;
+			tcpc = _tcpc;
+			type = _type;
 		}
 
-		AcquirePlan(const int _t, const string& _g, const string& _u) {
-			type = _t;
-			gid  = _g;
-			uid  = _u;
+		static Pointer Create(int _peer, TcpCPtr _tcpc, int _type) {
+			return Pointer(new network_event(_peer, _tcpc, _type));
 		}
 	};
-	typedef boost::shared_ptr<AcquirePlan> AcquirePlanPtr;
-	typedef std::deque<AcquirePlanPtr> AcquirePlanQue;
+	using NetEvPtr = network_event::Pointer;
+	using NetEvQue = std::deque<NetEvPtr>;
+
+	//////////////////////////////////////////////////////////////////////////////
 
 /* 成员变量 */
 protected:
+	//////////////////////////////////////////////////////////////////////////////
 	Parameter param_;
 	NTPPtr ntp_;
+
 	/* 网络资源 */
-	TcpSPtr	tcps_client_;
-	TcpSPtr tcps_tele_;
-	TcpSPtr tcps_mount_;
-	TcpSPtr tcps_camera_;
-	TcpSPtr tcps_tele_annex_;	// 望远镜附属设备包括: 调焦, 镜盖, 天窗等
-	TcpSPtr tcps_mount_annex_;	// 望远镜附属设备包括: 调焦, 镜盖, 天窗等
-	TcpSPtr tcps_camera_annex_;
+	TcpSPtr	tcps_client_;		///< 网络服务: 客户端
+	TcpSPtr tcps_mount_;		///< 网络服务: 转台
+	TcpSPtr tcps_camera_;		///< 网络服务: 相机
+	TcpSPtr tcps_mount_annex_;	///< 网络服务: 转台附属
+	TcpSPtr tcps_camera_annex_;	///< 网络服务: 相机附属
+
+	UdpPtr  udps_client_;		///< 网络服务: 客户端, UDP
+	UdpPtr  udps_env_;			///< 网络服务: 气象环境, UDP
 
 	TcpCVec tcpc_client_;
-	TcpCVec tcpc_tele_;
 	TcpCVec tcpc_mount_;
 	TcpCVec tcpc_camera_;
-	TcpCVec tcpc_tele_annex_;
 	TcpCVec tcpc_mount_annex_;
 	TcpCVec tcpc_camera_annex_;
 
-	boost::mutex mtx_tcpc_client_;			//< 互斥锁: 客户端
-	boost::mutex mtx_tcpc_tele_;			//< 互斥锁: 通用望远镜
-	boost::mutex mtx_tcpc_mount_;			//< 互斥锁: GWAC望远镜
-	boost::mutex mtx_tcpc_camera_;			//< 互斥锁: 相机
-	boost::mutex mtx_tcpc_tele_annex_;		//< 互斥锁: 镜盖+调焦(通用)
-	boost::mutex mtx_tcpc_mount_annex_;		//< 互斥锁: 镜盖+调焦(GWAC)
-	boost::mutex mtx_tcpc_camera_annex_;	//< 互斥锁: 温控+真空(GWAC-GY)
+	boost::mutex mtx_tcpc_client_;			///< 互斥锁: 客户端
+	boost::mutex mtx_tcpc_mount_;			///< 互斥锁: GWAC望远镜
+	boost::mutex mtx_tcpc_camera_;			///< 互斥锁: 相机
+	boost::mutex mtx_tcpc_mount_annex_;		///< 互斥锁: 转台附属
+	boost::mutex mtx_tcpc_camera_annex_;	///< 互斥锁: 相机附属
 
-	boost::shared_array<char> bufrcv_;	//< 网络信息存储区: 消息队列中调用
+	NetEvQue queNetEv_;			///< 网络事件队列
+	boost::mutex mtx_netev_;	///< 互斥锁: 网络事件
+	boost::condition_variable cv_netev_;	///< 条件触发: 网络事件
+
+	boost::shared_array<char> bufrcv_;	///< 网络信息存储区: 消息队列中调用
 	AscProtoPtr ascproto_;
 
 	/* 观测计划 */
-	AcquirePlanQue que_acqplan_;	//< 观测计划申请参数队列
-	boost::mutex mtx_acqplan_;		//< 互斥锁: 观测计划申请参数
+	ObsPlanPtr obs_plans_;
 
 	/* 观测系统 */
 
 	/* 数据库 */
 
 	/* 多线程 */
-	threadptr thrd_clocksync_;
+	ThreadPtr thrd_netevent_;
+	ThreadPtr thrd_clocksync_;
+	//////////////////////////////////////////////////////////////////////////////
 
 /* 接口 */
 public:
@@ -170,49 +157,93 @@ protected:
 	 * @param client 为连接请求分配额网络资源
 	 * @param server 服务器标识
 	 */
-	void network_accept(const TcpCPtr& client, const long server);
+	void network_accept(const TcpCPtr client, const TcpSPtr server);
 	/*!
 	 * @brief 处理客户端信息
 	 * @param client 网络资源
 	 * @param ec     错误代码. 0: 正确
 	 */
-	void receive_client(const long client, const long ec);
-	/*!
-	 * @brief 处理通用望远镜信息
-	 * @param client 网络资源
-	 * @param ec     错误代码. 0: 正确
-	 */
-	void receive_telescope(const long client, const long ec);
+	void receive_client(const TcpCPtr client, const int ec);
 	/*!
 	 * @brief 处理GWAC望远镜信息
 	 * @param client 网络资源
 	 * @param ec     错误代码. 0: 正确
 	 */
-	void receive_mount(const long client, const long ec);
+	void receive_mount(const TcpCPtr client, const int ec);
 	/*!
 	 * @brief 处理相机信息
 	 * @param client 网络资源
 	 * @param ec     错误代码. 0: 正确
 	 */
-	void receive_camera(const long client, const long ec);
+	void receive_camera(const TcpCPtr client, const int ec);
 	/*!
 	 * @brief 处理镜盖+调焦信息
 	 * @param client 网络资源
 	 * @param ec     错误代码. 0: 正确
 	 */
-	void receive_telescope_annex(const long client, const long ec);
-	/*!
-	 * @brief 处理镜盖+调焦信息
-	 * @param client 网络资源
-	 * @param ec     错误代码. 0: 正确
-	 */
-	void receive_mount_annex(const long client, const long ec);
+	void receive_mount_annex(const TcpCPtr client, const int ec);
 	/*!
 	 * @brief 处理温控+真空信息
 	 * @param client 网络资源
 	 * @param ec     错误代码. 0: 正确
 	 */
-	void receive_camera_annex(const long client, const long ec);
+	void receive_camera_annex(const TcpCPtr client, const int ec);
+
+protected:
+	/*----------------- 消息机制 -----------------*/
+	/*!
+	 * @brief 响应消息MSG_RECEIVE_CLIENT
+	 * @param client 网络连接
+	 */
+	void on_receive_client(const TcpCPtr client);
+	/*!
+	 * @brief 响应消息MSG_RECEIVE_MOUNT
+	 * @param client 网络连接
+	 */
+	void on_receive_mount(const TcpCPtr client);
+	/*!
+	 * @brief 响应消息MSG_RECEIVE_CAMERA
+	 * @param client 网络连接
+	 */
+	void on_receive_camera(const TcpCPtr client);
+	/*!
+	 * @brief 响应消息MSG_RECEIVE_MOUNT_ANNEX
+	 * @param client 网络连接
+	 */
+	void on_receive_mount_annex(const TcpCPtr client);
+	/*!
+	 * @brief 响应消息MSG_RECEIVE_CAMERA_ANNEX
+	 * @param client 网络连接
+	 */
+	void on_receive_camera_annex(const TcpCPtr client);
+	/*!
+	 * @brief 响应消息MSG_CLOSE_CLIENT
+	 * @param client 网络连接
+	 */
+	void on_close_client(const TcpCPtr client);
+	/*!
+	 * @brief 响应消息MSG_CLOSE_MOUNT
+	 * @param client 网络连接
+	 */
+	void on_close_mount(const TcpCPtr client);
+	/*!
+	 * @brief 响应消息MSG_CLOSE_CAMERA
+	 * @param client 网络连接
+	 */
+	void on_close_camera(const TcpCPtr client);
+	/*!
+	 * @brief 响应消息MSG_CLOSE_MOUNT_ANNEX
+	 * @param client 网络连接
+	 */
+	void on_close_mount_annex(const TcpCPtr client);
+	/*!
+	 * @brief 响应消息MSG_CLOSE_CAMERA_ANNEX
+	 * @param client 网络连接
+	 */
+	void on_close_camera_annex(const TcpCPtr client);
+
+protected:
+	/*----------------- 解析/执行通信协议 -----------------*/
 	/*!
 	 * @brief 解析与用户/数据库、通用望远镜、相机、制冷(GWAC)、真空(GWAC)相关网络信息
 	 * @param client 网络资源
@@ -220,131 +251,54 @@ protected:
 	 * @note
 	 * 与转台无关远程主机类型包括:
 	 * - PEER_CLIENT
-	 * - PEER_TELESCOPE
 	 * - PEER_CAMERA
-	 * - PEER_TELESCOPE_ANNEX
 	 * - PEER_CAMERA_ANNEX
 	 */
-	void resolve_protocol_ascii(TCPClient* client, int peer);
+	void resolve_protocol_ascii(const TcpCPtr client, int peer);
 	/*!
-	 * @brief 解析与GWAC转台、GWAC镜盖+调焦相关网络信息
-	 * @param client 网络资源
-	 * @param peer   远程主机类型
+	 * @brief 解析非键值对格式的ascii码协议
+	 * @param data    通信内容
+	 * @param client  网络资源
+	 * @param peer    主机类型
 	 * @note
-	 * 与转台无关远程主机类型包括:
-	 * - PEER_MOUNT
-	 * - PEER_MOUNT_ANNEX
+	 * - GWAC系统中, 该格式对应转台和调焦. 所有转台共用一条链路; 所有调焦共用一条链路
+	 * - HN系统中, 该格式对应圆顶和自动调焦(自动调焦未实现) 2019
+	 * - HR系统中, 该格式对应圆顶和自动调焦. 同一圆顶内, 圆顶和所有调焦共用一条链路  2020
 	 */
-	void resolve_protocol_gwac(TCPClient* client, int peer);
-
-protected:
-	/*----------------- 消息机制 -----------------*/
-	/*!
-	 * @brief 注册消息响应函数
-	 */
-	void register_message();
-	/*!
-	 * @brief 响应消息MSG_RECEIVE_CLIENT
-	 * @param client 网络连接
-	 * @param ec     错误代码. 0: 正确; 其它: 错误
-	 */
-	void on_receive_client(const long client, const long ec);
-	/*!
-	 * @brief 响应消息MSG_RECEIVE_TELE
-	 * @param client 网络连接
-	 * @param ec     错误代码. 0: 正确; 其它: 错误
-	 */
-	void on_receive_telescope(const long client, const long ec);
-	/*!
-	 * @brief 响应消息MSG_RECEIVE_MOUNT
-	 * @param client 网络连接
-	 * @param ec     错误代码. 0: 正确; 其它: 错误
-	 */
-	void on_receive_mount(const long client, const long ec);
-	/*!
-	 * @brief 响应消息MSG_RECEIVE_CAMERA
-	 * @param client 网络连接
-	 * @param ec     错误代码. 0: 正确; 其它: 错误
-	 */
-	void on_receive_camera(const long client, const long ec);
-	/*!
-	 * @brief 响应消息MSG_RECEIVE_TELE_ANNEX
-	 * @param client 网络连接
-	 * @param ec     错误代码. 0: 正确; 其它: 错误
-	 */
-	void on_receive_telescope_annex(const long client, const long ec);
-	/*!
-	 * @brief 响应消息MSG_RECEIVE_MOUNT_ANNEX
-	 * @param client 网络连接
-	 * @param ec     错误代码. 0: 正确; 其它: 错误
-	 */
-	void on_receive_mount_annex(const long client, const long ec);
-	/*!
-	 * @brief 响应消息MSG_RECEIVE_CAMERA_ANNEX
-	 * @param client 网络连接
-	 * @param ec     错误代码. 0: 正确; 其它: 错误
-	 */
-	void on_receive_camera_annex(const long client, const long ec);
-	/*!
-	 * @brief 响应消息MSG_CLOSE_CLIENT
-	 * @param client 网络连接
-	 * @param ec     错误代码. 0: 正确; 其它: 错误
-	 */
-	void on_close_client(const long client, const long ec);
-	/*!
-	 * @brief 响应消息MSG_CLOSE_TELE
-	 * @param client 网络连接
-	 * @param ec     错误代码. 0: 正确; 其它: 错误
-	 */
-	void on_close_telescope(const long client, const long ec);
-	/*!
-	 * @brief 响应消息MSG_CLOSE_MOUNT
-	 * @param client 网络连接
-	 * @param ec     错误代码. 0: 正确; 其它: 错误
-	 */
-	void on_close_mount(const long client, const long ec);
-	/*!
-	 * @brief 响应消息MSG_CLOSE_CAMERA
-	 * @param client 网络连接
-	 * @param ec     错误代码. 0: 正确; 其它: 错误
-	 */
-	void on_close_camera(const long client, const long ec);
-	/*!
-	 * @brief 响应消息MSG_CLOSE_TELE_ANNEX
-	 * @param client 网络连接
-	 * @param ec     错误代码. 0: 正确; 其它: 错误
-	 */
-	void on_close_telescope_annex(const long client, const long ec);
-	/*!
-	 * @brief 响应消息MSG_CLOSE_MOUNT_ANNEX
-	 * @param client 网络连接
-	 * @param ec     错误代码. 0: 正确; 其它: 错误
-	 */
-	void on_close_mount_annex(const long client, const long ec);
-	/*!
-	 * @brief 响应消息MSG_CLOSE_CAMERA_ANNEX
-	 * @param client 网络连接
-	 * @param ec     错误代码. 0: 正确; 其它: 错误
-	 */
-	void on_close_camera_annex(const long client, const long ec);
-	/*!
-	 * @brief 响应消息MSG_ACQUIRE_PLAN
-	 */
-	void on_acquire_plan(const long, const long);
+	void resolve_protocol_nonkv(const char* data, const TcpCPtr client, int peer);
 
 protected:
 	/*----------------- 观测计划 -----------------*/
 	/*!
 	 * @brief 回调函数, 为通用系统申请新的观测计划
+	 * @param gid  组标志
+	 * @param uid  单元标志
+	 * @return
+	 * 计划获取结果
 	 */
-	void acquire_new_plan(const int type, const string& gid, const string& uid);
+	bool acquire_new_plan(const string& gid, const string& uid);
+
+protected:
+	/*----------------- 观测系统 -----------------*/
 
 protected:
 	/*----------------- 多线程 -----------------*/
 	/*!
+	 * @brief 中止线程
+	 * @param thrd 线程指针
+	 */
+	void interrupt_thread(ThreadPtr& thrd);
+	/*!
+	 * @brief 处理网络事件
+	 * @note
+	 * - 接收信息: 解析并投递执行
+	 * - 关闭: 释放资源
+	 */
+	void thread_network_event();
+	/*!
 	 * @brief 时钟同步
 	 * @note
-	 * - 每日正午检查时钟偏差, 当时钟偏差大于1秒时修正本机时钟
+	 * - 1小时周期检查时钟偏差, 当时钟偏差大于阈值时修正本机时钟
 	 */
 	void thread_clocksync();
 };

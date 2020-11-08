@@ -5,13 +5,13 @@
  **/
 
 #include <boost/make_shared.hpp>
+#include <boost/algorithm/string.hpp>
 #include <boost/date_time/posix_time/posix_time.hpp>
 #include <stdlib.h>
 #include "AsciiProtocol.h"
+#include "AstroDeviceDef.h"
 
-using namespace std;
 using namespace boost;
-using namespace boost::posix_time;
 
 //////////////////////////////////////////////////////////////////////////////
 // 检查赤经/赤纬有效性
@@ -23,45 +23,11 @@ bool valid_dec(double dec) {
 	return -90.0 <= dec && dec <= 90.0;
 }
 
-/*!
- * @brief 检查图像类型
- */
-IMAGE_TYPE check_imgtype(string imgtype, string &sabbr) {
-	IMAGE_TYPE itype(IMGTYPE_ERROR);
-
-	if (boost::iequals(imgtype, "bias")) {
-		itype = IMGTYPE_BIAS;
-		sabbr = "bias";
-	}
-	else if (boost::iequals(imgtype, "dark")) {
-		itype = IMGTYPE_DARK;
-		sabbr = "dark";
-	}
-	else if (boost::iequals(imgtype, "flat")) {
-		itype = IMGTYPE_FLAT;
-		sabbr = "flat";
-	}
-	else if (boost::iequals(imgtype, "object")) {
-		itype = IMGTYPE_OBJECT;
-		sabbr = "objt";
-	}
-	else if (boost::iequals(imgtype, "focus")) {
-		itype = IMGTYPE_FOCUS;
-		sabbr = "focs";
-	}
-
-	return itype;
-}
-
-AscProtoPtr make_ascproto() {
-	return boost::make_shared<AsciiProtocol>();
-}
-
 //////////////////////////////////////////////////////////////////////////////
 AsciiProtocol::AsciiProtocol()
-	: szproto_(1024) {
-	ibuf_ = 0;
-	buff_.reset(new char[szproto_ * 10]); //< 存储区
+	: szProto_(1400) {
+	iBuf_ = 0;
+	buff_.reset(new char[szProto_ * 10]); // 存储区
 }
 
 AsciiProtocol::~AsciiProtocol() {
@@ -73,26 +39,20 @@ const char* AsciiProtocol::output_compacted(string& output, int& n) {
 }
 
 const char* AsciiProtocol::output_compacted(const char* s, int& n) {
-	mutex_lock lck(mtx_);
-	char* buff = buff_.get() + ibuf_ * szproto_;
-	if (++ibuf_ == 10) ibuf_ = 0;
+	MtxLck lck(mtx_);
+	char* buff = buff_.get() + iBuf_ * szProto_;
+	if (++iBuf_ == 10) iBuf_ = 0;
 	n = sprintf(buff, "%s\n", s);
 	return buff;
 }
 
 void AsciiProtocol::compact_base(apbase base, string &output) {
-	likv &kvs = base->kvs;
-	likv::iterator itend = kvs.end();
-
 	output = base->type + " ";
 	base->utc = to_iso_extended_string(second_clock::universal_time());
 	join_kv(output, "utc",  base->utc);
-	if (!base->gid.empty()) join_kv(output, "group_id", base->gid);
-	if (!base->uid.empty()) join_kv(output, "unit_id",  base->uid);
-	if (!base->cid.empty()) join_kv(output, "cam_id",   base->cid);
-	for (likv::iterator x = kvs.begin(); x != itend; ++x) { // 封装自定义关键字
-		join_kv(output, x->keyword, x->value);
-	}
+	if (base->gid.size()) join_kv(output, "gid", base->gid);
+	if (base->uid.size()) join_kv(output, "uid", base->uid);
+	if (base->cid.size()) join_kv(output, "cid", base->cid);
 }
 
 bool AsciiProtocol::resolve_kv(string& kv, string& keyword, string& value) {
@@ -113,10 +73,10 @@ void AsciiProtocol::resolve_kv_array(listring &tokens, likv &kvs, ascii_proto_ba
 	for (listring::iterator it = tokens.begin(); it != tokens.end(); ++it) {// 遍历键值对
 		if (!resolve_kv(*it, keyword, value)) continue;
 		// 识别通用项
-		if      (iequals(keyword, "utc"))      basis.utc = value;
-		else if (iequals(keyword, "group_id") || iequals(keyword, "gid")) basis.gid = value;
-		else if (iequals(keyword, "unit_id")  || iequals(keyword, "uid")) basis.uid = value;
-		else if (iequals(keyword, "cam_id")   || iequals(keyword, "cid")) basis.cid = value;
+		if      (iequals(keyword, "utc")) basis.utc = value;
+		else if (iequals(keyword, "gid")) basis.gid = value;
+		else if (iequals(keyword, "uid")) basis.uid = value;
+		else if (iequals(keyword, "cid")) basis.cid = value;
 		else {// 存储非通用项
 			key_val kv;
 			kv.keyword = keyword;
@@ -124,6 +84,71 @@ void AsciiProtocol::resolve_kv_array(listring &tokens, likv &kvs, ascii_proto_ba
 			kvs.push_back(kv);
 		}
 	}
+}
+
+bool AsciiProtocol::compact_plan(ObsPlanItemPtr plan, string& output) {
+	if (!plan.use_count()
+			|| !TypeCoorSys::IsValid(plan->coorsys))
+		return false;
+
+	int m(plan->filters.size()), i;
+	string filter;
+
+	if (plan->gid.size()) join_kv(output, "gid", plan->gid);
+	if (plan->uid.size()) join_kv(output, "uid", plan->uid);
+	join_kv(output, "plan_sn",     plan->plan_sn);
+	if (plan->plan_time.size())  join_kv(output, "plan_time",   plan->plan_time);
+	if (plan->plan_type.size())  join_kv(output, "plan_type",   plan->plan_type);
+	if (plan->obstype.size())    join_kv(output, "obstype",     plan->obstype);
+	if (plan->grid_id.size())    join_kv(output, "grid_id",     plan->grid_id);
+	if (plan->field_id.size())   join_kv(output, "field_id",    plan->field_id);
+	if (plan->observer.size())   join_kv(output, "observer",    plan->observer);
+	if (plan->objname.size())    join_kv(output, "objname",     plan->objname);
+	if (plan->runname.size())    join_kv(output, "runname",     plan->runname);
+	join_kv(output, "coorsys", plan->coorsys);
+	if (plan->coorsys != TypeCoorSys::COORSYS_ORBIT
+			&& valid_ra(plan->lon)
+			&& valid_dec(plan->lat)) {
+		join_kv(output, "lon",     plan->lon);
+		join_kv(output, "lat",     plan->lat);
+		join_kv(output, "epoch",   plan->epoch);
+	}
+	else {
+		join_kv(output, "line1",   plan->line1);
+		join_kv(output, "line2",   plan->line2);
+	}
+	if (valid_ra(plan->objra) && valid_dec(plan->objdec)) {
+		join_kv(output, "objra",    plan->objra);
+		join_kv(output, "objdec",   plan->objdec);
+		join_kv(output, "objepoch", plan->objepoch);
+	}
+	if (plan->objerror.size())   join_kv(output, "objerror",    plan->objerror);
+	join_kv(output, "imgtype",  plan->imgtype);
+	for (i = 0; i < m; ++i) {
+		filter += plan->filters[i] + "|";
+	}
+	if (filter.size())  join_kv(output, "filter",   filter);
+	join_kv(output, "expdur",   plan->expdur);
+	join_kv(output, "delay",    plan->delay);
+	join_kv(output, "frmcnt",   plan->frmcnt);
+	join_kv(output, "loopcnt",  plan->loopcnt);
+	join_kv(output, "priority", plan->priority);
+
+	string tmbegin, tmend;
+	if (!plan->tmbegin.is_special())
+		tmbegin = to_iso_extended_string(plan->tmbegin);
+	if (!plan->tmend.is_special())
+		tmend   = to_iso_extended_string(plan->tmend);
+	if (tmbegin.size())      join_kv(output, "btime",   tmbegin);
+	if (tmend.size())        join_kv(output, "etime",   tmend);
+	if (plan->pair_id >= 0)  join_kv(output, "pair_id", plan->pair_id);
+
+	ObservationPlanItem::KVVec& kvs = plan->kvs;
+	ObservationPlanItem::KVVec::iterator it;
+	for (it = kvs.begin(); it != kvs.end(); ++it) {
+		join_kv(output, it->first, it->second);
+	}
+	return true;
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -151,32 +176,19 @@ const char *AsciiProtocol::CompactUnregister(apunreg proto, int &n) {
 	return output_compacted(output, n);
 }
 
-const char *AsciiProtocol::CompactObsSite(apobsite proto, int &n) {
-	if (!proto.use_count()) return NULL;
-
-	string output;
-	compact_base(to_apbase(proto), output);
-	join_kv(output, "sitename",  proto->sitename);
-	join_kv(output, "longitude", proto->lon);
-	join_kv(output, "latitude",  proto->lat);
-	join_kv(output, "altitude",  proto->alt);
-	join_kv(output, "timezone",  proto->timezone);
+const char *AsciiProtocol::CompactStart(const string& gid, const string& uid, int &n) {
+	string output = APTYPE_START;
+	output += " ";
+	if (gid.size()) join_kv(output, "gid", gid);
+	if (uid.size()) join_kv(output, "uid", uid);
 	return output_compacted(output, n);
 }
 
-const char *AsciiProtocol::CompactStart(apstart proto, int &n) {
-	if (!proto.use_count()) return NULL;
-
-	string output;
-	compact_base(to_apbase(proto), output);
-	return output_compacted(output, n);
-}
-
-const char *AsciiProtocol::CompactStop(apstop proto, int &n) {
-	if (!proto.use_count()) return NULL;
-
-	string output;
-	compact_base(to_apbase(proto), output);
+const char *AsciiProtocol::CompactStop(const string& gid, const string& uid, int &n) {
+	string output = APTYPE_STOP;
+	output += " ";
+	if (gid.size()) join_kv(output, "gid", gid);
+	if (uid.size()) join_kv(output, "uid", uid);
 	return output_compacted(output, n);
 }
 
@@ -193,6 +205,19 @@ const char *AsciiProtocol::CompactDisable(apdisable proto, int &n) {
 
 	string output;
 	compact_base(to_apbase(proto), output);
+	return output_compacted(output, n);
+}
+
+const char *AsciiProtocol::CompactObsSite(apobsite proto, int &n) {
+	if (!proto.use_count()) return NULL;
+
+	string output;
+	compact_base(to_apbase(proto), output);
+	join_kv(output, "sitename",  proto->sitename);
+	join_kv(output, "longitude", proto->lon);
+	join_kv(output, "latitude",  proto->lat);
+	join_kv(output, "altitude",  proto->alt);
+	join_kv(output, "timezone",  proto->timezone);
 	return output_compacted(output, n);
 }
 
@@ -213,78 +238,99 @@ const char *AsciiProtocol::CompactObss(apobss proto, int &n) {
 		camid = "cam#" + proto->camera[i].cid;
 		join_kv(output, camid, proto->camera[i].state);
 	}
-
 	return output_compacted(output, n);
 }
 
-const char *AsciiProtocol::CompactFindHome(apfindhome proto, int &n) {
+const char *AsciiProtocol::CompactAppendPlan(ObsPlanItemPtr plan, int &n) {
+	string strplan, output;
+	output = APTYPE_APPPLAN;
+	output += " ";
+	if (compact_plan(plan, strplan))
+		output += strplan;
+	return output_compacted(output, n);
+}
+
+const char *AsciiProtocol::CompactImplementPlan(ObsPlanItemPtr plan, int &n) {
+	string strplan, output;
+	output = APTYPE_IMPPLAN;
+	output += " ";
+	if (compact_plan(plan, strplan))
+		output += strplan;
+	return output_compacted(output, n);
+}
+
+const char *AsciiProtocol::CompactAbortPlan(const string& plan_sn, int &n) {
+	string output = APTYPE_ABTPLAN;
+	output += " ";
+	join_kv(output, "plan_sn", plan_sn);
+	return output_compacted(output, n);
+}
+
+const char *AsciiProtocol::CompactCheckPlan(const string& plan_sn, int &n) {
+	string output = APTYPE_CHKPLAN;
+	output += " ";
+	join_kv(output, "plan_sn", plan_sn);
+	return output_compacted(output, n);
+}
+
+const char *AsciiProtocol::CompactPlan(applan proto, int &n) {
 	if (!proto.use_count()) return NULL;
 
 	string output;
 	compact_base(to_apbase(proto), output);
+	join_kv(output, "plan_sn", proto->plan_sn);
+	join_kv(output, "state",   proto->state);
 	return output_compacted(output, n);
 }
 
-const char *AsciiProtocol::CompactFindHome(int &n) {
-	return output_compacted(APTYPE_FINDHOME, n);
-}
-
-const char *AsciiProtocol::CompactHomeSync(aphomesync proto, int &n) {
-	if (!proto.use_count()
-			|| !(valid_ra(proto->ra) && valid_dec(proto->dec)))
-		return NULL;
-
-	string output;
-	compact_base(to_apbase(proto), output);
-	join_kv(output, "ra",       proto->ra);
-	join_kv(output, "dec",      proto->dec);
-	join_kv(output, "epoch",    proto->epoch);
-
+const char *AsciiProtocol::CompactFindHome(const string& gid, const string& uid, int &n) {
+	string output = APTYPE_FINDHOME;
+	output += " ";
+	if (gid.size()) join_kv(output, "gid", gid);
+	if (uid.size()) join_kv(output, "uid", uid);
 	return output_compacted(output, n);
 }
 
-const char *AsciiProtocol::CompactHomeSync(double ra, double dec, int &n) {
+const char *AsciiProtocol::CompactHomeSync(const string& gid,
+		const string& uid, double ra, double dec, int &n) {
 	string output = APTYPE_HOMESYNC;
 	output += " ";
-	join_kv(output, "ra",    ra);
-	join_kv(output, "dec",   dec);
+	if (gid.size()) join_kv(output, "gid", gid);
+	if (uid.size()) join_kv(output, "uid", uid);
+	join_kv(output, "ra",  ra);
+	join_kv(output, "dec", dec);
 	return output_compacted(output, n);
 }
 
 const char *AsciiProtocol::CompactSlewto(apslewto proto, int &n) {
-	if (!proto.use_count()
-			|| !(valid_ra(proto->ra) && valid_dec(proto->dec)))
+	if (!(proto.use_count() && TypeCoorSys::IsValid(proto->coorsys)))
+		return NULL;
+	if (!(proto->coorsys == TypeCoorSys::COORSYS_ORBIT
+			|| (valid_ra(proto->lon) && valid_dec(proto->lat))))
 		return NULL;
 
 	string output;
 	compact_base(to_apbase(proto), output);
-	join_kv(output, "ra",       proto->ra);
-	join_kv(output, "dec",      proto->dec);
-	join_kv(output, "epoch",    proto->epoch);
+	join_kv(output, "coorsys", proto->coorsys);
+	if (proto->coorsys == TypeCoorSys::COORSYS_ORBIT) {
+		join_kv(output, "line1",  proto->line1);
+		join_kv(output, "line2",  proto->line2);
+	}
+	else {
+		join_kv(output, "lon",   proto->lon);
+		join_kv(output, "lat",   proto->lat);
+		join_kv(output, "epoch", proto->epoch);
+	}
 
 	return output_compacted(output, n);
 }
 
-const char *AsciiProtocol::CompactSlewto(double ra, double dec, double epoch, int &n) {
-	string output = APTYPE_SLEWTO;
+const char *AsciiProtocol::CompactPark(const string& gid, const string& uid, int &n) {
+	string output = APTYPE_PARK;
 	output += " ";
-	join_kv(output, "ra",    ra);
-	join_kv(output, "dec",   dec);
-	join_kv(output, "epoch", epoch);
-
+	if (gid.size()) join_kv(output, "gid", gid);
+	if (uid.size()) join_kv(output, "uid", uid);
 	return output_compacted(output, n);
-}
-
-const char *AsciiProtocol::CompactPark(appark proto, int &n) {
-	if (!proto.use_count()) return NULL;
-
-	string output;
-	compact_base(to_apbase(proto), output);
-	return output_compacted(output, n);
-}
-
-const char *AsciiProtocol::CompactPark(int &n) {
-	return output_compacted(APTYPE_PARK, n);
 }
 
 const char *AsciiProtocol::CompactGuide(apguide proto, int &n) {
@@ -306,28 +352,15 @@ const char *AsciiProtocol::CompactGuide(apguide proto, int &n) {
 	return output_compacted(output, n);
 }
 
-const char *AsciiProtocol::CompactGuide(double ra, double dec, int &n) {
-	string output = APTYPE_GUIDE;
+const char *AsciiProtocol::CompactAbortSlew(const string& gid, const string& uid, int &n) {
+	string output = APTYPE_ABTSLEW;
 	output += " ";
-	join_kv(output, "ra",    ra);
-	join_kv(output, "dec",   dec);
-
+	if (gid.size()) join_kv(output, "gid", gid);
+	if (uid.size()) join_kv(output, "uid", uid);
 	return output_compacted(output, n);
 }
 
-const char *AsciiProtocol::CompactAbortSlew(apabortslew proto, int &n) {
-	if (!proto.use_count()) return NULL;
-
-	string output;
-	compact_base(to_apbase(proto), output);
-	return output_compacted(output, n);
-}
-
-const char *AsciiProtocol::CompactAbortSlew(int &n) {
-	return output_compacted(APTYPE_ABTSLEW, n);
-}
-
-const char *AsciiProtocol::CompactTelescope(aptele proto, int &n) {
+const char *AsciiProtocol::CompactMount(apmount proto, int &n) {
 	if (!proto.use_count()) return NULL;
 
 	string output;
@@ -337,7 +370,7 @@ const char *AsciiProtocol::CompactTelescope(aptele proto, int &n) {
 	join_kv(output, "ra",       proto->ra);
 	join_kv(output, "dec",      proto->dec);
 	join_kv(output, "azi",      proto->azi);
-	join_kv(output, "ele",      proto->ele);
+	join_kv(output, "alt",      proto->alt);
 
 	return output_compacted(output, n);
 }
@@ -348,40 +381,47 @@ const char *AsciiProtocol::CompactFWHM(apfwhm proto, int &n) {
 	string output;
 	compact_base(to_apbase(proto), output);
 	join_kv(output, "value", proto->value);
-
 	return output_compacted(output, n);
 }
 
 const char *AsciiProtocol::CompactFocus(apfocus proto, int &n) {
-	if (!proto.use_count() || proto->value == INT_MIN) return NULL;
+	if (!proto.use_count()) return NULL;
 
 	string output;
 	compact_base(to_apbase(proto), output);
-	join_kv(output, "value", proto->value);
+	join_kv(output, "state", proto->state);
+	join_kv(output, "value", proto->position);
 
 	return output_compacted(output, n);
 }
 
-const char *AsciiProtocol::CompactFocus(int position, int &n) {
-	string output = APTYPE_FOCUS;
-	output += " ";
-	join_kv(output, "value", position);
+const char *AsciiProtocol::CompactDome(apdome proto, int& n) {
+	if (!proto.use_count()) return NULL;
+	string output;
+	compact_base(to_apbase(proto), output);
+	join_kv(output, "azi", proto->azi);
+	join_kv(output, "alt", proto->alt);
+	if (valid_ra(proto->objazi))  join_kv(output, "objazi", proto->objazi);
+	if (valid_dec(proto->objalt)) join_kv(output, "objalt", proto->objalt);
+	return output_compacted(output, n);
+}
+
+const char *AsciiProtocol::CompactSlit(apslit proto, int& n) {
+	if (!proto.use_count()) return NULL;
+	string output;
+	compact_base(to_apbase(proto), output);
+	join_kv(output, "command", proto->command);
+	join_kv(output, "state",   proto->state);
 	return output_compacted(output, n);
 }
 
 const char *AsciiProtocol::CompactMirrorCover(apmcover proto, int &n) {
-	if (!proto.use_count() || proto->value == INT_MIN) return NULL;
+	if (!proto.use_count()) return NULL;
 
 	string output;
 	compact_base(to_apbase(proto), output);
-	join_kv(output, "value", proto->value);
-	return output_compacted(output, n);
-}
-
-const char *AsciiProtocol::CompactMirrorCover(int state, int &n) {
-	string output = APTYPE_MCOVER;
-	output += " ";
-	join_kv(output, "value", state);
+	join_kv(output, "command", proto->command);
+	join_kv(output, "state",   proto->state);
 	return output_compacted(output, n);
 }
 
@@ -396,7 +436,6 @@ const char *AsciiProtocol::CompactTakeImage(aptakeimg proto, int &n) {
 	join_kv(output, "filter",   proto->filter);
 	join_kv(output, "expdur",   proto->expdur);
 	join_kv(output, "frmcnt",   proto->frmcnt);
-
 	return output_compacted(output, n);
 }
 
@@ -408,93 +447,29 @@ const char *AsciiProtocol::CompactAbortImage(apabortimg proto, int &n) {
 	return output_compacted(output, n);
 }
 
-const char *AsciiProtocol::CompactAppendPlan(apappplan proto, int &n) {
-	if (!proto.use_count()) return NULL;
-
-	int size, i;
-	string output, tmp;
-	compact_base(to_apbase(proto), output);
-
-	join_kv(output, "plan_sn",     proto->plan_sn);
-	if (!proto->plan_time.empty()) join_kv(output, "plan_time",   proto->plan_time);
-	if (!proto->plan_type.empty()) join_kv(output, "plan_type",   proto->plan_type);
-	if (!proto->obstype.empty())   join_kv(output, "obstype",     proto->obstype);
-	if (!proto->grid_id.empty())   join_kv(output, "grid_id",     proto->grid_id);
-	if (!proto->field_id.empty())  join_kv(output, "field_id",    proto->field_id);
-	if (!proto->observer.empty())  join_kv(output, "observer",    proto->observer);
-	if (!proto->objname.empty())   join_kv(output, "objname",     proto->objname);
-	if (!proto->runname.empty())   join_kv(output, "runname",     proto->runname);
-	if (valid_ra(proto->ra) && valid_dec(proto->dec)) {
-		join_kv(output, "ra",          proto->ra);
-		join_kv(output, "dec",         proto->dec);
-		join_kv(output, "epoch",       proto->epoch);
-	}
-	if (valid_ra(proto->objra) && valid_dec(proto->dec)) {
-		join_kv(output, "objra",       proto->objra);
-		join_kv(output, "objdec",      proto->objdec);
-		join_kv(output, "objepoch",    proto->objepoch);
-	}
-	if (!proto->objerror.empty())   join_kv(output, "objerror",    proto->objerror);
-	join_kv(output, "imgtype",  proto->imgtype);
-	join_kv(output, "filter",   proto->filter);
-	join_kv(output, "expdur",   proto->expdur);
-	join_kv(output, "delay",    proto->delay);
-	join_kv(output, "frmcnt",   proto->frmcnt);
-	join_kv(output, "loopcnt",  proto->loopcnt);
-	join_kv(output, "priority", proto->priority);
-	if (!proto->begin_time.empty()) join_kv(output, "btime",   proto->begin_time);
-	if (!proto->end_time.empty())   join_kv(output, "etime",   proto->end_time);
-	if (proto->pair_id >= 0)        join_kv(output, "pair_id", proto->pair_id);
-
-	return output_compacted(output, n);
-}
-
-const char *AsciiProtocol::CompactAbortPlan(apabtplan proto, int &n) {
-	if (!proto.use_count() || proto->plan_sn.empty()) return NULL;
-
-	string output;
-	compact_base(to_apbase(proto), output);
-	join_kv(output, "plan_sn", proto->plan_sn);
-	return output_compacted(output, n);
-}
-
-const char *AsciiProtocol::CompactCheckPlan(apchkplan proto, int &n) {
-	if (!proto.use_count() || proto->plan_sn.empty()) return NULL;
-
-	string output;
-	compact_base(to_apbase(proto), output);
-	join_kv(output, "plan_sn", proto->plan_sn);
-	return output_compacted(output, n);
-}
-
-const char *AsciiProtocol::CompactPlan(applan proto, int &n) {
-	if (!proto.use_count()) return NULL;
-
-	string output;
-	compact_base(to_apbase(proto), output);
-	join_kv(output, "plan_sn", proto->plan_sn);
-	join_kv(output, "state",   proto->state);
-	return output_compacted(output, n);
-}
-
 const char *AsciiProtocol::CompactObject(apobject proto, int &n) {
 	if (!proto.use_count() || proto->plan_sn.empty()) return NULL;
 
-	string output;
+	string output, tmbegin, tmend;
 	compact_base(to_apbase(proto), output);
 
 	join_kv(output, "plan_sn",    proto->plan_sn);
-	if (!proto->plan_time.empty()) join_kv(output, "plan_time",  proto->plan_time);
-	if (!proto->plan_type.empty()) join_kv(output, "plan_type",  proto->plan_type);
-	if (!proto->observer.empty())  join_kv(output, "observer",   proto->observer);
-	if (!proto->obstype.empty())   join_kv(output, "obstype",    proto->obstype);
-	if (!proto->grid_id.empty())   join_kv(output, "grid_id",    proto->grid_id);
-	if (!proto->field_id.empty())  join_kv(output, "field_id",   proto->field_id);
-	if (!proto->objname.empty())   join_kv(output, "objname",    proto->objname);
-	if (!proto->runname.empty())   join_kv(output, "runname",    proto->runname);
-	if (valid_ra(proto->ra) && valid_dec(proto->dec)) {
-		join_kv(output, "ra",       proto->ra);
-		join_kv(output, "dec",      proto->dec);
+	if (proto->plan_time.size()) join_kv(output, "plan_time",  proto->plan_time);
+	if (proto->plan_type.size()) join_kv(output, "plan_type",  proto->plan_type);
+	if (proto->observer.size())  join_kv(output, "observer",   proto->observer);
+	if (proto->obstype.size())   join_kv(output, "obstype",    proto->obstype);
+	if (proto->grid_id.size())   join_kv(output, "grid_id",    proto->grid_id);
+	if (proto->field_id.size())  join_kv(output, "field_id",   proto->field_id);
+	if (proto->objname.size())   join_kv(output, "objname",    proto->objname);
+	if (proto->runname.size())   join_kv(output, "runname",    proto->runname);
+	join_kv(output, "coorsys",    proto->coorsys);
+	if (proto->coorsys == TypeCoorSys::COORSYS_ORBIT) {
+		join_kv(output, "line1", proto->line1);
+		join_kv(output, "line2", proto->line2);
+	}
+	else if (valid_ra(proto->lon) && valid_dec(proto->lat)) {
+		join_kv(output, "lon",      proto->lon);
+		join_kv(output, "lat",      proto->lat);
 		join_kv(output, "epoch",    proto->epoch);
 	}
 	if (valid_ra(proto->objra) && valid_dec(proto->objdec)) {
@@ -503,17 +478,23 @@ const char *AsciiProtocol::CompactObject(apobject proto, int &n) {
 		join_kv(output, "objepoch", proto->objepoch);
 	}
 	if (!proto->objerror.empty())  join_kv(output, "objerror", proto->objerror);
-	join_kv(output, "imgtype",     proto->imgtype);
-	join_kv(output, "expdur",      proto->expdur);
-	join_kv(output, "delay",       proto->delay);
-	join_kv(output, "frmcnt",      proto->frmcnt);
-	join_kv(output, "loopcnt",     proto->loopcnt);
-	join_kv(output, "ifrm",        proto->ifrm);
-	join_kv(output, "iloop",       proto->iloop);
-	join_kv(output, "priority",    proto->priority);
-	join_kv(output, "begin_time",  proto->begin_time);
-	join_kv(output, "end_time",    proto->end_time);
-	join_kv(output, "pair_id",     proto->pair_id);
+	join_kv(output, "imgtype",    proto->imgtype);
+	join_kv(output, "filter",     proto->filter);
+	join_kv(output, "expdur",     proto->expdur);
+	join_kv(output, "delay",      proto->delay);
+	join_kv(output, "frmcnt",     proto->frmcnt);
+	join_kv(output, "priority",   proto->priority);
+	tmbegin = to_iso_extended_string(proto->tmbegin);
+	tmend   = to_iso_extended_string(proto->tmend);
+	join_kv(output, "btime",      tmbegin);
+	join_kv(output, "etime",      tmend);
+	join_kv(output, "pair_id",    proto->pair_id);
+	join_kv(output, "iloop",      proto->iloop);
+
+	likv& kvs = proto->kvs;
+	for (likv::iterator it = kvs.begin(); it != kvs.end(); ++it) {
+		join_kv(output, it->keyword, it->value);
+	}
 
 	return output_compacted(output, n);
 }
@@ -533,19 +514,8 @@ const char *AsciiProtocol::CompactCamera(apcam proto, int &n) {
 
 	join_kv(output, "state",     proto->state);
 	join_kv(output, "errcode",   proto->errcode);
-	join_kv(output, "mcstate",   proto->mcstate);
-	join_kv(output, "focus",     proto->focus);
 	join_kv(output, "coolget",   proto->coolget);
-	join_kv(output, "objname",   proto->objname);
-	join_kv(output, "filename",  proto->filename);
-	join_kv(output, "imgtype",   proto->imgtype);
 	join_kv(output, "filter",    proto->filter);
-	join_kv(output, "expdur",    proto->expdur);
-	join_kv(output, "delay",     proto->delay);
-	join_kv(output, "frmcnt",    proto->frmcnt);
-	join_kv(output, "loopcnt",   proto->loopcnt);
-	join_kv(output, "ifrm",      proto->ifrm);
-	join_kv(output, "iloop",     proto->iloop);
 	return output_compacted(output, n);
 }
 
@@ -600,14 +570,32 @@ const char *AsciiProtocol::CompactFileStat(apfilestat proto, int &n) {
 	return output_compacted(output, n);
 }
 
-/**
- * @brief 拷贝生成新的通用观测计划
- */
-apappplan AsciiProtocol::CopyAppendPlan(apappplan proto) {
-	apappplan plan = boost::make_shared<ascii_proto_append_plan>();
-	*plan = *proto;
+const char *AsciiProtocol::CompactRainfall(aprain proto, int &n) {
+	if (!proto.use_count()) return NULL;
 
-	return plan;
+	string output;
+	compact_base(to_apbase(proto), output);
+	join_kv(output, "value", proto->value);
+	return output_compacted(output, n);
+}
+
+const char *AsciiProtocol::CompactWind(apwind proto, int &n) {
+	if (!proto.use_count()) return NULL;
+
+	string output;
+	compact_base(to_apbase(proto), output);
+	join_kv(output, "orient", proto->orient);
+	join_kv(output, "speed",  proto->speed);
+	return output_compacted(output, n);
+}
+
+const char *AsciiProtocol::CompactCloud(apcloud proto, int &n) {
+	if (!proto.use_count()) return NULL;
+
+	string output;
+	compact_base(to_apbase(proto), output);
+	join_kv(output, "value", proto->value);
+	return output_compacted(output, n);
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -618,7 +606,7 @@ apbase AsciiProtocol::Resolve(const char *rcvd) {
 	apbase proto;
 	string type;
 	ascii_proto_base basis;
-	likv &kvs = basis.kvs;
+	likv kvs;
 
 	// 提取协议类型
 	for (ptr = rcvd; *ptr && *ptr != ' '; ++ptr) type += *ptr;
@@ -630,13 +618,18 @@ apbase AsciiProtocol::Resolve(const char *rcvd) {
 	if ((ch = type[0]) == 'a') {
 		if      (iequals(type, APTYPE_ABTSLEW))  proto = resolve_abortslew(kvs);
 		else if (iequals(type, APTYPE_ABTIMG))   proto = resolve_abortimg(kvs);
-		else if (iequals(type, APTYPE_APPGWAC) || iequals(type, APTYPE_APPPLAN))  proto = resolve_append_plan(kvs);
+		else if (iequals(type, APTYPE_APPPLAN))  proto = resolve_append_plan(kvs);
 		else if (iequals(type, APTYPE_ABTPLAN))  proto = resolve_abort_plan(kvs);
 	}
 	else if (ch == 'c') {
 		if      (iequals(type, APTYPE_COOLER))   proto = resolve_cooler(kvs);
 		else if (iequals(type, APTYPE_CAMERA))   proto = resolve_camera(kvs);
 		else if (iequals(type, APTYPE_CHKPLAN))  proto = resolve_check_plan(kvs);
+		else if (iequals(type, APTYPE_CLOUD))    proto = resolve_cloud(kvs);
+	}
+	else if (ch == 'd') {
+		if      (iequals(type, APTYPE_DOME))     proto = resolve_dome(kvs);
+		else if (iequals(type, APTYPE_DISABLE))  proto = resolve_disable(kvs);
 	}
 	else if (ch == 'e') {
 		if      (iequals(type, APTYPE_EXPOSE))   proto = resolve_expose(kvs);
@@ -658,22 +651,27 @@ apbase AsciiProtocol::Resolve(const char *rcvd) {
 		if      (iequals(type, APTYPE_PARK))     proto = resolve_park(kvs);
 		else if (iequals(type, APTYPE_PLAN))     proto = resolve_plan(kvs);
 	}
+	else if (ch == 'r') {
+		if      (iequals(type, APTYPE_RAINFALL)) proto = resolve_rainfall(kvs);
+		else if (iequals(type, APTYPE_REG))      proto = resolve_register(kvs);
+	}
 	else if (ch == 's') {
 		if      (iequals(type, APTYPE_SLEWTO))   proto = resolve_slewto(kvs);
 		else if (iequals(type, APTYPE_START))    proto = resolve_start(kvs);
 		else if (iequals(type, APTYPE_STOP))     proto = resolve_stop(kvs);
+		else if (iequals(type, APTYPE_SLIT))     proto = resolve_slit(kvs);
 	}
-	else if (ch == 't'){
-		if      (iequals(type, APTYPE_TELE))     proto = resolve_telescope(kvs);
-		else if (iequals(type, APTYPE_TAKIMG))   proto = resolve_takeimg(kvs);
+	else if (ch == 'm') {
+		if      (iequals(type, APTYPE_MOUNT))    proto = resolve_mount(kvs);
+		else if (iequals(type, APTYPE_MCOVER))   proto = resolve_mcover(kvs);
 	}
 	else if (iequals(type, APTYPE_GUIDE))    proto = resolve_guide(kvs);
-	else if (iequals(type, APTYPE_REG))      proto = resolve_register(kvs);
-	else if (iequals(type, APTYPE_UNREG))    proto = resolve_unregister(kvs);
 	else if (iequals(type, APTYPE_HOMESYNC)) proto = resolve_homesync(kvs);
-	else if (iequals(type, APTYPE_MCOVER))   proto = resolve_mcover(kvs);
-	else if (iequals(type, APTYPE_DISABLE))  proto = resolve_disable(kvs);
+	else if (iequals(type, APTYPE_IMPPLAN))  proto = resolve_implement_plan(kvs);
+	else if (iequals(type, APTYPE_TAKIMG))   proto = resolve_takeimg(kvs);
+	else if (iequals(type, APTYPE_UNREG))    proto = resolve_unregister(kvs);
 	else if (iequals(type, APTYPE_VACUUM))   proto = resolve_vacuum(kvs);
+	else if (iequals(type, APTYPE_WIND))     proto = resolve_wind(kvs);
 
 	if (proto.unique()) *proto = basis;
 
@@ -687,22 +685,6 @@ apbase AsciiProtocol::resolve_register(likv &kvs) {
 
 apbase AsciiProtocol::resolve_unregister(likv &kvs) {
 	apunreg proto = boost::make_shared<ascii_proto_unreg>();
-	return to_apbase(proto);
-}
-
-apbase AsciiProtocol::resolve_obsite(likv &kvs) {
-	apobsite proto = boost::make_shared<ascii_proto_obsite>();
-	string keyword;
-
-	for (likv::iterator it = kvs.begin(); it != kvs.end(); ++it) {// 遍历键值对
-		keyword = (*it).keyword;
-
-		if      (iequals(keyword, "sitename"))  proto->sitename = it->value;
-		else if (iequals(keyword, "longitude")) proto->lon      = stod(it->value);
-		else if (iequals(keyword, "latitude"))  proto->lat      = stod(it->value);
-		else if (iequals(keyword, "altitude"))  proto->alt      = stod(it->value);
-		else if (iequals(keyword, "timezone"))  proto->timezone = stoi(it->value);
-	}
 	return to_apbase(proto);
 }
 
@@ -726,6 +708,22 @@ apbase AsciiProtocol::resolve_disable(likv &kvs) {
 	return to_apbase(proto);
 }
 
+apbase AsciiProtocol::resolve_obsite(likv &kvs) {
+	apobsite proto = boost::make_shared<ascii_proto_obsite>();
+	string keyword;
+
+	for (likv::iterator it = kvs.begin(); it != kvs.end(); ++it) {// 遍历键值对
+		keyword = (*it).keyword;
+
+		if      (iequals(keyword, "sitename"))  proto->sitename = it->value;
+		else if (iequals(keyword, "longitude")) proto->lon      = stod(it->value);
+		else if (iequals(keyword, "latitude"))  proto->lat      = stod(it->value);
+		else if (iequals(keyword, "altitude"))  proto->alt      = stod(it->value);
+		else if (iequals(keyword, "timezone"))  proto->timezone = stoi(it->value);
+	}
+	return to_apbase(proto);
+}
+
 apbase AsciiProtocol::resolve_obss(likv &kvs) {
 	apobss proto = boost::make_shared<ascii_proto_obss>();
 	string keyword, precid = "cam#";
@@ -735,17 +733,127 @@ apbase AsciiProtocol::resolve_obss(likv &kvs) {
 		keyword = (*it).keyword;
 		// 识别关键字
 		if      (iequals(keyword, "state"))   proto->state   = stoi(it->value);
-		else if (iequals(keyword, "op_sn"))   proto->plan_sn = it->value;
+		else if (iequals(keyword, "plan_sn")) proto->plan_sn = it->value;
 		else if (iequals(keyword, "op_time")) proto->op_time = it->value;
 		else if (iequals(keyword, "mount"))   proto->mount   = stoi(it->value);
 		else if (keyword.find(precid) == 0) {// 相机工作状态. 关键字 cam#xxx
 			ascii_proto_obss::camera_state cs;
 			cs.cid   = keyword.substr(nprecid);
 			cs.state = stoi(it->value);
-
 			proto->camera.push_back(cs);
 		}
 	}
+	return to_apbase(proto);
+}
+
+void AsciiProtocol::resolve_plan(likv& kvs, ObsPlanItemPtr plan) {
+	string keyword;
+	char ch;
+	ObservationPlanItem::KVVec &plan_kvs = plan->kvs;
+
+	for (likv::iterator it = kvs.begin(); it != kvs.end(); ++it) {// 遍历键值对
+		keyword = (*it).keyword;
+		ch = keyword[0];
+		// 识别关键字
+		if (ch == 'e') {
+			if      (iequals(keyword, "epoch"))   plan->epoch  = stod(it->value);
+			else if (iequals(keyword, "expdur"))  plan->expdur = stoi(it->value);
+			else if (iequals(keyword, "etime"))   plan->SetTimeEnd(it->value);
+		}
+		else if (ch == 'i') {
+			if      (iequals(keyword, "imgtype")) plan->imgtype = it->value;
+			else if (iequals(keyword, "iloop"))   plan->iloop   = stoi(it->value);
+		}
+		else if (ch == 'l') {
+			if      (iequals(keyword, "lon"))     plan->lon   = stod(it->value);
+			else if (iequals(keyword, "lat"))     plan->lat   = stod(it->value);
+			else if (iequals(keyword, "line1"))   plan->line1 = it->value;
+			else if (iequals(keyword, "line2"))   plan->line2 = it->value;
+		}
+		else if ((ch = keyword[0]) == 'o') {
+			if      (iequals(keyword, "objname"))   plan->objname   = it->value;
+			else if (iequals(keyword, "observer"))  plan->observer  = it->value;
+			else if (iequals(keyword, "obstype"))   plan->obstype   = it->value;
+			else if (iequals(keyword, "objra"))     plan->objra     = stod(it->value);
+			else if (iequals(keyword, "objdec"))    plan->objdec    = stod(it->value);
+			else if (iequals(keyword, "objepoch"))  plan->objepoch  = stod(it->value);
+			else if (iequals(keyword, "objerror"))  plan->objerror  = it->value;
+		}
+		else if (ch == 'p') {
+			if      (iequals(keyword, "priority"))  plan->priority  = stoi(it->value);
+			else if (iequals(keyword, "plan_sn"))   plan->plan_sn   = it->value;
+			else if (iequals(keyword, "plan_time")) plan->plan_time = it->value;
+			else if (iequals(keyword, "plan_type")) plan->plan_type = it->value;
+			else if (iequals(keyword, "pair_id"))   plan->pair_id   = stoi(it->value);
+		}
+		else if (ch == 'f') {
+			if      (iequals(keyword, "filter"))    plan->AppendFilter(it->value);
+			if      (iequals(keyword, "frmcnt"))    plan->frmcnt   = stoi(it->value);
+			else if (iequals(keyword, "field_id"))  plan->field_id = it->value;
+		}
+		else if (iequals(keyword, "coorsys"))       plan->coorsys  = stoi(it->value);
+		else if (iequals(keyword, "delay"))         plan->delay    = stod(it->value);
+		else if (iequals(keyword, "grid_id"))       plan->grid_id  = it->value;
+		else if (iequals(keyword, "runname"))       plan->runname  = it->value;
+		else if (iequals(keyword, "btime"))         plan->SetTimeBegin(it->value);
+		else {
+			ObservationPlanItem::KVPair kv(it->keyword, it->value);
+			plan_kvs.push_back(kv);
+		}
+	}
+}
+
+apbase AsciiProtocol::resolve_append_plan(likv &kvs) {
+	apappplan proto = boost::make_shared<ascii_proto_append_plan>();
+	ObsPlanItemPtr plan = proto->plan;
+	resolve_plan(kvs, plan);
+	return to_apbase(proto);
+}
+
+apbase AsciiProtocol::resolve_implement_plan(likv &kvs) {
+	apimpplan proto = boost::make_shared<ascii_proto_implement_plan>();
+	ObsPlanItemPtr plan = proto->plan;
+	resolve_plan(kvs, plan);
+	return to_apbase(proto);
+}
+
+apbase AsciiProtocol::resolve_abort_plan(likv &kvs) {
+	apabtplan proto = boost::make_shared<ascii_proto_abort_plan>();
+	string keyword;
+
+	for (likv::iterator it = kvs.begin(); it != kvs.end(); ++it) {// 遍历键值对
+		keyword = (*it).keyword;
+		// 识别关键字
+		if (iequals(keyword, "plan_sn")) proto->plan_sn = it->value;
+	}
+
+	return to_apbase(proto);
+}
+
+apbase AsciiProtocol::resolve_check_plan(likv &kvs) {
+	apchkplan proto = boost::make_shared<ascii_proto_check_plan>();
+	string keyword;
+
+	for (likv::iterator it = kvs.begin(); it != kvs.end(); ++it) {// 遍历键值对
+		keyword = (*it).keyword;
+		// 识别关键字
+		if (iequals(keyword, "plan_sn")) proto->plan_sn = it->value;
+	}
+
+	return to_apbase(proto);
+}
+
+apbase AsciiProtocol::resolve_plan(likv &kvs) {
+	applan proto = boost::make_shared<ascii_proto_plan>();
+	string keyword;
+
+	for (likv::iterator it = kvs.begin(); it != kvs.end(); ++it) {// 遍历键值对
+		keyword = (*it).keyword;
+		// 识别关键字
+		if      (iequals(keyword, "plan_sn")) proto->plan_sn = it->value;
+		else if (iequals(keyword, "state"))   proto->state   = stoi(it->value);
+	}
+
 	return to_apbase(proto);
 }
 
@@ -776,9 +884,12 @@ apbase AsciiProtocol::resolve_slewto(likv &kvs) {
 	for (likv::iterator it = kvs.begin(); it != kvs.end(); ++it) {// 遍历键值对
 		keyword = (*it).keyword;
 		// 识别关键字
-		if      (iequals(keyword, "ra"))     proto->ra    = stod(it->value);
-		else if (iequals(keyword, "dec"))    proto->dec    = stod(it->value);
-		else if (iequals(keyword, "epoch"))  proto->epoch = stod(it->value);
+		if      (iequals(keyword, "coorsys"))  proto->coorsys  = stoi(it->value);
+		else if (iequals(keyword, "lon"))      proto->lon      = stod(it->value);
+		else if (iequals(keyword, "lat"))      proto->lat      = stod(it->value);
+		else if (iequals(keyword, "epoch"))    proto->epoch    = stod(it->value);
+		else if (iequals(keyword, "line1"))    proto->line1    = it->value;
+		else if (iequals(keyword, "line2"))    proto->line2    = it->value;
 	}
 
 	return to_apbase(proto);
@@ -810,8 +921,8 @@ apbase AsciiProtocol::resolve_abortslew(likv &kvs) {
 	return to_apbase(proto);
 }
 
-apbase AsciiProtocol::resolve_telescope(likv &kvs) {
-	aptele proto = boost::make_shared<ascii_proto_telescope>();
+apbase AsciiProtocol::resolve_mount(likv &kvs) {
+	apmount proto = boost::make_shared<ascii_proto_mount>();
 	string keyword;
 
 	for (likv::iterator it = kvs.begin(); it != kvs.end(); ++it) {// 遍历键值对
@@ -820,9 +931,9 @@ apbase AsciiProtocol::resolve_telescope(likv &kvs) {
 		if      (iequals(keyword, "state"))    proto->state   = stoi(it->value);
 		else if (iequals(keyword, "errcode"))  proto->errcode = stoi(it->value);
 		else if (iequals(keyword, "ra"))       proto->ra      = stod(it->value);
-		else if (iequals(keyword, "dec"))      proto->dec      = stod(it->value);
+		else if (iequals(keyword, "dec"))      proto->dec     = stod(it->value);
 		else if (iequals(keyword, "azi"))      proto->azi     = stod(it->value);
-		else if (iequals(keyword, "ele"))      proto->ele     = stod(it->value);
+		else if (iequals(keyword, "alt"))      proto->alt     = stod(it->value);
 	}
 
 	return to_apbase(proto);
@@ -848,31 +959,51 @@ apbase AsciiProtocol::resolve_focus(likv &kvs) {
 	for (likv::iterator it = kvs.begin(); it != kvs.end(); ++it) {// 遍历键值对
 		keyword = (*it).keyword;
 		// 识别关键字
-		if      (iequals(keyword, "state"))  proto->state = stoi(it->value);
-		else if (iequals(keyword, "value"))  proto->value = stoi(it->value);
+		if      (iequals(keyword, "state"))     proto->state    = stoi(it->value);
+		else if (iequals(keyword, "position"))  proto->position = stoi(it->value);
 	}
 
 	return to_apbase(proto);
 }
 
-apbase AsciiProtocol::resolve_mcover(likv &kvs) {
-	apmcover proto = boost::make_shared<ascii_proto_mcover>();
-	string keyword, value;
-	int val;
+apbase AsciiProtocol::resolve_dome(likv &kvs) {
+	apdome proto = boost::make_shared<ascii_proto_dome>();
+	string keyword;
 
 	for (likv::iterator it = kvs.begin(); it != kvs.end(); ++it) {// 遍历键值对
 		keyword = (*it).keyword;
 		// 识别关键字
-		if (iequals(keyword, "value")) {
-			value = it->value;
-			if (isdigit(value[0])) val = stoi(it->value);
-			else if (iequals(value, "open"))  val = MCC_OPEN;
-			else if (iequals(value, "close")) val = MCC_CLOSE;
-		}
+		if      (iequals(keyword, "azi"))    proto->azi    = stod(it->value);
+		else if (iequals(keyword, "alt"))    proto->azi    = stod(it->value);
+		else if (iequals(keyword, "objazi")) proto->objazi = stod(it->value);
+		else if (iequals(keyword, "objalt")) proto->objalt = stod(it->value);
 	}
-	if (val < MC_ERROR || val > MC_CLOSED) proto.reset();
-	else proto->value = val;
+	return to_apbase(proto);
+}
 
+apbase AsciiProtocol::resolve_slit(likv &kvs) {
+	apslit proto = boost::make_shared<ascii_proto_slit>();
+	string keyword;
+
+	for (likv::iterator it = kvs.begin(); it != kvs.end(); ++it) {// 遍历键值对
+		keyword = (*it).keyword;
+		// 识别关键字
+		if      (iequals(keyword, "command")) proto->command = stoi(it->value);
+		else if (iequals(keyword, "state"))   proto->state   = stoi(it->value);
+	}
+	return to_apbase(proto);
+}
+
+apbase AsciiProtocol::resolve_mcover(likv &kvs) {
+	apmcover proto = boost::make_shared<ascii_proto_mcover>();
+	string keyword;
+
+	for (likv::iterator it = kvs.begin(); it != kvs.end(); ++it) {// 遍历键值对
+		keyword = (*it).keyword;
+		// 识别关键字
+		if      (iequals(keyword, "command")) proto->command = stoi(it->value);
+		else if (iequals(keyword, "state"))   proto->state   = stoi(it->value);
+	}
 	return to_apbase(proto);
 }
 
@@ -883,8 +1014,7 @@ apbase AsciiProtocol::resolve_takeimg(likv &kvs) {
 	for (likv::iterator it = kvs.begin(); it != kvs.end(); ++it) {// 遍历键值对
 		keyword = (*it).keyword;
 		// 识别关键字
-		if (iequals(keyword, "obj_id") || iequals(keyword, "objname"))
-			proto->objname = it->value;
+		if      (iequals(keyword, "objname"))  proto->objname = it->value;
 		else if (iequals(keyword, "imgtype"))  proto->imgtype = it->value;
 		else if (iequals(keyword, "filter"))   proto->filter  = it->value;
 		else if (iequals(keyword, "expdur"))   proto->expdur  = stod(it->value);
@@ -901,13 +1031,37 @@ apbase AsciiProtocol::resolve_abortimg(likv &kvs) {
 
 apbase AsciiProtocol::resolve_object(likv &kvs) {
 	apobject proto = boost::make_shared<ascii_proto_object>();
+	likv& objkvs = proto->kvs;
 	string keyword;
 	char ch;
 
 	for (likv::iterator it = kvs.begin(); it != kvs.end(); ++it) {// 遍历键值对
 		keyword = (*it).keyword;
+		ch = keyword[0];
 		// 识别关键字
-		if ((ch = keyword[0]) == 'o') {
+		if (ch == 'e') {
+			if      (iequals(keyword, "epoch"))  proto->epoch  = stod(it->value);
+			else if (iequals(keyword, "expdur")) proto->expdur = stoi(it->value);
+			else if (iequals(keyword, "etime"))  {
+				try {
+					proto->tmend = from_iso_extended_string(it->value);
+				}
+				catch(std::out_of_range& ex) {
+					proto->tmend = second_clock::universal_time() + hours(24);
+				}
+			}
+		}
+		else if (ch == 'i') {
+			if      (iequals(keyword, "imgtype")) proto->imgtype = it->value;
+			else if (iequals(keyword, "iloop"))   proto->iloop   = stoi(it->value);
+		}
+		else if (ch == 'l') {
+			if      (iequals(keyword, "lon"))   proto->lon   = stod(it->value);
+			else if (iequals(keyword, "lat"))   proto->lat   = stod(it->value);
+			else if (iequals(keyword, "line1")) proto->line1 = it->value;
+			else if (iequals(keyword, "line2")) proto->line2 = it->value;
+		}
+		else if ((ch = keyword[0]) == 'o') {
 			if      (iequals(keyword, "objname"))   proto->objname   = it->value;
 			else if (iequals(keyword, "observer"))  proto->observer  = it->value;
 			else if (iequals(keyword, "obstype"))   proto->obstype   = it->value;
@@ -923,32 +1077,29 @@ apbase AsciiProtocol::resolve_object(likv &kvs) {
 			else if (iequals(keyword, "plan_type")) proto->plan_type = it->value;
 			else if (iequals(keyword, "pair_id"))   proto->pair_id   = stoi(it->value);
 		}
-		else if (ch == 'd') {
-			if      (iequals(keyword, "dec"))       proto->dec      = stod(it->value);
-			else if (iequals(keyword, "delay"))     proto->delay    = stod(it->value);
-		}
-		else if (ch == 'e') {
-			if      (iequals(keyword, "epoch"))     proto->epoch    = stod(it->value);
-			else if (iequals(keyword, "expdur"))    proto->expdur   = stoi(it->value);
-			else if (iequals(keyword, "end_time"))  proto->end_time = it->value;
-		}
 		else if (ch == 'f') {
 			if      (iequals(keyword, "filter"))    proto->filter   = it->value;
 			if      (iequals(keyword, "frmcnt"))    proto->frmcnt   = stoi(it->value);
-			else if (iequals(keyword, "ifrm"))      proto->ifrm     = stoi(it->value);
 			else if (iequals(keyword, "field_id"))  proto->field_id = it->value;
 		}
-		else if (ch == 'r') {
-			if      (iequals(keyword, "ra"))        proto->ra       = stod(it->value);
-			else if (iequals(keyword, "runname"))   proto->runname  = it->value;
+		else if (iequals(keyword, "coorsys"))   proto->coorsys  = stoi(it->value);
+		else if (iequals(keyword, "delay"))     proto->delay    = stod(it->value);
+		else if (iequals(keyword, "grid_id"))   proto->grid_id  = it->value;
+		else if (iequals(keyword, "runname"))   proto->runname  = it->value;
+		else if (iequals(keyword, "btime")) {
+			try {
+				proto->tmbegin = from_iso_extended_string(it->value);
+			}
+			catch(std::out_of_range& ex) {
+				proto->tmbegin = second_clock::universal_time();
+			}
 		}
-		else if (ch == 'l') {
-			if      (iequals(keyword, "loopcnt"))   proto->loopcnt = stoi(it->value);
-			else if (iequals(keyword, "iloop"))     proto->iloop   = stoi(it->value);
+		else {
+			key_val kv;
+			kv.keyword = it->keyword;
+			kv.value   = it->value;
+			objkvs.push_back(kv);
 		}
-		else if (iequals(keyword, "imgtype"))     proto->imgtype = it->value;
-		else if (iequals(keyword, "begin_time"))  proto->begin_time = it->value;
-		else if (iequals(keyword, "grid_id"))     proto->grid_id    = it->value;
 	}
 
 	return to_apbase(proto);
@@ -974,21 +1125,10 @@ apbase AsciiProtocol::resolve_camera(likv &kvs) {
 	for (likv::iterator it = kvs.begin(); it != kvs.end(); ++it) {// 遍历键值对
 		keyword = (*it).keyword;
 		// 识别关键字
-		if      (iequals(keyword, "state"))     proto->state     = stoi(it->value);
-		else if (iequals(keyword, "errcode"))   proto->errcode   = stoi(it->value);
-		else if (iequals(keyword, "mcstate"))   proto->mcstate   = stoi(it->value);
-		else if (iequals(keyword, "focus"))     proto->focus     = stoi(it->value);
-		else if (iequals(keyword, "coolget"))   proto->coolget   = stod(it->value);
-		else if (iequals(keyword, "objname"))   proto->objname   = it->value;
-		else if (iequals(keyword, "filename"))  proto->filename  = it->value;
-		else if (iequals(keyword, "imgtype"))   proto->imgtype   = it->value;
-		else if (iequals(keyword, "filter"))    proto->filter    = it->value;
-		else if (iequals(keyword, "expdur"))    proto->expdur    = stod(it->value);
-		else if (iequals(keyword, "delay"))     proto->delay     = stod(it->value);
-		else if (iequals(keyword, "frmcnt"))    proto->frmcnt    = stoi(it->value);
-		else if (iequals(keyword, "loopcnt"))   proto->loopcnt   = stoi(it->value);
-		else if (iequals(keyword, "ifrm"))      proto->ifrm      = stoi(it->value);
-		else if (iequals(keyword, "iloop"))     proto->iloop     = stoi(it->value);
+		if      (iequals(keyword, "state"))    proto->state   = stoi(it->value);
+		else if (iequals(keyword, "errcode"))  proto->errcode = stoi(it->value);
+		else if (iequals(keyword, "coolget"))  proto->coolget = stoi(it->value);
+		else if (iequals(keyword, "filter"))   proto->filter  = it->value;
 	}
 
 	return to_apbase(proto);
@@ -1057,97 +1197,39 @@ apbase AsciiProtocol::resolve_filestat(likv &kvs) {
 	return to_apbase(proto);
 }
 
-apbase AsciiProtocol::resolve_plan(likv &kvs) {
-	applan proto = boost::make_shared<ascii_proto_plan>();
+apbase AsciiProtocol::resolve_rainfall(likv &kvs) {
+	aprain proto = boost::make_shared<ascii_proto_rainfall>();
 	string keyword;
 
 	for (likv::iterator it = kvs.begin(); it != kvs.end(); ++it) {// 遍历键值对
 		keyword = (*it).keyword;
 		// 识别关键字
-		if      (iequals(keyword, "plan_sn")) proto->plan_sn = it->value;
-		else if (iequals(keyword, "state"))   proto->state   = stoi(it->value);
+		if      (iequals(keyword, "value"))  proto->value  = stoi(it->value);
 	}
-
 	return to_apbase(proto);
 }
 
-apbase AsciiProtocol::resolve_check_plan(likv &kvs) {
-	apchkplan proto = boost::make_shared<ascii_proto_check_plan>();
+apbase AsciiProtocol::resolve_wind(likv &kvs) {
+	apwind proto = boost::make_shared<ascii_proto_wind>();
 	string keyword;
 
 	for (likv::iterator it = kvs.begin(); it != kvs.end(); ++it) {// 遍历键值对
 		keyword = (*it).keyword;
 		// 识别关键字
-		if (iequals(keyword, "plan_sn")) proto->plan_sn = it->value;
+		if      (iequals(keyword, "orient")) proto->orient = stoi(it->value);
+		else if (iequals(keyword, "speed"))  proto->speed  = stoi(it->value);
 	}
-
 	return to_apbase(proto);
 }
 
-apbase AsciiProtocol::resolve_abort_plan(likv &kvs) {
-	apabtplan proto = boost::make_shared<ascii_proto_abort_plan>();
+apbase AsciiProtocol::resolve_cloud(likv &kvs) {
+	apcloud proto = boost::make_shared<ascii_proto_cloud>();
 	string keyword;
 
 	for (likv::iterator it = kvs.begin(); it != kvs.end(); ++it) {// 遍历键值对
 		keyword = (*it).keyword;
 		// 识别关键字
-		if (iequals(keyword, "plan_sn")) proto->plan_sn = it->value;
+		if      (iequals(keyword, "value"))  proto->value = stoi(it->value);
 	}
-
-	return to_apbase(proto);
-}
-
-apbase AsciiProtocol::resolve_append_plan(likv &kvs) {
-	apappplan proto = boost::make_shared<ascii_proto_append_plan>();
-	string keyword, value;
-	char ch;
-
-	for (likv::iterator it = kvs.begin(); it != kvs.end(); ++it) {// 遍历键值对
-		keyword = (*it).keyword;
-		ch = keyword[0];
-		// 识别关键字
-		if (ch == 'p') {
-			if      (iequals(keyword, "plan_sn"))   proto->plan_sn   = it->value;
-			else if (iequals(keyword, "plan_time")) proto->plan_time = it->value;
-			else if (iequals(keyword, "plan_type")) proto->plan_type = it->value;
-			else if (iequals(keyword, "priority"))  proto->priority  = stoi(it->value);
-			else if (iequals(keyword, "pair_id"))   proto->pair_id   = stoi(it->value);
-		}
-		else if (ch == 'o') {
-			if      (iequals(keyword, "observer"))   proto->observer  = it->value;
-			else if (iequals(keyword, "obstype"))    proto->obstype   = it->value;
-			else if (iequals(keyword, "objerror"))   proto->objerror  = it->value;
-			else if (iequals(keyword, "objra"))      proto->objra     = stod(it->value);
-			else if (iequals(keyword, "objdec"))     proto->objdec    = stod(it->value);
-			else if (iequals(keyword, "objepoch"))   proto->objepoch  = stod(it->value);
-			else if (iequals(keyword, "objname") || iequals(keyword, "obj_id"))
-				proto->objname   = it->value;
-		}
-		else if (ch == 'e') {
-			if      (iequals(keyword, "epoch"))    proto->epoch    = stod(it->value);
-			else if (iequals(keyword, "expdur"))   proto->expdur   = stod(it->value);
-			else if (iequals(keyword, "end_time") || iequals(keyword, "etime")) proto->end_time = it->value;
-		}
-		else if (ch == 'd') {
-			if      (iequals(keyword, "dec"))   proto->dec   = stod(it->value);
-			else if (iequals(keyword, "delay")) proto->delay = stod(it->value);
-		}
-		else if (ch == 'f') {
-			if      (iequals(keyword, "filter"))   proto->filter = it->value;
-			else if (iequals(keyword, "frmcnt"))   proto->frmcnt   = stoi(it->value);
-			else if (iequals(keyword, "field_id")) proto->field_id = it->value;
-		}
-		else if (ch == 'r') {
-			if      (iequals(keyword, "ra"))      proto->ra      = stod(it->value);
-			else if (iequals(keyword, "runname")) proto->runname = it->value;
-		}
-		else if (iequals(keyword, "imgtype"))    proto->imgtype    = it->value;
-		else if (iequals(keyword, "loopcnt"))    proto->loopcnt    = stoi(it->value);
-		else if (iequals(keyword, "grid_id"))    proto->grid_id    = it->value;
-		else if (iequals(keyword, "begin_time") || iequals(keyword, "btime")) proto->begin_time = it->value;
-	}
-	/* 基本参数检查 */
-	if (proto->imgtype.empty()) proto.reset();
-
 	return to_apbase(proto);
 }

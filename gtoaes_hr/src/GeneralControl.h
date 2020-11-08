@@ -319,7 +319,7 @@ public:
 	/*!
 	 * @brief 回调函数, 申请新的观测计划
 	 */
-	ObsPlanPtr acquire_new_plan(const string& gid, const string& uid);
+	bool acquire_new_plan(const string& gid, const string& uid, ObsPlanPtr& plan);
 	/*!
 	 * @brief 线程: 检查观测计划
 	 */

@@ -1,20 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
 <version>v1.0 @ July, 2020</version>
-<date>20200704T214746</date>
+<date>20201108T002015</date>
 <Server>
-    <Client Port="4010"/>
-    <Telescope Port="4011"/>
+    <Client Port="4010" UdpPort="4010"/>
+    <Mount Port="4011"/>
     <Camera Port="4012"/>
-    <TelescopeAnnex Port="4013"/>
+    <MountAnnex Port="4013"/>
     <CameraAnnex Port="4014"/>
+    <Environment UdpPort="4011"/>
 </Server>
-<NTP Enable="false" Host="127.0.0.1"/>
+<NTP Enable="false" Host="172.28.1.3" SyncOnDiffMax="1000"/>
 <Database Enable="false" URL="http://172.28.8.8:8080/gwebend/"/>
 <ObservationSystem>
     <GroupID>001</GroupID>
-    <Type>1</Type>
-    <!--Type #1: Normal-->
-    <!--Type #2: GWAC-->
     <Site Name="Xinglong" Lon="117.57454166666668" Lat="40.395933333333332" Alt="900" TZ="8"/>
-    <EleLimit>30</EleLimit>
+    <EleLimit>20</EleLimit>
+    <Dome FollowMount="false" Slit="false" Operator="mount-annex"/>
+    <MirrorCover Use="false" Operator="mount-annex"/>
+    <Mount HomeSync="false" Guide="false"/>
+    <AutoFocus Use="false" Operator="mount-annex"/>
+    <TermDerotator Use="false" Operator="camera"/>
+    <Environment>
+        <Rainfall Use="false"/>
+        <WindSpeed Use="false" MaxPermitObserve="15"/>
+        <CloudCamera Use="false" MaxPercentPermitObserve="50"/>
+    </Environment>
 </ObservationSystem>

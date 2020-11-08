@@ -94,17 +94,15 @@ bool ObservationSystem::CoupleMount(TcpCPtr ptr) {
 
 		return false;
 	}
-	else if (tcpc_mount_ == ptr) return true;
-	else {
+	else if (tcpc_mount_ != ptr) {
 		_gLog.Write("Mount[%s:%s] was on-line", gid_.c_str(), uid_.c_str());
 		const TCPClient::CBSlot &slot = boost::bind(&ObservationSystem::receive_mount, this, _1, _2);
 		ptr->RegisterRead(slot);
 		tcpc_mount_ = ptr;
 		nfMount_  = boost::make_shared<MountInfo>();
 		switch_state();
-
-		return true;
 	}
+	return true;
 }
 
 bool ObservationSystem::CoupleCamera(TcpCPtr ptr, const string& cid) {
@@ -299,15 +297,15 @@ void ObservationSystem::process_info_mount(apmount proto) {
 	// 更新望远镜指向坐标
 	*nfMount_ = proto;
 
-	if (nfMount_->alt <= minEle_) {
-		if (now != MOUNT_PARKING && ++repark == 1) {
-			_gLog.Write(LOG_WARN, NULL, "orientation[azi=%.4f, alt=%.4f] of mount[%s:%s] was out of safe limit",
-					nfMount_->azi, nfMount_->alt, gid_.c_str(), uid_.c_str());
-			process_park();
-		}
-		if (repark > 10) repark = 0;
-	}
-	else if (now != prev) {
+//	if (nfMount_->alt <= minEle_) {
+//		if (now != MOUNT_PARKING && ++repark == 1) {
+//			_gLog.Write(LOG_WARN, NULL, "orientation[azi=%.4f, alt=%.4f] of mount[%s:%s] was out of safe limit",
+//					nfMount_->azi, nfMount_->alt, gid_.c_str(), uid_.c_str());
+//			process_park();
+//		}
+//		if (repark > 10) repark = 0;
+//	}
+	if (now != prev) {
 #ifdef NDEBUG
 		if (now >= MOUNT_ERROR && now <= MOUNT_TRACKING)
 			_gLog.Write("Mount[%s:%s] was %s", gid_.c_str(), uid_.c_str(), MOUNT_STATE_STR[now]);
@@ -319,12 +317,15 @@ void ObservationSystem::process_info_mount(apmount proto) {
 					gid_.c_str(), uid_.c_str(), nfMount_->ra, nfMount_->dec, nfMount_->azi, nfMount_->alt);
 			nfMount_->slewing = false;
 			if (plan_now_.use_count()) {
+				command_expose(nfObss_->exposing ? EXPOSE_RESUME : EXPOSE_START);
+				/* 2020-11-05: 到位偏差可能很大. 步进电机驱动及测角方式的固有缺陷?
 				if (nfMount_->HasArrived()) command_expose(nfObss_->exposing ? EXPOSE_RESUME : EXPOSE_START);
 				else {
 					_gLog.Write(LOG_FAULT, NULL, "mount[%s:%s] arrived wrong target orientation",
 							gid_.c_str(), uid_.c_str());
 					interrupt_plan();
 				}
+				*/
 			}
 		}
 	}
@@ -650,6 +651,7 @@ void ObservationSystem::process_abortimage() {
 	if (tcpc_camera_.unique()) {
 		_gLog.Write("camera[%s:%s:%s] will abort image", gid_.c_str(), uid_.c_str(), cid_.c_str());
 		command_expose(EXPOSE_STOP);
+		if (!nfObss_->exposing && plan_now_.use_count()) plan_now_.reset();
 	}
 	else {
 		_gLog.Write(LOG_WARN, NULL, "%s[%s:%s:%s] was rejected for camera was off-line",
@@ -813,6 +815,7 @@ void ObservationSystem::thread_acqplan() {
 	mutex mtx;
 	mutex_lock lck(mtx);
 	boost::chrono::seconds period(30);
+	int count(0);
 
 	/*
 	 * 申请观测计划条件:
@@ -824,12 +827,13 @@ void ObservationSystem::thread_acqplan() {
 		cv_acqplan_.wait_for(lck, period);
 
 		if (!plan_now_.use_count() && nfMount_->IsStable()) {
-			ObsPlanPtr plan = *cb_acqplan_(gid_, uid_);
-			if (plan.use_count()) {
+			ObsPlanPtr plan;
+			if (*cb_acqplan_(gid_, uid_, plan)) {
+				count = 0;
 				plan_now_ = plan;
 				PostMessage(MSG_NEW_PLAN);
 			}
-			else {// 无计划时复位望远镜
+			else if (++count >= 5){// 无计划时复位望远镜
 				process_park();
 			}
 		}

@@ -74,7 +74,7 @@ void GLog::Write(LOG_TYPE type, const char *format, ...) {
 			va_list vl;
 
 			fprintf (fd_, "%02d:%02d:%02d >> ", utc.tm_hour, utc.tm_min, utc.tm_sec);
-			if (type >= LOG_MIN && type <= LOG_MAX)
+			if (type > LOG_MIN && type < LOG_MAX)
 				fprintf (fd_, "%s", LOG_TYPE_STR[type]);
 			va_start(vl, format);
 			vfprintf(fd_, format, vl);
@@ -94,7 +94,7 @@ void GLog::Write(const char *where, LOG_TYPE type, const char *format, ...) {
 			va_list vl;
 
 			fprintf (fd_, "%02d:%02d:%02d >> ", utc.tm_hour, utc.tm_min, utc.tm_sec);
-			if (type >= LOG_MIN && type <= LOG_MAX)
+			if (type > LOG_MIN && type < LOG_MAX)
 				fprintf (fd_, "%s", LOG_TYPE_STR[type]);
 			if (where) fprintf (fd_, "%s, ", where);
 			va_start(vl, format);
@@ -129,7 +129,6 @@ bool GLog::valid_file(std::tm &utc) {
 			sprintf (filepath, "%s%s%d%02d%02d.log",
 					dirName_.c_str(), prefix_.c_str(),
 					utc.tm_year + 1900, utc.tm_mon + 1, utc.tm_mday);
-			printf ("log path: %s\n", filepath);
 			fd_ = fopen(filepath, "a+");
 			fprintf(fd_, "%s\n", std::string(79, '-').c_str());
 		}

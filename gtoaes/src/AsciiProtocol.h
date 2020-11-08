@@ -4,58 +4,75 @@
  * @date 2017-11-17
  * - 通信协议采用Struct声明
  * - 通信协议继承自ascii_protocol_base
+ * @version 0.2
+ * @date 2020-11-08
+ * - 优化
+ * - 增加: 气象信息
  */
 
 #ifndef ASCIIPROTOCOL_H_
 #define ASCIIPROTOCOL_H_
 
-#include <vector>
-#include <boost/thread.hpp>
-#include <boost/algorithm/string.hpp>
+#include <boost/thread/mutex.hpp>
 #include "AsciiProtocolBase.h"
-#include "AstroDeviceDef.h"
+#include "ObservationPlanBase.h"
 
 using std::list;
 using std::vector;
 
-typedef list<string> listring;	//< string列表
+typedef list<string> listring;	///< string列表
 
 //////////////////////////////////////////////////////////////////////////////
 /* 宏定义: 通信协议类型 */
-#define APTYPE_REG		"register"
-#define APTYPE_UNREG	"unregister"
-#define APTYPE_OBSITE	"obsite"
-#define APTYPE_START	"start"
-#define APTYPE_STOP		"stop"
-#define APTYPE_ENABLE	"enable"
-#define APTYPE_DISABLE	"disable"
-#define APTYPE_APPPLAN	"append_plan"	// 追加计划, 计划进入队列
-#define APTYPE_IMPPLAN	"implent_plan"	// 执行计划, 计划优先级最高的话, 立即执行
-#define APTYPE_ABTPLAN	"abort_plan"
-#define APTYPE_CHKPLAN	"check_plan"
-#define APTYPE_PLAN		"plan"
-#define APTYPE_FINDHOME	"find_home"
-#define APTYPE_HOMESYNC	"home_sync"
-#define APTYPE_SLEWTO	"slewto"
-#define APTYPE_PARK		"park"
-#define APTYPE_GUIDE	"guide"
-#define APTYPE_ABTSLEW	"abort_slew"
-#define APTYPE_MOUNT	"mount"
-#define APTYPE_FWHM		"fwhm"
-#define APTYPE_FOCUS	"focus"
-#define APTYPE_MCOVER	"mcover"
-#define APTYPE_TAKIMG	"take_image"
-#define APTYPE_ABTIMG	"abort_image"
-#define APTYPE_OBJECT	"object"
-#define APTYPE_EXPOSE	"expose"
-#define APTYPE_CAMERA	"camera"
-#define APTYPE_COOLER	"cooler"
-#define APTYPE_VACUUM	"vacuum"
-#define APTYPE_OBSS		"obss"
-#define APTYPE_FILEINFO	"fileinfo"
-#define APTYPE_FILESTAT	"filestat"
+#define APTYPE_REG		"register"		///< 注册: 设备注册编号; 用户关联观测系统
+#define APTYPE_UNREG	"unregister"	///< 取消注册
+#define APTYPE_START	"start"			///< 启动自动观测
+#define APTYPE_STOP		"stop"			///< 停止自动观测
+#define APTYPE_ENABLE	"enable"		///< 启用设备
+#define APTYPE_DISABLE	"disable"		///< 禁用设备
+
+#define APTYPE_OBSS		"obss"			///< 观测系统实时状态
+#define APTYPE_OBSITE	"obsite"		///< 测站信息
+
+#define APTYPE_APPPLAN	"append_plan"	///< 追加计划, 计划进入队列
+#define APTYPE_IMPPLAN	"implement_plan"///< 执行计划, 计划优先级最高的话, 立即执行
+#define APTYPE_ABTPLAN	"abort_plan"	///< 中止计划
+#define APTYPE_CHKPLAN	"check_plan"	///< 检查计划状态
+#define APTYPE_PLAN		"plan"			///< 计划状态
+
+#define APTYPE_FINDHOME	"find_home"		///< 搜索零点
+#define APTYPE_HOMESYNC	"home_sync"		///< 同步零点
+#define APTYPE_SLEWTO	"slewto"		///< 指向目标位置
+#define APTYPE_PARK		"park"			///< 复位
+#define APTYPE_GUIDE	"guide"			///< 导星
+#define APTYPE_ABTSLEW	"abort_slew"	///< 中止指向
+#define APTYPE_MOUNT	"mount"			///< 转台实时状态
+
+#define APTYPE_DOME		"dome"			///< 圆顶实时状态
+#define APTYPE_SLIT		"slit"			///< 天窗指令与状态
+#define APTYPE_MCOVER	"mcover"		///< 镜盖指令与状态
+
+#define APTYPE_TAKIMG	"take_image"	///< 采集图像
+#define APTYPE_ABTIMG	"abort_image"	///< 中止图像采集过程
+#define APTYPE_OBJECT	"object"		///< 观测目标信息
+#define APTYPE_EXPOSE	"expose"		///< 曝光指令
+#define APTYPE_CAMERA	"camera"		///< 相机实时状态
+
+#define APTYPE_FWHM		"fwhm"			///< 图像的FWHM
+#define APTYPE_FOCUS	"focus"			///< 调焦指令与实时位置
+
+#define APTYPE_FILEINFO	"fileinfo"		///< 文件信息
+#define APTYPE_FILESTAT	"filestat"		///< 文件统计信息
+
+#define APTYPE_COOLER	"cooler"		///< 单独的相机制冷
+#define APTYPE_VACUUM	"vacuum"		///< 单独的真空度
+
+#define APTYPE_RAINFALL	"rainfall"		///< 雨量
+#define APTYPE_WIND		"wind"			///< 风速与风向
+#define APTYPE_CLOUD	"cloud"			///< 云量
 
 /*--------------------------------- 声明通信协议 ---------------------------------*/
+//////////////////////////////////////////////////////////////////////////////
 struct ascii_proto_reg : public ascii_proto_base {// 注册设备/用户
 public:
 	ascii_proto_reg() {
@@ -71,22 +88,6 @@ public:
 	}
 };
 typedef boost::shared_ptr<ascii_proto_unreg> apunreg;
-
-struct ascii_proto_obsite : public ascii_proto_base {// 测站位置
-	string  sitename;	//< 测站名称
-	double	lon;		//< 地理经度, 量纲: 角度
-	double	lat;		//< 地理纬度, 量纲: 角度
-	double	alt;		//< 海拔, 量纲: 米
-	int timezone;		//< 时区, 量纲: 小时
-
-public:
-	ascii_proto_obsite() {
-		type = APTYPE_OBSITE;
-		lon = lat = alt = 0.0;
-		timezone = 8;
-	}
-};
-typedef boost::shared_ptr<ascii_proto_obsite> apobsite;
 
 struct ascii_proto_start : public ascii_proto_base {// 启动自动观测流程
 public:
@@ -120,103 +121,71 @@ public:
 };
 typedef boost::shared_ptr<ascii_proto_disable> apdisable;
 
+//////////////////////////////////////////////////////////////////////////////
+struct ascii_proto_obss : public ascii_proto_base {
+	struct camera_state {///< 相机状态
+		string cid;		///< 相机编号
+		int state;		///< 工作状态
+	};
+
+	int state;		///< 系统工作状态
+	string plan_sn;	///< 在执行观测计划编号
+	string op_time;	///< 计划开始执行时间, CCYY-MM-DDThh:mm:ss.ssssss
+	int mount;		///< 望远镜工作状态
+	vector<camera_state> camera;	///< 相机工作状态
+
+public:
+	ascii_proto_obss() {
+		type = APTYPE_OBSS;
+		state   = -1;
+		mount   = -1;
+	}
+};
+typedef boost::shared_ptr<ascii_proto_obss> apobss;
+
+struct ascii_proto_obsite : public ascii_proto_base {// 测站位置
+	string  sitename;	//< 测站名称
+	double	lon;		//< 地理经度, 量纲: 角度
+	double	lat;		//< 地理纬度, 量纲: 角度
+	double	alt;		//< 海拔, 量纲: 米
+	int timezone;		//< 时区, 量纲: 小时
+
+public:
+	ascii_proto_obsite() {
+		type = APTYPE_OBSITE;
+		lon = lat = alt = 1E30;
+		timezone = 8;
+	}
+};
+typedef boost::shared_ptr<ascii_proto_obsite> apobsite;
+
+//////////////////////////////////////////////////////////////////////////////
 /* 观测计划 */
 /*!
- * @struct ascii_proto_append_plan 观测计划
- * @note
- * 复用为通信协议和观测计划
+ * @struct ascii_proto_append_plan
+ * @brief 新的观测计划
  */
 struct ascii_proto_append_plan : public ascii_proto_base {
-	string	plan_sn;	//< 计划编号
-	string	plan_time;	//< 计划生成时间
-	string	plan_type;	//< 计划类型
-	string	obstype;	//< 观测类型
-	string	grid_id;	//< 天区划分模式
-	string	field_id;	//< 天区编号
-	string	observer;	//< 观测者或触发源
-	string	objname;	//< 目标名称
-	string	runname;	//< 目标轮次名称
-	double	ra;			//< 视场中心赤经, 量纲: 角度
-	double	dec;		//< 视场中心赤纬, 量纲: 角度
-	double	epoch;		//< 视场中心位置坐标系
-	string	objerror;	//< 目标坐标误差
-	double	objra;		//< 目标赤经, 量纲: 角度
-	double	objdec;		//< 目标赤纬, 量纲: 角度
-	double	objepoch;	//< 目标位置坐标系
-	string	imgtype;	//< 图像类型
-	/*------------ 曝光参数 -----------*/
-	//<< 单相机系统. 多相机时, 参数适用所有相机
-	string	filter;		//< 滤光片名称或滤光片组合名称
-	double	expdur;		//< 曝光时间或曝光时间组合
-	double	delay;		//< 帧间延时, 量纲: 秒
-	int		frmcnt;		//< 总帧数
-	//>> 单相机系统
-	//<< 多相机系统
-	//>> 多相机系统
-	/*------------ 曝光参数 -----------*/
-	int		loopcnt;	//< 曝光参数循环次数
-
-	int		priority;	//< 优先级
-	string	begin_time;	//< 曝光开始时间
-	string	end_time;	//< 曝光结束时间
-	int		pair_id;	//< 配对标志
+	ObsPlanItemPtr plan;
 
 public:
 	ascii_proto_append_plan() {
 		type = APTYPE_APPPLAN;
-		ra = dec = 1E30;
-		epoch = 2000.0;
-		objra = objdec = 1E30;
-		objepoch = 2000.0;
-		expdur   = 0.0;
-		delay    = 0.0;
-		frmcnt   = 0;
-		loopcnt  = 1;
-		priority = 0;
-		pair_id = INT_MIN;
-	}
-
-	/*!
-	 * @brief 为gid:uid具备通配性的bias、dark、flat等计划类型生成拷贝
-	 */
-	ascii_proto_append_plan& operator=(const ascii_proto_append_plan& ap) {
-		if (this != &ap) {
-			int n, i;
-
-			gid			= ap.gid;
-			uid			= ap.uid;
-			cid			= ap.cid;
-			utc			= ap.utc;
-			plan_sn		= ap.plan_sn;
-			plan_time	= ap.plan_time;
-			plan_type	= ap.plan_type;
-			obstype		= ap.obstype;
-			grid_id		= ap.grid_id;
-			field_id	= ap.field_id;
-			observer	= ap.observer;
-			objname		= ap.objname;
-			runname		= ap.runname;
-			ra			= ap.ra;
-			dec			= ap.dec;
-			epoch		= ap.epoch;
-			objra		= ap.objra;
-			objdec		= ap.objdec;
-			objepoch	= ap.objepoch;
-			objerror	= ap.objerror;
-			imgtype		= ap.imgtype;
-			priority	= ap.priority;
-			begin_time	= ap.begin_time;
-			end_time	= ap.end_time;
-			pair_id		= ap.pair_id;
-			filter		= ap.filter;
-			expdur		= ap.expdur;
-			delay		= ap.delay;
-			frmcnt		= ap.frmcnt;
-		}
-		return *this;
+		plan = ObservationPlanItem::Create();
 	}
 };
 typedef boost::shared_ptr<ascii_proto_append_plan> apappplan;
+
+struct ascii_proto_implement_plan : public ascii_proto_base {
+	ObsPlanItemPtr plan;
+
+public:
+	ascii_proto_implement_plan() {
+		type = APTYPE_IMPPLAN;
+		plan = ObservationPlanItem::Create();
+	}
+};
+typedef boost::shared_ptr<ascii_proto_implement_plan> apimpplan;
 
 struct ascii_proto_abort_plan : public ascii_proto_base {// 中止并删除指定计划
 	string plan_sn;	//< 计划编号
@@ -250,7 +219,8 @@ public:
 };
 typedef boost::shared_ptr<ascii_proto_plan> applan;
 
-/* 转台/望远镜 */
+//////////////////////////////////////////////////////////////////////////////
+/* 转台 */
 struct ascii_proto_find_home : public ascii_proto_base {// 搜索零点
 public:
 	ascii_proto_find_home() {
@@ -274,14 +244,18 @@ public:
 typedef boost::shared_ptr<ascii_proto_home_sync> aphomesync;
 
 struct ascii_proto_slewto : public ascii_proto_base {// 指向
-	double ra;		//< 赤经, 量纲: 角度
-	double dec;		//< 赤纬, 量纲: 角度
-	double epoch;	//< 历元
+	int coorsys;	///< 坐标系. 0: 地平系; 1: 赤道系; 2: 引导TLE
+	double lon;		///< 经度, 角度
+	double lat;		///< 纬度, 角度
+	double epoch;	///< 历元, 适用于赤道系
+	string line1;	///< TLE的第一行
+	string line2;	///< TLE的第二行
 
 public:
 	ascii_proto_slewto() {
 		type = APTYPE_SLEWTO;
-		ra = dec = 1E30;
+		coorsys = -1;
+		lon = lat = 1E30;
 		epoch = 2000.0;
 	}
 };
@@ -318,62 +292,66 @@ public:
 };
 typedef boost::shared_ptr<ascii_proto_abort_slew> apabortslew;
 
-struct ascii_proto_telescope : public ascii_proto_base {// 望远镜信息
-	int state;		//< 工作状态
-	int errcode;	//< 错误代码
-	double ra;		//< 指向赤经, 量纲: 角度
-	double dec;		//< 指向赤纬, 量纲: 角度
-	double azi;		//< 指向方位, 量纲: 角度
-	double ele;		//< 指向高度, 量纲: 角度
+struct ascii_proto_mount : public ascii_proto_base {///< 转台信息
+	int state;		///< 工作状态
+	int errcode;	///< 错误代码
+	double ra;		///< 指向赤经, 量纲: 角度
+	double dec;		///< 指向赤纬, 量纲: 角度
+	double azi;		///< 指向方位, 量纲: 角度
+	double alt;		///< 指向高度, 量纲: 角度
 
 public:
-	ascii_proto_telescope() {
-		type    = APTYPE_TELE;
-		state   = TELESCOPE_ERROR;
-		errcode = INT_MIN;
+	ascii_proto_mount() {
+		type    = APTYPE_MOUNT;
+		state   = 0;
+		errcode = 0;
 		ra = dec = 1E30;
-		azi = ele = 1E30;
+		azi = alt = 1E30;
 	}
 };
-typedef boost::shared_ptr<ascii_proto_telescope> aptele;
+typedef boost::shared_ptr<ascii_proto_mount> apmount;
 
-struct ascii_proto_fwhm : public ascii_proto_base {// 半高全宽
-	double value;	//< 半高全宽, 量纲: 像素
+//////////////////////////////////////////////////////////////////////////////
+struct ascii_proto_dome : public ascii_proto_base {///< 圆顶实时状态
+	double azi;
+	double alt;
+	double objazi;
+	double objalt;
 
 public:
-	ascii_proto_fwhm() {
-		type = APTYPE_FWHM;
-		value = 1E30;
+	ascii_proto_dome() {
+		type = APTYPE_DOME;
+		azi = alt = 1E30;
+		objazi = objalt = 1E30;
 	}
 };
-typedef boost::shared_ptr<ascii_proto_fwhm> apfwhm;
+typedef boost::shared_ptr<ascii_proto_dome> apdome;
 
-struct ascii_proto_focus : public ascii_proto_base {// 焦点位置
-	int state;	//< 调角器工作状态. 0: 未知; 1: 静止; 2: 调焦
-	int value;	//< 焦点位置, 量纲: 微米
+struct ascii_proto_slit : public ascii_proto_base {///< 天窗指令与状态
+	int command;
+	int state;
 
 public:
-	ascii_proto_focus() {
-		type = APTYPE_FOCUS;
-		state = 0;
-		value = INT_MIN;
+	ascii_proto_slit() {
+		type = APTYPE_SLIT;
+		command = state = 0;
 	}
 };
-typedef boost::shared_ptr<ascii_proto_focus> apfocus;
+typedef boost::shared_ptr<ascii_proto_slit> apslit;
 
-struct ascii_proto_mcover : public ascii_proto_base {// 开关镜盖
-	int value;	//< 复用字
-				//< 用户/数据库=>服务器: 指令
-				//< 服务器=>用户/数据库: 状态
+struct ascii_proto_mcover : public ascii_proto_base {///< 开关镜盖
+	int command;
+	int state;
 
 public:
 	ascii_proto_mcover() {
 		type = APTYPE_MCOVER;
-		value = INT_MIN;
+		command = state = 0;
 	}
 };
 typedef boost::shared_ptr<ascii_proto_mcover> apmcover;
 
+//////////////////////////////////////////////////////////////////////////////
 /* 相机 -- 上层 */
 struct ascii_proto_take_image : public ascii_proto_base {// 采集图像
 	string	objname;	//< 目标名
@@ -399,85 +377,99 @@ public:
 };
 typedef boost::shared_ptr<ascii_proto_abort_image> apabortimg;
 
-/* 相机 -- 底层 */
 struct ascii_proto_object : public ascii_proto_base {// 目标信息与曝光参数
 	/* 观测目标描述信息 */
-	string plan_sn;		//< 计划编号
-	string plan_time;	//< 计划生成时间
-	string plan_type;	//< 计划类型
-	string observer;	//< 观测者
-	string obstype;		//< 观测类型
-	string grid_id;		//< 天区划分模式
-	string field_id;	//< 天区编号
-	string objname;		//< 目标名
-	string runname;		//< 目标轮次名称
-	double ra;			//< 指向赤经, 量纲: 角度
-	double dec;			//< 指向赤纬, 量纲: 角度
-	double epoch;		//< 指向坐标系
-	double objra;		//< 目标赤经, 量纲: 角度
-	double objdec;		//< 目标赤纬, 量纲: 角度
-	double objepoch;	//< 目标坐标系
-	string objerror;	//< 位置误差
-	int    priority;	//< 优先级
-	string begin_time;	//< 曝光起始时间, 格式: YYYYMMDDThhmmss.sss
-	string end_time;	//< 曝光结束时间
-	int    pair_id;		//< 分组编号
-	/* 曝光控制信息 */
-	string imgtype;		//< 图像类型
-	string filter;		//< 滤光片名称
-	double expdur;		//< 曝光时间, 量纲: 秒
-	double delay;		//< 帧间延迟, 量纲: 秒
-	int    frmcnt;		//< 曝光帧数
-	int    loopcnt;		//< 滤光片循环次数
-	int    ifrm;		//< 曝光起始索引
-	int    iloop;		//< 循环索引
+	string plan_sn;		///< 计划编号
+	string plan_time;	///< 计划生成时间
+	string plan_type;	///< 计划类型
+	string obstype;		///< 观测类型
+	string grid_id;		///< 天区划分模式
+	string field_id;	///< 天区编号
+	string observer;	///< 观测者或触发源
+	string objname;		///< 目标名称
+	string runname;		///< 轮次编号
+	int coorsys;		///< 指向位置的坐标系
+	double lon;			///< 指向位置的经度, 角度
+	double lat;			///< 指向位置的纬度, 角度
+	string line1;		///< TLE第一行
+	string line2;		///< TLE第二行
+	double epoch;		///< 历元
+	double objra;		///< 目标赤经, 角度
+	double objdec;		///< 目标赤纬, 角度
+	double objepoch;	///< 目标历元
+	string objerror;	///< 坐标误差
+	string imgtype;		///< 图像类型
+	string filter;		///< 滤光片名称
+	double expdur;		///< 曝光时间, 秒
+	double delay;		///< 帧间延时, 秒
+	int frmcnt;			///< 帧数
+	int priority;		///< 优先级
+	ptime tmbegin;		///< 观测起始时间
+	ptime tmend;		///< 观测结束时间
+	int pair_id;		///< 配对观测标志
+	int iloop;			///< 循环序号
+	likv kvs;			///< 未定义关键字的键值对
 
 public:
 	ascii_proto_object() {
 		type = APTYPE_OBJECT;
-		ra = dec = 1E30;
+		coorsys = -1;
+		lon = lat = 1E30;
 		epoch = 2000.0;
 		objra = objdec = 1E30;
 		objepoch = 2000.0;
-		priority = INT_MIN;
-		pair_id  = INT_MIN;
 		expdur   = 0.0;
 		delay    = 0.0;
 		frmcnt   = 0;
-		loopcnt  = 1;
-		ifrm     = 0;
+		priority = 0;
+		pair_id  = 0;
 		iloop    = 0;
 	}
 
-	ascii_proto_object(ascii_proto_append_plan &plan) {
+	ascii_proto_object(ObsPlanItemPtr plan, int ifilter, ptime& start) {
 		type = APTYPE_OBJECT;
-		plan_sn		= plan.plan_sn;
-		plan_time	= plan.plan_time;
-		plan_type	= plan.plan_type;
-		observer	= plan.observer;
-		obstype		= plan.obstype;
-		grid_id		= plan.grid_id;
-		field_id	= plan.field_id;
-		objname		= plan.objname;
-		runname		= plan.runname;
-		ra			= plan.ra;
-		dec			= plan.dec;
-		epoch		= plan.epoch;
-		objra		= plan.objra;
-		objdec		= plan.objdec;
-		objepoch	= plan.objepoch;
-		objerror	= plan.objerror;
-		priority	= plan.priority;
-		begin_time	= plan.begin_time;
-		end_time	= plan.end_time;
-		pair_id		= plan.pair_id;
-		imgtype		= plan.imgtype;
-		expdur		= plan.expdur;
-		delay		= plan.delay;
-		frmcnt		= plan.frmcnt;
-		loopcnt     = plan.loopcnt;
-		ifrm		= 0;
-		iloop       = 0;
+		plan_sn		= plan->plan_sn;
+		plan_time	= plan->plan_time;
+		plan_type	= plan->plan_type;
+		obstype		= plan->obstype;
+		grid_id		= plan->grid_id;
+		field_id	= plan->field_id;
+		observer	= plan->observer;
+		objname		= plan->objname;
+		runname		= plan->runname;
+		coorsys		= plan->coorsys;
+		lon			= plan->lon;
+		lat			= plan->lat;
+		line1		= plan->line1;
+		line2		= plan->line2;
+		epoch		= plan->epoch;
+		objra		= plan->objra;
+		objdec		= plan->objdec;
+		objepoch	= plan->objepoch;
+		objerror	= plan->objerror;
+		imgtype		= plan->imgtype;
+		filter		= plan->filters[ifilter];
+		expdur		= plan->expdur;
+		delay		= plan->delay;
+		frmcnt		= plan->frmcnt;
+		priority	= plan->priority;
+		tmbegin		= start;
+		tmend		= plan->tmend;
+		pair_id		= plan->pair_id;
+		iloop		= plan->iloop;
+
+		ObservationPlanItem::KVVec& kvs_plan = plan->kvs;
+		ObservationPlanItem::KVVec::iterator it;
+		for (it = kvs_plan.begin(); it != kvs_plan.end(); ++it) {
+			key_val kv;
+			kv.keyword = it->first;
+			kv.value   = it->second;
+			kvs.push_back(kv);
+		}
+	}
+
+	virtual ~ascii_proto_object() {
+		kvs.clear();
 	}
 };
 typedef boost::shared_ptr<ascii_proto_object> apobject;
@@ -499,54 +491,47 @@ public:
 };
 typedef boost::shared_ptr<ascii_proto_expose> apexpose;
 
-struct ascii_proto_camera : public ascii_proto_base {// 相机信息
-	int		state;		//< 工作状态
-	int		errcode;	//< 错误代码
-	int		mcstate;	//< 镜盖状态
-	double	coolget;	//< 探测器温度, 量纲: 摄氏度
-	int		focus;		//< 焦点位置
-	string	objname;	//< 观测目标名称
-	string	filename;	//< 文件名
-	string	imgtype;	//< 图像类型
-	string	filter;		//< 滤光片
-	double	expdur;		//< 曝光时间, 量纲: 秒
-	double	delay;		//< 延迟时间, 量纲: 秒
-	int		frmcnt;		//< 总帧数
-	int		loopcnt;	//< 循环次数
-	int		ifrm;		//< 帧编号
-	int		iloop;		//< 循环索引
+struct ascii_proto_camera : public ascii_proto_base {///< 相机信息
+	int		state;		///< 工作状态
+	int		errcode;	///< 错误代码
+	int		coolget;	///< 探测器温度, 量纲: 摄氏度
+	string	filter;		///< 滤光片
 
 public:
 	ascii_proto_camera() {
 		type    = APTYPE_CAMERA;
-		state   = CAMCTL_ERROR;
-		errcode = INT_MIN;
-		mcstate = INT_MIN;
-		coolget = 1E30;
-		focus   = INT_MIN;
-		expdur  = 0.0;
-		delay   = 0.0;
-		frmcnt  = 0;
-		loopcnt = 0;
-		ifrm    = 0;
-		iloop   = 0;
-	}
-
-	ascii_proto_camera &operator=(ascii_proto_object &obj) {
-		objname = obj.objname;
-		imgtype = obj.imgtype;
-		expdur  = obj.expdur;
-		delay   = obj.delay;
-		frmcnt  = obj.frmcnt;
-		loopcnt = obj.loopcnt;
-		ifrm    = obj.ifrm;
-		iloop   = obj.iloop;
-
-		return *this;
+		state   = 0;
+		errcode = 0;
+		coolget = 0;
 	}
 };
 typedef boost::shared_ptr<ascii_proto_camera> apcam;
 
+//////////////////////////////////////////////////////////////////////////////
+struct ascii_proto_fwhm : public ascii_proto_base {///< 半高全宽
+	double value;	//< 半高全宽, 量纲: 像素
+
+public:
+	ascii_proto_fwhm() {
+		type = APTYPE_FWHM;
+		value = 1E30;
+	}
+};
+typedef boost::shared_ptr<ascii_proto_fwhm> apfwhm;
+
+struct ascii_proto_focus : public ascii_proto_base {///< 焦点位置
+	int state;		///< 调角器工作状态. 0: 未知; 1: 静止; 2: 调焦
+	int position;	///< 焦点位置, 量纲: 微米
+
+public:
+	ascii_proto_focus() {
+		type = APTYPE_FOCUS;
+		state = position = 0;
+	}
+};
+typedef boost::shared_ptr<ascii_proto_focus> apfocus;
+
+//////////////////////////////////////////////////////////////////////////////
 /* GWAC相机辅助程序通信协议: 温度和真空度 */
 struct ascii_proto_cooler : public ascii_proto_base {// 温控参数
 	float voltage;	//< 工作电压.   量纲: V
@@ -577,30 +562,9 @@ public:
 };
 typedef boost::shared_ptr<ascii_proto_vacuum> apvacuum;
 
-/* 观测系统: 转台/望远镜+相机 */
-struct ascii_proto_obss : public ascii_proto_base {
-	struct camera_state {// 相机状态
-		string cid;	//< 相机编号
-		int state;	//< 工作状态
-	};
-
-	int state;		//< 系统工作状态
-	string plan_sn;	//< 在执行观测计划编号
-	string op_time;	//< 计划开始执行时间, CCYY-MM-DDThh:mm:ss.ssssss
-	int mount;		//< 望远镜工作状态
-	vector<camera_state> camera;	//< 相机工作状态
-
-public:
-	ascii_proto_obss() {
-		type = APTYPE_OBSS;
-		state   = -1;
-		mount   = -1;
-	}
-};
-typedef boost::shared_ptr<ascii_proto_obss> apobss;
-
+//////////////////////////////////////////////////////////////////////////////
 /* FITS文件传输 */
-struct ascii_proto_fileinfo : public ascii_proto_base {// 文件描述信息, 客户端=>服务器
+struct ascii_proto_fileinfo : public ascii_proto_base {///< 文件描述信息, 客户端=>服务器
 	string grid;		//< 天区划分模式
 	string field;		//< 天区编号
 	string tmobs;		//< 观测时间
@@ -616,7 +580,7 @@ public:
 };
 typedef boost::shared_ptr<ascii_proto_fileinfo> apfileinfo;
 
-struct ascii_proto_filestat : public  ascii_proto_base {// 文件传输结果, 服务器=>客户端
+struct ascii_proto_filestat : public ascii_proto_base {///< 文件传输结果, 服务器=>客户端
 	/*!
 	 * @member status 文件传输结果
 	 * - 1: 服务器完成准备, 通知客户端可以发送文件数据
@@ -634,6 +598,41 @@ public:
 typedef boost::shared_ptr<ascii_proto_filestat> apfilestat;
 
 //////////////////////////////////////////////////////////////////////////////
+struct ascii_proto_rainfall : public ascii_proto_base {
+	int value;
+
+public:
+	ascii_proto_rainfall() {
+		type = APTYPE_RAINFALL;
+		value = 0;
+	}
+};
+typedef boost::shared_ptr<ascii_proto_rainfall> aprain;
+
+struct ascii_proto_wind : public ascii_proto_base {
+	int orient;	///< 风向...正南0点, 顺时针增加?
+	int speed;	///< 风速, 米/秒
+
+public:
+	ascii_proto_wind() {
+		type = APTYPE_WIND;
+		orient = speed = 0;
+	}
+};
+typedef boost::shared_ptr<ascii_proto_wind> apwind;
+
+struct ascii_proto_cloud : public ascii_proto_base {
+	int value;
+
+public:
+	ascii_proto_cloud() {
+		type = APTYPE_CLOUD;
+		value = 0;
+	}
+};
+typedef boost::shared_ptr<ascii_proto_cloud> apcloud;
+
+//////////////////////////////////////////////////////////////////////////////
 /*!
  * @class AsciiProtocol 通信协议操作接口, 封装协议解析与构建过程
  */
@@ -644,15 +643,16 @@ public:
 
 public:
 	/* 数据类型 */
-	typedef boost::unique_lock<boost::mutex> mutex_lock;	//< 互斥锁
-	typedef boost::shared_array<char> charray;	//< 字符数组
+	typedef boost::shared_ptr<AsciiProtocol> Pointer;
+	typedef boost::unique_lock<boost::mutex> MtxLck;	///< 互斥锁
+	typedef boost::shared_array<char> ChBuff;	///< 字符数组
 
 protected:
 	/* 成员变量 */
-	boost::mutex mtx_;	//< 互斥锁
-	const int szproto_;	//< 协议最大长度: 1024
-	int ibuf_;			//< 存储区索引
-	charray buff_;		//< 存储区
+	boost::mutex mtx_;	///< 互斥锁
+	const int szProto_;	///< 协议最大长度: 1400
+	int iBuf_;			///< 存储区索引
+	ChBuff buff_;		///< 存储区
 
 protected:
 	/*!
@@ -691,7 +691,16 @@ protected:
 	 */
 	void resolve_kv_array(listring &tokens, likv &kvs, ascii_proto_base &basis);
 
+	/**
+	 * @brief 封装通用观测计划
+	 */
+	bool compact_plan(ObsPlanItemPtr plan, string& output);
+
 public:
+	static Pointer Create() {
+		return Pointer(new AsciiProtocol);
+	}
+
 	/*---------------- 封装通信协议 ----------------*/
 	/* 注册设备与注册结果 */
 	/**
@@ -708,17 +717,13 @@ public:
 	 */
 	const char *CompactUnregister(apunreg proto, int &n);
 	/*!
-	 * @brief 封装测站位置参数
-	 */
-	const char *CompactObsSite(apobsite proto, int &n);
-	/*!
 	 * @brief 封装开机自检
 	 */
-	const char *CompactStart(apstart proto, int &n);
+	const char *CompactStart(const string& gid, const string& uid, int &n);
 	/*!
 	 * @brief 封装关机/复位
 	 */
-	const char *CompactStop(apstop proto, int &n);
+	const char *CompactStop(const string& gid, const string& uid, int &n);
 	/*!
 	 * @brief 启用设备
 	 */
@@ -727,45 +732,70 @@ public:
 	 * @brief 禁用设备
 	 */
 	const char *CompactDisable(apdisable proto, int &n);
+
+	/*!
+	 * @brief 封装测站位置参数
+	 */
+	const char *CompactObsSite(apobsite proto, int &n);
 	/*!
 	 * @brief 观测系统工作状态
 	 */
 	const char *CompactObss(apobss proto, int &n);
 
 	/**
-	 * @brief 封装搜索零点指令
+	 * @brief 封装通用观测计划: 计划进入队列
 	 */
-	const char *CompactFindHome(apfindhome proto, int &n);
-	const char *CompactFindHome(int &n);
+	const char *CompactAppendPlan(ObsPlanItemPtr plan, int &n);
+	/**
+	 * @brief 封装通用观测计划: 计划进入队列, 并尝试立即执行
+	 */
+	const char *CompactImplementPlan(ObsPlanItemPtr plan, int &n);
+	/**
+	 * @brief 封装删除观测计划
+	 */
+	const char *CompactAbortPlan(const string& plan_sn, int &n);
+	/**
+	 * @brief 封装检查观测计划
+	 */
+	const char *CompactCheckPlan(const string& plan_sn, int &n);
+	/**
+	 * @brief 封装观测执行状态
+	 */
+	const char *CompactPlan(applan proto, int &n);
+
+	/**
+	 * @brief 封装搜索零点指令
+	 * @param gid  组标志
+	 * @param uid  单元标志
+	 * @note
+	 * - 指定设备搜索零点
+	 */
+	const char *CompactFindHome(const string& gid, const string& uid, int &n);
 	/**
 	 * @brief 封装同步零点指令
 	 */
-	const char *CompactHomeSync(aphomesync proto, int &n);
-	const char *CompactHomeSync(double ra, double dec, int &n);
+	const char *CompactHomeSync(const string& gid, const string& uid, double ra, double dec, int &n);
 	/**
 	 * @brief 封装指向指令
 	 */
 	const char *CompactSlewto(apslewto proto, int &n);
-	const char *CompactSlewto(double ra, double dec, double epoch, int &n);
 	/**
 	 * @brief 封装复位指令
 	 */
-	const char *CompactPark(appark proto, int &n);
-	const char *CompactPark(int &n);
+	const char *CompactPark(const string& gid, const string& uid, int &n);
 	/**
 	 * @brief 封装导星指令
 	 */
 	const char *CompactGuide(apguide proto, int &n);
-	const char *CompactGuide(double ra, double dec, int &n);
 	/**
 	 * @brief 封装中止指向指令
 	 */
-	const char *CompactAbortSlew(apabortslew proto, int &n);
-	const char *CompactAbortSlew(int &n);
+	const char *CompactAbortSlew(const string& gid, const string& uid, int &n);
 	/**
 	 * @brief 封装望远镜实时信息
 	 */
-	const char *CompactTelescope(aptele proto, int &n);
+	const char *CompactMount(apmount proto, int &n);
+
 	/**
 	 * @brief 封装半高全宽指令和数据
 	 */
@@ -774,12 +804,20 @@ public:
 	 * @brief 封装调焦指令和数据
 	 */
 	const char *CompactFocus(apfocus proto, int &n);
-	const char *CompactFocus(int position, int &n);
+
+	/*!
+	 * @brief 封装圆顶实时状态
+	 */
+	const char *CompactDome(apdome proto, int& n);
+	/*!
+	 * @brief 封装天窗指令和状态
+	 */
+	const char *CompactSlit(apslit proto, int& n);
 	/**
 	 * @brief 封装镜盖指令和状态
 	 */
 	const char *CompactMirrorCover(apmcover proto, int &n);
-	const char *CompactMirrorCover(int state, int &n);
+
 	/**
 	 * @brief 封装手动曝光指令
 	 */
@@ -800,22 +838,6 @@ public:
 	 * @brief 封装相机实时信息
 	 */
 	const char *CompactCamera(apcam proto, int &n);
-	/**
-	 * @brief 封装通用观测计划
-	 */
-	const char *CompactAppendPlan(apappplan proto, int &n);
-	/**
-	 * @brief 封装删除观测计划
-	 */
-	const char *CompactAbortPlan(apabtplan proto, int &n);
-	/**
-	 * @brief 封装检查观测计划
-	 */
-	const char *CompactCheckPlan(apchkplan proto, int &n);
-	/**
-	 * @brief 封装观测执行状态
-	 */
-	const char *CompactPlan(applan proto, int &n);
 	/* GWAC相机辅助程序通信协议: 温度和真空度 */
 	/*!
 	 * @brief 封装温控信息
@@ -834,10 +856,19 @@ public:
 	 * @brief 封装文件传输结果
 	 */
 	const char *CompactFileStat(apfilestat proto, int &n);
-	/**
-	 * @brief 拷贝生成新的通用观测计划
+
+	/*!
+	 * @brief 封装雨量
 	 */
-	apappplan CopyAppendPlan(apappplan proto);
+	const char *CompactRainfall(aprain proto, int &n);
+	/*!
+	 * @brief 封装风速和风向
+	 */
+	const char *CompactWind(apwind proto, int &n);
+	/*!
+	 * @brief 封装云量
+	 */
+	const char *CompactCloud(apcloud proto, int &n);
 	/*---------------- 解析通信协议 ----------------*/
 	/*!
 	 * @brief 解析字符串生成结构化通信协议
@@ -846,26 +877,6 @@ public:
 	 * 统一转换为apbase类型
 	 */
 	apbase Resolve(const char *rcvd);
-
-protected:
-	/*!
-	 * @brief 将字符串格式赤经转换为实数
-	 * @param str 字符串
-	 * @return
-	 * 赤经, 量纲: 角度
-	 * @note
-	 * 字符串接受两种格式: 实数和hh:mm:ss.s
-	 */
-	double rastr2dbl(const string &str);
-	/*!
-	 * @brief 将字符串格式赤纬转换为实数
-	 * @param str 字符串
-	 * @return
-	 * 赤纬, 量纲: 角度
-	 * @note
-	 * 字符串接受两种格式: 实数和±dd:mm:ss.s
-	 */
-	double decstr2dbl(const string &str);
 
 protected:
 	/*!
@@ -888,10 +899,6 @@ protected:
 	 * @brief 注销设备与注销结果
 	 * */
 	apbase resolve_unregister(likv &kvs);
-	/*!
-	 * @brief 解析测站参数
-	 */
-	apbase resolve_obsite(likv &kvs);
 	/**
 	 * @brief 开机自检
 	 * */
@@ -908,18 +915,41 @@ protected:
 	 * @brief 禁用设备
 	 * */
 	apbase resolve_disable(likv &kvs);
-	/**
-	 * @brief 重新加载参数
+
+	/*!
+	 * @brief 解析测站参数
 	 */
-	apbase resolve_reload(likv &kvs);
-	/**
-	 * @brief 重新启动程序
-	 */
-	apbase resolve_reboot(likv &kvs);
+	apbase resolve_obsite(likv &kvs);
 	/**
 	 * @brief 观测系统工作状态
 	 */
 	apbase resolve_obss(likv &kvs);
+
+	/*!
+	 * @brief 从通信协议解析观测计划
+	 */
+	void resolve_plan(likv& kvs, ObsPlanItemPtr plan);
+	/**
+	 * @brief 追加一条常规观测计划
+	 */
+	apbase resolve_append_plan(likv &kvs);
+	/**
+	 * @brief 尝试执行一条常规观测计划
+	 */
+	apbase resolve_implement_plan(likv &kvs);
+	/*!
+	 * @brief 删除计划
+	 */
+	apbase resolve_abort_plan(likv &kvs);
+	/*!
+	 * @brief 检查计划
+	 */
+	apbase resolve_check_plan(likv &kvs);
+	/*!
+	 * @brief 计划执行状态
+	 */
+	apbase resolve_plan(likv &kvs);
+
 	/**
 	 * @brief 搜索零点
 	 */
@@ -945,21 +975,32 @@ protected:
 	 */
 	apbase resolve_abortslew(likv &kvs);
 	/**
-	 * @brief 望远镜实时信息
+	 * @brief 转台实时信息
 	 */
-	apbase resolve_telescope(likv &kvs);
+	apbase resolve_mount(likv &kvs);
+
 	/**
 	 * @brief 星象半高全宽
 	 */
 	apbase resolve_fwhm(likv &kvs);
 	/**
-	 * @brief 调焦器位置
+	 * @brief 调焦指令和位置
 	 */
 	apbase resolve_focus(likv &kvs);
+
+	/**
+	 * @brief 圆顶实时状态
+	 */
+	apbase resolve_dome(likv &kvs);
+	/**
+	 * @brief 天窗指令和状态
+	 */
+	apbase resolve_slit(likv &kvs);
 	/**
 	 * @brief 镜盖指令与状态
 	 */
 	apbase resolve_mcover(likv &kvs);
+
 	/**
 	 * @brief 手动曝光指令
 	 */
@@ -980,6 +1021,7 @@ protected:
 	 * @brief 相机实时信息
 	 */
 	apbase resolve_camera(likv &kvs);
+
 	/**
 	 * @brief 温控信息
 	 */
@@ -988,6 +1030,7 @@ protected:
 	 * @brief 真空度信息
 	 */
 	apbase resolve_vacuum(likv &kvs);
+
 	/**
 	 * @brief FITS文件描述信息
 	 */
@@ -996,32 +1039,22 @@ protected:
 	 * @brief FITS文件传输结果
 	 */
 	apbase resolve_filestat(likv &kvs);
+
 	/**
-	 * @brief 追加一条GWAC观测计划
+	 * @brief 雨量
 	 */
-	apbase resolve_append_gwac(likv &kvs);
+	apbase resolve_rainfall(likv &kvs);
 	/**
-	 * @brief 追加一条常规观测计划
+	 * @brief 风速和风向
 	 */
-	apbase resolve_append_plan(likv &kvs);
-	/*!
-	 * @brief 检查计划
+	apbase resolve_wind(likv &kvs);
+	/**
+	 * @brief 云量
 	 */
-	apbase resolve_check_plan(likv &kvs);
-	/*!
-	 * @brief 删除计划
-	 */
-	apbase resolve_abort_plan(likv &kvs);
-	/*!
-	 * @brief 计划执行状态
-	 */
-	apbase resolve_plan(likv &kvs);
+	apbase resolve_cloud(likv &kvs);
 };
-
-typedef boost::shared_ptr<AsciiProtocol> AscProtoPtr;
-
+typedef AsciiProtocol::Pointer AscProtoPtr;
 //////////////////////////////////////////////////////////////////////////////
-extern AscProtoPtr make_ascproto();
 
 /*!
  * @brief 检查赤经是否有效
@@ -1038,14 +1071,6 @@ extern bool valid_ra(double ra);
  * 赤经属于【-90, +90.0]返回true; 否则返回false
  */
 extern bool valid_dec(double dec);
-/*!
- * @brief 检查图像类型有效性, 并生成与其对照的类型索引和缩略名
- * @param imgtype 图像类型
- * @param sabbr   对应的缩略名
- * @return
- * 图像类型有效性
- */
-IMAGE_TYPE check_imgtype(string imgtype, string &sabbr);
 //////////////////////////////////////////////////////////////////////////////
 
 #endif /* ASCIIPROTOCOL_H_ */

@@ -201,7 +201,7 @@ public:
 	 * @return
 	 * 观测计划地址
 	 */
-	typedef boost::signals2::signal<ObsPlanPtr (const string&, const string&)> AcquirePlan;
+	typedef boost::signals2::signal<bool (const string&, const string&, ObsPlanPtr&)> AcquirePlan;
 	typedef AcquirePlan::slot_type AcquirePlanSlot;
 
 protected:

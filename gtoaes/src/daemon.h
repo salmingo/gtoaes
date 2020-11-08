@@ -13,6 +13,7 @@
 
 /*!
  * @brief 检查程序是否已经启动
+ * @param 进程名称
  */
 extern bool isProcSingleton(const char* pidfile);
 /*!

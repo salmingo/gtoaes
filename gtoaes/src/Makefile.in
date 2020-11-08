@@ -90,8 +90,7 @@ build_triplet = @build@
 host_triplet = @host@
 target_triplet = @target@
 bin_PROGRAMS = gtoaes$(EXEEXT)
-@LINUX_TRUE@am__append_1 = -lboost_thread -lrt -lpthread
-@OSX_TRUE@am__append_2 = -lboost_thread-mt
+@LINUX_TRUE@am__append_1 = -lrt -lpthread
 subdir = src
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 am__aclocal_m4_deps = $(top_srcdir)/configure.ac
@@ -105,13 +104,14 @@ CONFIG_CLEAN_VPATH_FILES =
 am__installdirs = "$(DESTDIR)$(bindir)"
 PROGRAMS = $(bin_PROGRAMS)
 am_gtoaes_OBJECTS = daemon.$(OBJEXT) GLog.$(OBJEXT) \
-	Parameter.$(OBJEXT) MessageQueue.$(OBJEXT) NTPClient.$(OBJEXT) \
-	IOServiceKeep.$(OBJEXT) tcpasio.$(OBJEXT) ATimeSpace.$(OBJEXT) \
+	Parameter.$(OBJEXT) NTPClient.$(OBJEXT) \
+	AsioIOServiceKeep.$(OBJEXT) AsioTCP.$(OBJEXT) \
+	AsioUDP.$(OBJEXT) ATimeSpace.$(OBJEXT) AsciiProtocol.$(OBJEXT) \
+	CurlBase.$(OBJEXT) ObservationPlan.$(OBJEXT) \
 	GeneralControl.$(OBJEXT) gtoaes.$(OBJEXT)
 gtoaes_OBJECTS = $(am_gtoaes_OBJECTS)
 am__DEPENDENCIES_1 =
-gtoaes_DEPENDENCIES = $(am__DEPENDENCIES_1) $(am__DEPENDENCIES_1) \
-	$(am__DEPENDENCIES_1)
+gtoaes_DEPENDENCIES = $(am__DEPENDENCIES_1) $(am__DEPENDENCIES_1)
 gtoaes_LINK = $(CXXLD) $(AM_CXXFLAGS) $(CXXFLAGS) $(gtoaes_LDFLAGS) \
 	$(LDFLAGS) -o $@
 AM_V_P = $(am__v_P_@AM_V@)
@@ -129,11 +129,13 @@ am__v_at_1 =
 DEFAULT_INCLUDES = -I.@am__isrc@ -I$(top_builddir)
 depcomp = $(SHELL) $(top_srcdir)/depcomp
 am__maybe_remake_depfiles = depfiles
-am__depfiles_remade = ./$(DEPDIR)/ATimeSpace.Po ./$(DEPDIR)/GLog.Po \
-	./$(DEPDIR)/GeneralControl.Po ./$(DEPDIR)/IOServiceKeep.Po \
-	./$(DEPDIR)/MessageQueue.Po ./$(DEPDIR)/NTPClient.Po \
-	./$(DEPDIR)/Parameter.Po ./$(DEPDIR)/daemon.Po \
-	./$(DEPDIR)/gtoaes.Po ./$(DEPDIR)/tcpasio.Po
+am__depfiles_remade = ./$(DEPDIR)/ATimeSpace.Po \
+	./$(DEPDIR)/AsciiProtocol.Po ./$(DEPDIR)/AsioIOServiceKeep.Po \
+	./$(DEPDIR)/AsioTCP.Po ./$(DEPDIR)/AsioUDP.Po \
+	./$(DEPDIR)/CurlBase.Po ./$(DEPDIR)/GLog.Po \
+	./$(DEPDIR)/GeneralControl.Po ./$(DEPDIR)/NTPClient.Po \
+	./$(DEPDIR)/ObservationPlan.Po ./$(DEPDIR)/Parameter.Po \
+	./$(DEPDIR)/daemon.Po ./$(DEPDIR)/gtoaes.Po
 am__mv = mv -f
 CXXCOMPILE = $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) \
 	$(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS)
@@ -279,19 +281,20 @@ target_vendor = @target_vendor@
 top_build_prefix = @top_build_prefix@
 top_builddir = @top_builddir@
 top_srcdir = @top_srcdir@
-gtoaes_SOURCES = daemon.cpp GLog.cpp Parameter.cpp MessageQueue.cpp NTPClient.cpp \
-               IOServiceKeep.cpp tcpasio.cpp \
+gtoaes_SOURCES = daemon.cpp GLog.cpp Parameter.cpp NTPClient.cpp \
+               AsioIOServiceKeep.cpp AsioTCP.cpp AsioUDP.cpp \
                ATimeSpace.cpp \
-               GeneralControl.cpp gtoaes.cpp
+               AsciiProtocol.cpp \
+               CurlBase.cpp \
+               ObservationPlan.cpp GeneralControl.cpp gtoaes.cpp
 
 @DEBUG_FALSE@AM_CFLAGS = -O3 -Wall
 @DEBUG_TRUE@AM_CFLAGS = -g3 -O0 -Wall -DNDEBUG
 @DEBUG_FALSE@AM_CXXFLAGS = -O3 -Wall
 @DEBUG_TRUE@AM_CXXFLAGS = -g3 -O0 -Wall -DNDEBUG
 gtoaes_LDFLAGS = -L/usr/local/lib
-BOOST_LIBS = -lboost_system-mt -lboost_thread-mt -lboost_chrono-mt  -lboost_date_time-mt -lboost_filesystem-mt
-gtoaes_LDADD = -lm -lcurl ${BOOST_LIBS} $(am__append_1) \
-	$(am__append_2)
+BOOST_LIBS = -lboost_system-mt -lboost_thread-mt -lboost_chrono-mt -lboost_date_time-mt -lboost_filesystem-mt
+gtoaes_LDADD = -lm -lcurl ${BOOST_LIBS} $(am__append_1)
 all: all-am
 
 .SUFFIXES:
@@ -379,15 +382,18 @@ distclean-compile:
 	-rm -f *.tab.c
 
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ATimeSpace.Po@am__quote@ # am--include-marker
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/AsciiProtocol.Po@am__quote@ # am--include-marker
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/AsioIOServiceKeep.Po@am__quote@ # am--include-marker
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/AsioTCP.Po@am__quote@ # am--include-marker
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/AsioUDP.Po@am__quote@ # am--include-marker
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/CurlBase.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/GLog.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/GeneralControl.Po@am__quote@ # am--include-marker
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/IOServiceKeep.Po@am__quote@ # am--include-marker
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/MessageQueue.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/NTPClient.Po@am__quote@ # am--include-marker
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ObservationPlan.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/Parameter.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/daemon.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gtoaes.Po@am__quote@ # am--include-marker
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/tcpasio.Po@am__quote@ # am--include-marker
 
 $(am__depfiles_remade):
 	@$(MKDIR_P) $(@D)
@@ -537,15 +543,18 @@ clean-am: clean-binPROGRAMS clean-generic mostlyclean-am
 
 distclean: distclean-am
 		-rm -f ./$(DEPDIR)/ATimeSpace.Po
+	-rm -f ./$(DEPDIR)/AsciiProtocol.Po
+	-rm -f ./$(DEPDIR)/AsioIOServiceKeep.Po
+	-rm -f ./$(DEPDIR)/AsioTCP.Po
+	-rm -f ./$(DEPDIR)/AsioUDP.Po
+	-rm -f ./$(DEPDIR)/CurlBase.Po
 	-rm -f ./$(DEPDIR)/GLog.Po
 	-rm -f ./$(DEPDIR)/GeneralControl.Po
-	-rm -f ./$(DEPDIR)/IOServiceKeep.Po
-	-rm -f ./$(DEPDIR)/MessageQueue.Po
 	-rm -f ./$(DEPDIR)/NTPClient.Po
+	-rm -f ./$(DEPDIR)/ObservationPlan.Po
 	-rm -f ./$(DEPDIR)/Parameter.Po
 	-rm -f ./$(DEPDIR)/daemon.Po
 	-rm -f ./$(DEPDIR)/gtoaes.Po
-	-rm -f ./$(DEPDIR)/tcpasio.Po
 	-rm -f Makefile
 distclean-am: clean-am distclean-compile distclean-generic \
 	distclean-tags
@@ -592,15 +601,18 @@ installcheck-am:
 
 maintainer-clean: maintainer-clean-am
 		-rm -f ./$(DEPDIR)/ATimeSpace.Po
+	-rm -f ./$(DEPDIR)/AsciiProtocol.Po
+	-rm -f ./$(DEPDIR)/AsioIOServiceKeep.Po
+	-rm -f ./$(DEPDIR)/AsioTCP.Po
+	-rm -f ./$(DEPDIR)/AsioUDP.Po
+	-rm -f ./$(DEPDIR)/CurlBase.Po
 	-rm -f ./$(DEPDIR)/GLog.Po
 	-rm -f ./$(DEPDIR)/GeneralControl.Po
-	-rm -f ./$(DEPDIR)/IOServiceKeep.Po
-	-rm -f ./$(DEPDIR)/MessageQueue.Po
 	-rm -f ./$(DEPDIR)/NTPClient.Po
+	-rm -f ./$(DEPDIR)/ObservationPlan.Po
 	-rm -f ./$(DEPDIR)/Parameter.Po
 	-rm -f ./$(DEPDIR)/daemon.Po
 	-rm -f ./$(DEPDIR)/gtoaes.Po
-	-rm -f ./$(DEPDIR)/tcpasio.Po
 	-rm -f Makefile
 maintainer-clean-am: distclean-am maintainer-clean-generic
 

@@ -274,13 +274,8 @@ void GeneralControl::process_protocol_camera(apbase proto, TCPClient* client) {
 	string uid = proto->uid;
 	string cid = proto->cid;
 
-	if (!iequals(proto->type, APTYPE_REG)) {
-		_gLog.Write(LOG_FAULT, "GeneralControl::process_protocol_camera()",
-				"protocol[%s gid=%s, uid=%s] was rejected", proto->type.c_str(),
-				gid.c_str(), uid.c_str());
-		client->Close();
-	}
-	else {// 关联观测系统与望远镜
+	if (iequals(proto->type, APTYPE_REG) || iequals(proto->type, APTYPE_CAMERA)) {
+		// 关联观测系统与相机
 		ObsSysPtr obss = find_obss(gid, uid);
 		if (!obss.use_count() || cid.empty()) client->Close();
 		else {
@@ -290,6 +285,12 @@ void GeneralControl::process_protocol_camera(apbase proto, TCPClient* client) {
 			for (it = tcpc_camera_.begin(); it != tcpc_camera_.end() && (*it).get() != client; ++it);
 			if (obss->CoupleCamera(*it, cid)) tcpc_camera_.erase(it);
 		}
+	}
+	else {
+		_gLog.Write(LOG_FAULT, "GeneralControl::process_protocol_camera()",
+				"protocol[%s gid=%s, uid=%s] was rejected", proto->type.c_str(),
+				gid.c_str(), uid.c_str());
+		client->Close();
 	}
 }
 
@@ -541,7 +542,7 @@ ObsSysPtr GeneralControl::find_obss(const string &gid, const string &uid, bool c
 			obss->SetGeosite(trait->sitename, trait->lon, trait->lat, trait->alt, trait->timezone);
 			obss->SetElevationLimit(param_.GetMountSafeLimit(gid, uid));
 			const ObservationSystem::AcquirePlanSlot& slot =
-					boost::bind(&GeneralControl::acquire_new_plan, this, _1, _2);
+					boost::bind(&GeneralControl::acquire_new_plan, this, _1, _2, _3);
 			obss->RegisterAcquirePlan(slot);
 			if (param_.dbEnable) obss->SetDBUrl(param_.dbUrl.c_str());
 			/* 启动天文时段计算 */
@@ -658,7 +659,7 @@ bool GeneralControl::resolve_obsplan(const char *filepath) {
 		if (NULL == fgets(line, sizeline, fp)) continue;
 		n = strlen(line);
 		if ((ch = line[n - 1]) == '\n' || ch == '\r') --n;
-		if ((ch = line[n - 2]) == '\r') --n;
+		if ((ch = line[n - 1]) == '\r') --n;
 		line[n] = 0;
 		sline = line;
 
@@ -699,12 +700,8 @@ bool GeneralControl::resolve_obsplan(const char *filepath) {
 				plan->expdur  = atof(token);
 			}
 			else {// MODE3
-				int frmcnt;
-				double expdur;
 				token = strtok(NULL, seps); plan->expdur = atof(token);
-				token = strtok(NULL, seps); frmcnt = atoi(token);
-				token = strtok(NULL, seps); expdur = atof(token);
-				token = strtok(NULL, seps); frmcnt = atoi(token);
+				token = strtok(NULL, seps); plan->frmcnt = atoi(token);
 			}
 			plan->objname   = "point";
 			plan->plan_type = PLANTYPE_POINT;
@@ -723,8 +720,10 @@ void GeneralControl::resort_obsplan() {
 	});
 }
 
-ObsPlanPtr GeneralControl::acquire_new_plan(const string& gid, const string& uid) {
-	ObsPlanPtr plan;
+bool GeneralControl::acquire_new_plan(const string& gid, const string& uid, ObsPlanPtr& plan) {
+	mutex_lock lck(mtx_obsplan_);
+
+	bool found(false);
 	EnvInfo* nfenv = NULL;
 
 	for (EnvInfoVec::iterator it = nfEnv_.begin(); it != nfEnv_.end(); ++it) {
@@ -741,8 +740,7 @@ ObsPlanPtr GeneralControl::acquire_new_plan(const string& gid, const string& uid
 			string gid1, uid1;
 			ptime now = second_clock::universal_time();
 
-			mutex_lock lck(mtx_obsplan_);
-			for (ObsPlanVec::iterator it = obsplan_.begin(); !plan.use_count() && it != obsplan_.end(); ++it) {
+			for (ObsPlanVec::iterator it = obsplan_.begin(); !found && it != obsplan_.end(); ++it) {
 				iimgtyp = (*it)->iimgtyp;
 				gid1 = (*it)->gid;
 				uid1 = (*it)->uid;
@@ -753,13 +751,16 @@ ObsPlanPtr GeneralControl::acquire_new_plan(const string& gid, const string& uid
 					&& (*it)->state == OBSPLAN_CAT) { // 计划类型: 入库
 					td1 = ((*it)->btime - now).total_seconds();
 					td2 = ((*it)->etime - now).total_seconds();
-					if (iimgtyp <= IMGTYPE_DARK || (td1 <= 60 && td2 >= 10)) plan = *it;
+					if (iimgtyp <= IMGTYPE_DARK || (td1 <= 60 && td2 >= 10)) {
+						plan = *it;
+						found = true;
+					}
 				}
 			}
-			if (plan.use_count()) plan->state = OBSPLAN_WAIT;
+			if (found) plan->state = OBSPLAN_WAIT;
 		}
 	}
-	return plan;
+	return found;
 }
 
 void GeneralControl::thread_obsplan() {

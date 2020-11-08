@@ -1,8 +1,10 @@
 bin_PROGRAMS=gtoaes
-gtoaes_SOURCES=daemon.cpp GLog.cpp Parameter.cpp MessageQueue.cpp NTPClient.cpp \
-               IOServiceKeep.cpp tcpasio.cpp \
+gtoaes_SOURCES=daemon.cpp GLog.cpp Parameter.cpp NTPClient.cpp \
+               AsioIOServiceKeep.cpp AsioTCP.cpp AsioUDP.cpp \
                ATimeSpace.cpp \
-               GeneralControl.cpp gtoaes.cpp
+               AsciiProtocol.cpp \
+               CurlBase.cpp \
+               ObservationPlan.cpp GeneralControl.cpp gtoaes.cpp
 
 if DEBUG
   AM_CFLAGS = -g3 -O0 -Wall -DNDEBUG
@@ -13,11 +15,8 @@ else
 endif
 
 gtoaes_LDFLAGS = -L/usr/local/lib
-BOOST_LIBS = -lboost_system-mt -lboost_thread-mt -lboost_chrono-mt  -lboost_date_time-mt -lboost_filesystem-mt
+BOOST_LIBS = -lboost_system-mt -lboost_thread-mt -lboost_chrono-mt -lboost_date_time-mt -lboost_filesystem-mt
 gtoaes_LDADD = -lm -lcurl ${BOOST_LIBS}
 if LINUX
-gtoaes_LDADD += -lboost_thread -lrt -lpthread
-endif
-if OSX
-gtoaes_LDADD += -lboost_thread-mt
+gtoaes_LDADD += -lrt -lpthread
 endif

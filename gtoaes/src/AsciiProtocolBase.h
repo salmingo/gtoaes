@@ -41,13 +41,8 @@ struct ascii_proto_base {
 	string gid;		//< 组编号
 	string uid;		//< 单元编号
 	string cid;		//< 相机编号
-	likv kvs;		//< 未定义关键字的键值对
 
 public:
-	virtual ~ascii_proto_base() {
-		kvs.clear();
-	}
-
 	ascii_proto_base &operator=(const ascii_proto_base &other) {
 		if (this != &other) {
 			type = other.type;
@@ -55,9 +50,6 @@ public:
 			gid  = other.gid;
 			uid  = other.uid;
 			cid  = other.cid;
-
-			for (likv::const_iterator it = other.kvs.begin(); it != other.kvs.end(); ++it)
-				kvs.push_back(*it);
 		}
 		return *this;
 	}

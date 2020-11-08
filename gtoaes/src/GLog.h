@@ -22,23 +22,17 @@
 #include <mutex>
 
 enum LOG_TYPE {// 日志类型
-	LOG_NORMAL,		/// 普通
-	LOG_WARN,		/// 警告
-	LOG_MIN = LOG_WARN,
-	LOG_FAULT,		/// 错误
-	LOG_OVER,		/// 完成
-	LOG_INTR,		/// 中断
-	LOG_IGNR,		/// 忽略
-	LOG_MAX = LOG_IGNR
+	LOG_MIN = -1,
+	LOG_NORMAL,	///< 普通
+	LOG_WARN,	///< 警告
+	LOG_FAULT,	///< 错误
+	LOG_MAX
 };
 
 static const char *LOG_TYPE_STR[] = {
 	"",
 	"WARN: ",
 	"Error: ",
-	"OVER ",
-	"INTR ",
-	"IGNR "
 };
 
 class GLog {

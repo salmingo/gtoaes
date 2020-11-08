@@ -15,8 +15,6 @@ AC_PROG_CPP
 AC_PROG_MKDIR_P
 
 # Checks for libraries.
-# FIXME: Replace `main' with a function in `-lboost_thread':
-AC_CHECK_LIB([boost_thread], [main])
 # FIXME: Replace `main' with a function in `-lcurl':
 AC_CHECK_LIB([curl], [main])
 # FIXME: Replace `main' with a function in `-lm':
@@ -27,7 +25,7 @@ AC_CHECK_LIB([pthread], [main])
 AC_CHECK_LIB([rt], [main])
 
 # Checks for header files.
-AC_CHECK_HEADERS([fcntl.h netdb.h stdlib.h string.h sys/socket.h sys/time.h syslog.h unistd.h])
+AC_CHECK_HEADERS([fcntl.h netdb.h stdlib.h string.h sys/param.h sys/socket.h sys/time.h syslog.h unistd.h])
 
 # Checks for typedefs, structures, and compiler characteristics.
 AC_CHECK_HEADER_STDBOOL
@@ -41,7 +39,7 @@ AC_TYPE_UINT32_T
 AC_FUNC_FORK
 AC_FUNC_MALLOC
 AC_FUNC_REALLOC
-AC_CHECK_FUNCS([ftruncate gettimeofday memset mkdir pow select socket strerror])
+AC_CHECK_FUNCS([ftruncate getcwd gettimeofday memset mkdir pow select socket strerror])
 
 AC_CONFIG_FILES([Makefile
                  release/Makefile

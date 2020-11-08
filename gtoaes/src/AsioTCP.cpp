@@ -111,13 +111,6 @@ int TcpClient::Write(const char* data, const int n) {
 
 int TcpClient::Lookup(char* first) {
 	MtxLck lck(mtx_read_);
-	// test
-	const char *test = "a\r\nb\r\n";
-	int len = strlen(test);
-	strcpy (buf_read_.get(), test);
-	byte_read_ = len;
-	for (int k = 0; k < len; ++k) crcbuf_read_.push_back(test[k]);
-	// test
 	int n = mode_async_ ? crcbuf_read_.size() : byte_read_;
 	if (first && n) *first = mode_async_ ? crcbuf_read_[0] : buf_read_[0];
 	return n;
@@ -153,14 +146,17 @@ void TcpClient::Start() {
 }
 
 void TcpClient::RegisterConnect(const CBSlot& slot) {
+	cbconn_.disconnect_all_slots();
 	cbconn_.connect(slot);
 }
 
 void TcpClient::RegisterRead(const CBSlot& slot) {
+	cbread_.disconnect_all_slots();
 	cbread_.connect(slot);
 }
 
 void TcpClient::RegisterWrite(const CBSlot& slot) {
+	cbwrite_.disconnect_all_slots();
 	cbwrite_.connect(slot);
 }
 
@@ -248,15 +244,13 @@ int TcpServer::CreateServer(uint16_t port, bool v6) {
 void TcpServer::start_accept() {
 	if (accept_.is_open()) {
 		TcpCPtr client = TcpClient::Create();
-		accept_.async_accept(client->Socket(),
-				boost::bind(&TcpServer::handle_accept, this,
-						client, placeholders::error));
+		accept_.async_accept(client->Socket(), boost::bind(&TcpServer::handle_accept, this, client, placeholders::error));
 	}
 }
 
 void TcpServer::handle_accept(const TcpCPtr client, const error_code& ec) {
 	if (!ec) {
-		cbfunc_(client, this);
+		cbfunc_(client, shared_from_this());
 		client->Start();
 	}
 

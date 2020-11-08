@@ -54,8 +54,8 @@ esac],
 
 AM_CONDITIONAL(DEBUG, test x"$debug" = x"true")
 
-AC_CHECK_HEADERS([fcntl.h netdb.h stdlib.h string.h sys/socket.h sys/time.h syslog.h unistd.h])
-AC_CHECK_FUNCS([ftruncate gettimeofday memset mkdir select socket strerror pow])
+AC_CHECK_HEADERS([fcntl.h netdb.h stdlib.h string.h syslog.h unistd.h sys/socket.h sys/time.h sys/param.h])
+AC_CHECK_FUNCS([ftruncate gettimeofday memset mkdir select socket strerror pow getcwd])
 AC_CHECK_HEADER_STDBOOL
 AC_FUNC_FORK
 AC_FUNC_MALLOC
