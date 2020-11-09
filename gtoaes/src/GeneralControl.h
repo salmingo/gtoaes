@@ -11,8 +11,8 @@
  * - 观测系统建立后生命周期同主程序. 每日按照活跃度降序排序
  */
 
-#ifndef SRC_GENERALCONTROL_H_
-#define SRC_GENERALCONTROL_H_
+#ifndef GENERALCONTROL_H_
+#define GENERALCONTROL_H_
 
 #include <vector>
 #include <deque>
@@ -20,7 +20,8 @@
 #include "NTPClient.h"
 #include "AsioTCP.h"
 #include "AsioUDP.h"
-#include "AsciiProtocol.h"
+#include "KvProtocol.h"
+#include "NonkvProtocol.h"
 #include "ObservationPlan.h"
 
 //////////////////////////////////////////////////////////////////////////////
@@ -106,10 +107,11 @@ protected:
 	boost::condition_variable cv_netev_;	///< 条件触发: 网络事件
 
 	boost::shared_array<char> bufrcv_;	///< 网络信息存储区: 消息队列中调用
-	AscProtoPtr ascproto_;
+	KvProtoPtr kvProto_;		///< 键值对格式协议访问接口
+	NonkvProtoPtr nonkvProto_;	///< 非键值对格式协议访问接口
 
 	/* 观测计划 */
-	ObsPlanPtr obs_plans_;
+	ObsPlanPtr obsPlans_;
 
 	/* 观测系统 */
 
@@ -254,18 +256,16 @@ protected:
 	 * - PEER_CAMERA
 	 * - PEER_CAMERA_ANNEX
 	 */
-	void resolve_protocol_ascii(const TcpCPtr client, int peer);
-	/*!
-	 * @brief 解析非键值对格式的ascii码协议
-	 * @param data    通信内容
-	 * @param client  网络资源
-	 * @param peer    主机类型
-	 * @note
-	 * - GWAC系统中, 该格式对应转台和调焦. 所有转台共用一条链路; 所有调焦共用一条链路
-	 * - HN系统中, 该格式对应圆顶和自动调焦(自动调焦未实现) 2019
-	 * - HR系统中, 该格式对应圆顶和自动调焦. 同一圆顶内, 圆顶和所有调焦共用一条链路  2020
-	 */
-	void resolve_protocol_nonkv(const char* data, const TcpCPtr client, int peer);
+	void resolve_protocol(const TcpCPtr client, int peer);
+
+	void process_kv_client      (kvbase proto, const TcpCPtr client);
+	void process_kv_mount       (kvbase proto, const TcpCPtr client);
+	void process_kv_camera      (kvbase proto, const TcpCPtr client);
+	void process_kv_mount_annex (kvbase proto, const TcpCPtr client);
+	void process_kv_camera_annex(kvbase proto, const TcpCPtr client);
+
+	void process_nonkv_mount(nonkvbase proto, const TcpCPtr client);
+	void process_nonkv_mount_annex(nonkvbase proto, const TcpCPtr client);
 
 protected:
 	/*----------------- 观测计划 -----------------*/

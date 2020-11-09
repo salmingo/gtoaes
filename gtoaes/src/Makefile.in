@@ -106,9 +106,10 @@ PROGRAMS = $(bin_PROGRAMS)
 am_gtoaes_OBJECTS = daemon.$(OBJEXT) GLog.$(OBJEXT) \
 	Parameter.$(OBJEXT) NTPClient.$(OBJEXT) \
 	AsioIOServiceKeep.$(OBJEXT) AsioTCP.$(OBJEXT) \
-	AsioUDP.$(OBJEXT) ATimeSpace.$(OBJEXT) AsciiProtocol.$(OBJEXT) \
-	CurlBase.$(OBJEXT) ObservationPlan.$(OBJEXT) \
-	GeneralControl.$(OBJEXT) gtoaes.$(OBJEXT)
+	AsioUDP.$(OBJEXT) ATimeSpace.$(OBJEXT) KvProtocol.$(OBJEXT) \
+	NonkvProtocol.$(OBJEXT) CurlBase.$(OBJEXT) \
+	ObservationPlan.$(OBJEXT) GeneralControl.$(OBJEXT) \
+	gtoaes.$(OBJEXT)
 gtoaes_OBJECTS = $(am_gtoaes_OBJECTS)
 am__DEPENDENCIES_1 =
 gtoaes_DEPENDENCIES = $(am__DEPENDENCIES_1) $(am__DEPENDENCIES_1)
@@ -130,12 +131,13 @@ DEFAULT_INCLUDES = -I.@am__isrc@ -I$(top_builddir)
 depcomp = $(SHELL) $(top_srcdir)/depcomp
 am__maybe_remake_depfiles = depfiles
 am__depfiles_remade = ./$(DEPDIR)/ATimeSpace.Po \
-	./$(DEPDIR)/AsciiProtocol.Po ./$(DEPDIR)/AsioIOServiceKeep.Po \
-	./$(DEPDIR)/AsioTCP.Po ./$(DEPDIR)/AsioUDP.Po \
-	./$(DEPDIR)/CurlBase.Po ./$(DEPDIR)/GLog.Po \
-	./$(DEPDIR)/GeneralControl.Po ./$(DEPDIR)/NTPClient.Po \
-	./$(DEPDIR)/ObservationPlan.Po ./$(DEPDIR)/Parameter.Po \
-	./$(DEPDIR)/daemon.Po ./$(DEPDIR)/gtoaes.Po
+	./$(DEPDIR)/AsioIOServiceKeep.Po ./$(DEPDIR)/AsioTCP.Po \
+	./$(DEPDIR)/AsioUDP.Po ./$(DEPDIR)/CurlBase.Po \
+	./$(DEPDIR)/GLog.Po ./$(DEPDIR)/GeneralControl.Po \
+	./$(DEPDIR)/KvProtocol.Po ./$(DEPDIR)/NTPClient.Po \
+	./$(DEPDIR)/NonkvProtocol.Po ./$(DEPDIR)/ObservationPlan.Po \
+	./$(DEPDIR)/Parameter.Po ./$(DEPDIR)/daemon.Po \
+	./$(DEPDIR)/gtoaes.Po
 am__mv = mv -f
 CXXCOMPILE = $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) \
 	$(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS)
@@ -284,7 +286,7 @@ top_srcdir = @top_srcdir@
 gtoaes_SOURCES = daemon.cpp GLog.cpp Parameter.cpp NTPClient.cpp \
                AsioIOServiceKeep.cpp AsioTCP.cpp AsioUDP.cpp \
                ATimeSpace.cpp \
-               AsciiProtocol.cpp \
+               KvProtocol.cpp NonkvProtocol.cpp \
                CurlBase.cpp \
                ObservationPlan.cpp GeneralControl.cpp gtoaes.cpp
 
@@ -382,14 +384,15 @@ distclean-compile:
 	-rm -f *.tab.c
 
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ATimeSpace.Po@am__quote@ # am--include-marker
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/AsciiProtocol.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/AsioIOServiceKeep.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/AsioTCP.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/AsioUDP.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/CurlBase.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/GLog.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/GeneralControl.Po@am__quote@ # am--include-marker
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/KvProtocol.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/NTPClient.Po@am__quote@ # am--include-marker
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/NonkvProtocol.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ObservationPlan.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/Parameter.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/daemon.Po@am__quote@ # am--include-marker
@@ -543,14 +546,15 @@ clean-am: clean-binPROGRAMS clean-generic mostlyclean-am
 
 distclean: distclean-am
 		-rm -f ./$(DEPDIR)/ATimeSpace.Po
-	-rm -f ./$(DEPDIR)/AsciiProtocol.Po
 	-rm -f ./$(DEPDIR)/AsioIOServiceKeep.Po
 	-rm -f ./$(DEPDIR)/AsioTCP.Po
 	-rm -f ./$(DEPDIR)/AsioUDP.Po
 	-rm -f ./$(DEPDIR)/CurlBase.Po
 	-rm -f ./$(DEPDIR)/GLog.Po
 	-rm -f ./$(DEPDIR)/GeneralControl.Po
+	-rm -f ./$(DEPDIR)/KvProtocol.Po
 	-rm -f ./$(DEPDIR)/NTPClient.Po
+	-rm -f ./$(DEPDIR)/NonkvProtocol.Po
 	-rm -f ./$(DEPDIR)/ObservationPlan.Po
 	-rm -f ./$(DEPDIR)/Parameter.Po
 	-rm -f ./$(DEPDIR)/daemon.Po
@@ -601,14 +605,15 @@ installcheck-am:
 
 maintainer-clean: maintainer-clean-am
 		-rm -f ./$(DEPDIR)/ATimeSpace.Po
-	-rm -f ./$(DEPDIR)/AsciiProtocol.Po
 	-rm -f ./$(DEPDIR)/AsioIOServiceKeep.Po
 	-rm -f ./$(DEPDIR)/AsioTCP.Po
 	-rm -f ./$(DEPDIR)/AsioUDP.Po
 	-rm -f ./$(DEPDIR)/CurlBase.Po
 	-rm -f ./$(DEPDIR)/GLog.Po
 	-rm -f ./$(DEPDIR)/GeneralControl.Po
+	-rm -f ./$(DEPDIR)/KvProtocol.Po
 	-rm -f ./$(DEPDIR)/NTPClient.Po
+	-rm -f ./$(DEPDIR)/NonkvProtocol.Po
 	-rm -f ./$(DEPDIR)/ObservationPlan.Po
 	-rm -f ./$(DEPDIR)/Parameter.Po
 	-rm -f ./$(DEPDIR)/daemon.Po

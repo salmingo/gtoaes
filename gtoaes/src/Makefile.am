@@ -2,7 +2,7 @@ bin_PROGRAMS=gtoaes
 gtoaes_SOURCES=daemon.cpp GLog.cpp Parameter.cpp NTPClient.cpp \
                AsioIOServiceKeep.cpp AsioTCP.cpp AsioUDP.cpp \
                ATimeSpace.cpp \
-               AsciiProtocol.cpp \
+               KvProtocol.cpp NonkvProtocol.cpp \
                CurlBase.cpp \
                ObservationPlan.cpp GeneralControl.cpp gtoaes.cpp
 

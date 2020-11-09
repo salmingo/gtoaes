@@ -20,7 +20,7 @@
 #define SRC_ASIOTCP_H_
 
 #include <boost/asio/ip/tcp.hpp>
-#include <boost/signals2.hpp>
+#include <boost/signals2/signal.hpp>
 #include <boost/circular_buffer.hpp>
 #include <boost/smart_ptr/shared_array.hpp>
 #include <boost/enable_shared_from_this.hpp>

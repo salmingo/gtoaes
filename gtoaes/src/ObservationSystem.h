@@ -6,18 +6,18 @@
  * @author 卢晓猛
  */
 
-#ifndef SRC_OBSERVATIONSYSTEM_H_
-#define SRC_OBSERVATIONSYSTEM_H_
+#ifndef OBSERVATIONSYSTEM_H_
+#define OBSERVATIONSYSTEM_H_
 
-#include "AsciiProtocol.h"
 #include "AsioTCP.h"
 #include "ATimeSpace.h"
+#include "KvProtocol.h"
 #include "ObservationPlanBase.h"
 #include "Parameter.h"
 
 class ObservationSystem {
 public:
-	ObservationSystem();
+	ObservationSystem(const string& gid, const string& uid);
 	virtual ~ObservationSystem();
 
 public:
@@ -52,8 +52,8 @@ public:
 	 * @return
 	 * boost::shared_ptr<>型指针
 	 */
-	static Pointer Create() {
-		return Pointer(new ObservationSystem);
+	static Pointer Create(const string& gid, const string& uid) {
+		return Pointer(new ObservationSystem(gid, uid));
 	}
 	/*!
 	 * @brief 启动系统工作流程
@@ -136,6 +136,13 @@ protected:
 	 * @param thrd 线程指针
 	 */
 	void interrupt_thread(ThreadPtr& thrd);
+	/*!
+	 * @brief 线程: 定时检查网络连接的有效性
+	 * @note
+	 * - 周期: 1分钟
+	 * - 判据:
+	 */
+	void monitor_network_connection();
 };
 using ObsSPtr = ObservationSystem::Pointer;
 

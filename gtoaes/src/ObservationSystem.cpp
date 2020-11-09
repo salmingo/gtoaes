@@ -8,8 +8,9 @@
 
 #include "ObservationSystem.h"
 
-ObservationSystem::ObservationSystem() {
-
+ObservationSystem::ObservationSystem(const string& gid, const string& uid) {
+	gid_ = gid;
+	uid_ = uid;
 }
 
 ObservationSystem::~ObservationSystem() {

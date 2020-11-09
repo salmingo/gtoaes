@@ -24,8 +24,9 @@ GeneralControl::~GeneralControl() {
 bool GeneralControl::Start() {
 	param_.Load(gConfigPath);
 	bufrcv_.reset(new char[TCP_PACK_SIZE]);
-	ascproto_ = AsciiProtocol::Create();
-	obs_plans_ = ObservationPlan::Create();
+	kvProto_    = KvProtocol::Create();
+	nonkvProto_ = NonkvProtocol::Create();
+	obsPlans_  = ObservationPlan::Create();
 
 	if (!create_all_server()) return false;
 	if (param_.ntpEnable) {
@@ -84,7 +85,6 @@ bool GeneralControl::create_all_server() {
 }
 
 void GeneralControl::network_accept(const TcpCPtr client, const TcpSPtr server) {
-	/* 不使用消息队列, 需要互斥 */
 	if (server == tcps_client_) {// 客户端
 		MtxLck lck(mtx_tcpc_client_);
 		const TcpClient::CBSlot& slot = boost::bind(&GeneralControl::receive_client, this, _1, _2);
@@ -155,25 +155,23 @@ void GeneralControl::receive_camera_annex(const TcpCPtr client, const int ec) {
 //////////////////////////////////////////////////////////////////////////////
 /*----------------- 消息机制 -----------------*/
 void GeneralControl::on_receive_client(const TcpCPtr client) {
-	resolve_protocol_ascii(client, PEER_CLIENT);
+	resolve_protocol(client, PEER_CLIENT);
 }
 
 void GeneralControl::on_receive_mount(const TcpCPtr client) {
-	//...区别处理keywor=value格式和紧凑格式
-	resolve_protocol_ascii(client, PEER_MOUNT);
+	resolve_protocol(client, PEER_MOUNT);
 }
 
 void GeneralControl::on_receive_camera(const TcpCPtr client) {
-	resolve_protocol_ascii(client, PEER_CAMERA);
+	resolve_protocol(client, PEER_CAMERA);
 }
 
 void GeneralControl::on_receive_mount_annex(const TcpCPtr client) {
-	//...区别处理keywor=value格式和紧凑格式
-	resolve_protocol_ascii(client, PEER_MOUNT_ANNEX);
+	resolve_protocol(client, PEER_MOUNT_ANNEX);
 }
 
 void GeneralControl::on_receive_camera_annex(const TcpCPtr client) {
-	resolve_protocol_ascii(client, PEER_CAMERA_ANNEX);
+	resolve_protocol(client, PEER_CAMERA_ANNEX);
 }
 
 void GeneralControl::on_close_client(const TcpCPtr client) {
@@ -218,31 +216,108 @@ void GeneralControl::on_close_camera_annex(const TcpCPtr client) {
 
 //////////////////////////////////////////////////////////////////////////////
 /*----------------- 解析/执行通信协议 -----------------*/
-void GeneralControl::resolve_protocol_ascii(const TcpCPtr client, int peer) {
+void GeneralControl::resolve_protocol(const TcpCPtr client, int peer) {
 	const char term[] = "\n";	// 换行符作为信息结束标记
 	const char prefix[] = "g#";	// 其它格式的引导符
-	int len = strlen(term);		// 结束符长度
+	int lenPre  = strlen(prefix);	// 引导福长度
+	int lenTerm = strlen(term);		// 结束符长度
 	int pos, toread;
-	apbase proto;
+	bool success(true);
 
-	while (client->IsOpen() && (pos = client->Lookup(term, len)) >= 0) {
-		if ((toread = pos + len) > TCP_PACK_SIZE) {
-			_gLog.Write(LOG_FAULT, "GeneralControl::receive_protocol_ascii()",
-					"too long message from %s", peer == PEER_CLIENT ? "CLIENT"
-							: (peer == PEER_MOUNT ? "MOUNT" : "CAMERA"));
-			client->Close();
-		}
-		else {
+	while (client->IsOpen() && (pos = client->Lookup(term, lenTerm)) >= 0) {
+		if ((success = (toread = pos + lenTerm) > TCP_PACK_SIZE)) {
 			client->Read(bufrcv_.get(), toread);
 			bufrcv_[pos] = 0;
 			if (strstr(bufrcv_.get(), prefix)) {
-
+				nonkvbase proto = nonkvProto_->Resove(bufrcv_.get() + lenPre);
+				if (proto.unique()) {
+					if      (peer == PEER_MOUNT)       process_nonkv_mount(proto, client);
+					else if (peer == PEER_MOUNT_ANNEX) process_nonkv_mount_annex(proto, client);
+				}
+				else
+					success = false;
 			}
 			else {
+				kvbase proto = kvProto_->Resolve(bufrcv_.get());
+				if (proto.unique()) {
+					if      (peer == PEER_CLIENT)       process_kv_client      (proto, client);
+					else if (peer == PEER_MOUNT)        process_kv_mount       (proto, client);
+					else if (peer == PEER_CAMERA)       process_kv_camera      (proto, client);
+					else if (peer == PEER_MOUNT_ANNEX)  process_kv_mount_annex (proto, client);
+					else if (peer == PEER_CAMERA_ANNEX) process_kv_camera_annex(proto, client);
+				}
+				else
+					success = false;
+			}
 
+			if (!success) {
+				_gLog.Write(LOG_FAULT, "File[%s], Line[%s], Peer Type[%s]. protocol resolver failed",
+						__FILE__, __LINE__,
+						peer == PEER_CLIENT ? "Client" :
+							(peer == PEER_MOUNT ? "Mount" :
+								(peer == PEER_CAMERA ? "Camera" :
+									(peer == PEER_MOUNT_ANNEX ? "Mount-Annex" : "Camera-Annex"))));
+				client->Close();
 			}
 		}
 	}
+}
+
+void GeneralControl::process_kv_client(kvbase proto, const TcpCPtr client) {
+	string type = proto->type;
+	char ch = type[0];
+
+	if (ch == 'a' || ch == 'A') {
+		if      (iequals(type, KVTYPE_APPPLAN))   {}
+		else if (iequals(type, KVTYPE_ABTPLAN))   {}
+		else if (iequals(type, KVTYPE_ABTSLEW))   {}
+		else if (iequals(type, KVTYPE_ABTIMG))    {}
+	}
+	else if (ch == 'f' || ch == 'F') {
+		if      (iequals(type, KVTYPE_FINDHOME))  {}
+		else if (iequals(type, KVTYPE_FWHM))      {}
+		else if (iequals(type, KVTYPE_FOCUS))     {}
+	}
+	else if (ch == 's' || ch == 'S') {
+		if      (iequals(type, KVTYPE_START))     {}
+		else if (iequals(type, KVTYPE_STOP))      {}
+		else if (iequals(type, KVTYPE_SLEWTO))    {}
+		else if (iequals(type, KVTYPE_SLIT))      {}
+	}
+	else if (iequals(type, KVTYPE_CHKPLAN))       {}
+	else if (iequals(type, KVTYPE_DISABLE))       {}
+	else if (iequals(type, KVTYPE_ENABLE))        {}
+	else if (iequals(type, KVTYPE_GUIDE))         {}
+	else if (iequals(type, KVTYPE_HOMESYNC))      {}
+	else if (iequals(type, KVTYPE_IMPPLAN))       {}
+	else if (iequals(type, KVTYPE_PARK))          {}
+	else if (iequals(type, KVTYPE_REG))           {}
+	else if (iequals(type, KVTYPE_TAKIMG))        {}
+	else if (iequals(type, KVTYPE_UNREG))         {}
+}
+
+void GeneralControl::process_kv_mount(kvbase proto, const TcpCPtr client) {
+
+}
+
+void GeneralControl::process_kv_camera(kvbase proto, const TcpCPtr client) {
+
+}
+
+void GeneralControl::process_kv_mount_annex (kvbase proto, const TcpCPtr client) {
+
+}
+
+void GeneralControl::process_kv_camera_annex(kvbase proto, const TcpCPtr client) {
+
+}
+
+void GeneralControl::process_nonkv_mount(nonkvbase proto, const TcpCPtr client){
+
+}
+
+void GeneralControl::process_nonkv_mount_annex(nonkvbase proto, const TcpCPtr client){
+
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -321,7 +396,7 @@ void GeneralControl::thread_network_event() {
 
 // 时钟同步
 void GeneralControl::thread_clocksync() {
-	boost::chrono::hours period(1);
+	boost::chrono::minutes period(30);
 	this_thread::sleep_for(chrono::seconds(10));
 
 	while (1) {
