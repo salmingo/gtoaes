@@ -23,6 +23,7 @@
 #include "KvProtocol.h"
 #include "NonkvProtocol.h"
 #include "ObservationPlan.h"
+#include "ObservationSystem.h"
 
 //////////////////////////////////////////////////////////////////////////////
 class GeneralControl {
@@ -37,6 +38,7 @@ protected:
 	typedef std::vector<TcpCPtr> TcpCVec;		//< 网络连接存储区
 	using MtxLck = boost::unique_lock<boost::mutex>;	//< 信号灯互斥锁
 	using ThreadPtr = boost::shared_ptr<boost::thread>;	//< boost线程指针
+	using ObsSysVec = std::vector<ObsSysPtr>;
 
 	enum {// 对应主机类型
 		PEER_CLIENT,			//< 客户端
@@ -114,6 +116,8 @@ protected:
 	ObsPlanPtr obsPlans_;
 
 	/* 观测系统 */
+	ObsSysVec obss_;		///< 观测系统集合
+	boost::mutex mtx_obss_;	///< 互斥锁: 观测系统
 
 	/* 数据库 */
 
@@ -280,6 +284,7 @@ protected:
 
 protected:
 	/*----------------- 观测系统 -----------------*/
+	ObsSysPtr find_obss(const string& gid, const string& uid);
 
 protected:
 	/*----------------- 多线程 -----------------*/

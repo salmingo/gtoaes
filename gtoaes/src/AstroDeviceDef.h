@@ -515,6 +515,7 @@ class StateObservationPlan {
 public:
 	enum {///< 观测计划状态
 		OBSPLAN_MIN = -1,
+		OBSPLAN_ERROR,		///< 错误. 特指不存在plan_sn指向的计划
 		OBSPLAN_CATALOGED,	///< 入库
 		OBSPLAN_INTERRUPTED,///< 中断
 		OBSPLAN_WAITING,	///< 等待执行

@@ -241,7 +241,7 @@ const char *KvProtocol::CompactObss(kvobss proto, int &n) {
 	return output_compacted(output, n);
 }
 
-const char *KvProtocol::CompactkvpendPlan(ObsPlanItemPtr plan, int &n) {
+const char *KvProtocol::CompactAppendPlan(ObsPlanItemPtr plan, int &n) {
 	string strplan, output;
 	output = KVTYPE_APPPLAN;
 	output += " ";
@@ -759,6 +759,15 @@ void KvProtocol::resolve_plan(likv& kvs, ObsPlanItemPtr plan) {
 			else if (iequals(keyword, "expdur"))  plan->expdur = stoi(it->value);
 			else if (iequals(keyword, "etime"))   plan->SetTimeEnd(it->value);
 		}
+		else if (ch == 'f') {
+			if      (iequals(keyword, "filter"))    plan->AppendFilter(it->value);
+			else if (iequals(keyword, "frmcnt"))    plan->frmcnt   = stoi(it->value);
+			else if (iequals(keyword, "field_id"))  plan->field_id = it->value;
+		}
+		else if (ch == 'g') {
+			if      (iequals(keyword, "gid"))       plan->gid = it->value;
+			else if (iequals(keyword, "grid_id"))   plan->grid_id  = it->value;
+		}
 		else if (ch == 'i') {
 			if      (iequals(keyword, "imgtype")) plan->imgtype = it->value;
 			else if (iequals(keyword, "iloop"))   plan->iloop   = stoi(it->value);
@@ -785,16 +794,11 @@ void KvProtocol::resolve_plan(likv& kvs, ObsPlanItemPtr plan) {
 			else if (iequals(keyword, "plan_type")) plan->plan_type = it->value;
 			else if (iequals(keyword, "pair_id"))   plan->pair_id   = stoi(it->value);
 		}
-		else if (ch == 'f') {
-			if      (iequals(keyword, "filter"))    plan->AppendFilter(it->value);
-			if      (iequals(keyword, "frmcnt"))    plan->frmcnt   = stoi(it->value);
-			else if (iequals(keyword, "field_id"))  plan->field_id = it->value;
-		}
-		else if (iequals(keyword, "coorsys"))       plan->coorsys  = stoi(it->value);
-		else if (iequals(keyword, "delay"))         plan->delay    = stod(it->value);
-		else if (iequals(keyword, "grid_id"))       plan->grid_id  = it->value;
-		else if (iequals(keyword, "runname"))       plan->runname  = it->value;
-		else if (iequals(keyword, "btime"))         plan->SetTimeBegin(it->value);
+		else if (iequals(keyword, "coorsys"))  plan->coorsys  = stoi(it->value);
+		else if (iequals(keyword, "delay"))    plan->delay    = stod(it->value);
+		else if (iequals(keyword, "runname"))  plan->runname  = it->value;
+		else if (iequals(keyword, "btime"))    plan->SetTimeBegin(it->value);
+		else if (iequals(keyword, "uid"))      plan->uid = it->value;
 		else {
 			ObservationPlanItem::KVPair kv(it->keyword, it->value);
 			plan_kvs.push_back(kv);
@@ -803,7 +807,7 @@ void KvProtocol::resolve_plan(likv& kvs, ObsPlanItemPtr plan) {
 }
 
 kvbase KvProtocol::resolve_append_plan(likv &kvs) {
-	kvkvpplan proto = boost::make_shared<kv_proto_kvpend_plan>();
+	kvappplan proto = boost::make_shared<kv_proto_append_plan>();
 	ObsPlanItemPtr plan = proto->plan;
 	resolve_plan(kvs, plan);
 	return to_kvbase(proto);

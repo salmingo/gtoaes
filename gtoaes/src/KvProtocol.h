@@ -167,16 +167,16 @@ typedef boost::shared_ptr<kv_proto_obsite> kvobsite;
  * @struct kv_proto_kvpend_plan
  * @brief 新的观测计划
  */
-struct kv_proto_kvpend_plan : public kv_proto_base {
+struct kv_proto_append_plan : public kv_proto_base {
 	ObsPlanItemPtr plan;
 
 public:
-	kv_proto_kvpend_plan() {
+	kv_proto_append_plan() {
 		type = KVTYPE_APPPLAN;
 		plan = ObservationPlanItem::Create();
 	}
 };
-typedef boost::shared_ptr<kv_proto_kvpend_plan> kvkvpplan;
+typedef boost::shared_ptr<kv_proto_append_plan> kvappplan;
 
 struct kv_proto_implement_plan : public kv_proto_base {
 	ObsPlanItemPtr plan;
@@ -747,7 +747,7 @@ public:
 	/**
 	 * @brief 封装通用观测计划: 计划进入队列
 	 */
-	const char *CompactkvpendPlan(ObsPlanItemPtr plan, int &n);
+	const char *CompactAppendPlan(ObsPlanItemPtr plan, int &n);
 	/**
 	 * @brief 封装通用观测计划: 计划进入队列, 并尝试立即执行
 	 */

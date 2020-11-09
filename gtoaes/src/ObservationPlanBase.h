@@ -179,6 +179,7 @@ public:
 			if ((tmend - tmbegin).total_seconds() > 259200)
 				tmend = tmbegin + ptime::date_duration_type(3);
 			if ((t = expdur + delay) < 2.0) t = 2.0;
+			if (filters.size()) t *= filters.size();
 			period = int(t * frmcnt * loopcnt + 30);
 			rslt = (tmend - now).total_seconds() > period;
 		}

@@ -264,40 +264,123 @@ void GeneralControl::resolve_protocol(const TcpCPtr client, int peer) {
 }
 
 void GeneralControl::process_kv_client(kvbase proto, const TcpCPtr client) {
+	/*
+	 * 客户端接收到的信息, 分为两种处理方式:
+	 * 1. 本地处理
+	 * 2. 投递给观测系统
+	 */
 	string type = proto->type;
-	char ch = type[0];
+	string gid  = proto->gid;
+	string uid  = proto->uid;
 
-	if (ch == 'a' || ch == 'A') {
-		if      (iequals(type, KVTYPE_APPPLAN))   {}
-		else if (iequals(type, KVTYPE_ABTPLAN))   {}
-		else if (iequals(type, KVTYPE_ABTSLEW))   {}
-		else if (iequals(type, KVTYPE_ABTIMG))    {}
+	/////////////////////////////////////////////////////////////////////////
+	/*>!!!!!! 观测计划 !!!!!!<*/
+	if (iequals(type, KVTYPE_APPPLAN) || iequals(type, KVTYPE_IMPPLAN)) {
+		ObsPlanItemPtr plan;
+		bool opNow = iequals(type, KVTYPE_APPPLAN) ? 0 : 1;
+		plan = opNow ? from_kvbase<kv_proto_implement_plan>(proto)->plan
+				: from_kvbase<kv_proto_append_plan>(proto)->plan;
+		if (plan->CompleteCheck()) {
+			obsPlans_->AddPlan(plan);	// 计划加入队列
+
+			if (opNow) {
+				/*
+				 * kv_proto_implement_plan指向的观测计划需要立即执行, 选择合适的观测系统.
+				 * 观测系统选择原则:
+				 * - (gid, uid)匹配
+				 * - 观测系统当前执行计划的优先级最低. 系统空闲时, 优先级 == 0
+				 */
+				MtxLck lck(mtx_obss_);
+				ObsSysPtr obss;
+				int matched(0);
+				int prio_min(INT_MAX), prio_plan(plan->priority), prio;
+
+				gid = plan->gid;
+				uid = plan->uid;
+				for (ObsSysVec::iterator it = obss_.begin(); it != obss_.end() && matched != 1; ++it) {
+					if ((matched = (*it)->IsMatched(gid, uid))
+							&& (prio = (*it)->GetPriority()) < prio_plan
+							&& prio < prio_min) {
+						prio_min = prio;
+						obss = *it;
+					}
+				}
+				if (obss.use_count()) {// 投递计划
+					obss->NotifyPlan(plan);
+				}
+			}
+		}
+		else {
+			_gLog.Write(LOG_FAULT, "plan[%s] does't pass validity check", plan->plan_sn.c_str());
+		}
 	}
-	else if (ch == 'f' || ch == 'F') {
-		if      (iequals(type, KVTYPE_FINDHOME))  {}
-		else if (iequals(type, KVTYPE_FWHM))      {}
-		else if (iequals(type, KVTYPE_FOCUS))     {}
+	/////////////////////////////////////////////////////////////////////////
+	/*>!!!!!! 中止观测计划 !!!!!!<*/
+	else if (iequals(type, KVTYPE_ABTPLAN)) {
+		kvabtplan abtplan = from_kvbase<kv_proto_abort_plan>(proto);
+		ObsPlanItemPtr plan = obsPlans_->Erase(abtplan->plan_sn);
+		kvplan proto_rsp = boost::make_shared<kv_proto_plan>();
+		const char* s;
+		int n;
+
+		proto_rsp->plan_sn = abtplan->plan_sn;
+		if (plan.use_count()) {// 找到计划
+			// 修改计划状态
+			if (plan->state == StateObservationPlan::OBSPLAN_CATALOGED || plan->state == StateObservationPlan::OBSPLAN_INTERRUPTED) {
+				plan->state = StateObservationPlan::OBSPLAN_DELETED;
+			}
+			// 中止计划
+			else if (plan->state == StateObservationPlan::OBSPLAN_RUNNING || plan->state == StateObservationPlan::OBSPLAN_WAITING) {
+				ObsSysPtr obss = find_obss(plan->gid, plan->uid);
+				obss->NotifyKVProtocol(proto);
+			}
+
+			proto_rsp->state = plan->state;
+		}
+		else {// 找不到该计划
+			proto_rsp->state = StateObservationPlan::OBSPLAN_ERROR;
+		}
+		s = kvProto_->CompactPlan(proto_rsp, n);
+		client->Write(s, n);
 	}
-	else if (ch == 's' || ch == 'S') {
-		if      (iequals(type, KVTYPE_START))     {}
-		else if (iequals(type, KVTYPE_STOP))      {}
-		else if (iequals(type, KVTYPE_SLEWTO))    {}
-		else if (iequals(type, KVTYPE_SLIT))      {}
+	/////////////////////////////////////////////////////////////////////////
+	/*>!!!!!! 检查观测计划 !!!!!!<*/
+	else if (iequals(type, KVTYPE_CHKPLAN)) {// 查看观测计划状态
+		kvchkplan chkplan = from_kvbase<kv_proto_check_plan>(proto);
+		ObsPlanItemPtr plan = obsPlans_->Find(chkplan->plan_sn);
+		kvplan proto_rsp = boost::make_shared<kv_proto_plan>();
+		const char* s;
+		int n;
+
+		proto_rsp->plan_sn = chkplan->plan_sn;
+		if (plan.use_count())
+			proto_rsp->state = plan->state;
+		else
+			proto_rsp->state = StateObservationPlan::OBSPLAN_ERROR;
+		s = kvProto_->CompactPlan(proto_rsp, n);
+		client->Write(s, n);
 	}
-	else if (iequals(type, KVTYPE_CHKPLAN))       {}
-	else if (iequals(type, KVTYPE_DISABLE))       {}
-	else if (iequals(type, KVTYPE_ENABLE))        {}
-	else if (iequals(type, KVTYPE_GUIDE))         {}
-	else if (iequals(type, KVTYPE_HOMESYNC))      {}
-	else if (iequals(type, KVTYPE_IMPPLAN))       {}
-	else if (iequals(type, KVTYPE_PARK))          {}
-	else if (iequals(type, KVTYPE_REG))           {}
-	else if (iequals(type, KVTYPE_TAKIMG))        {}
-	else if (iequals(type, KVTYPE_UNREG))         {}
-}
+	/////////////////////////////////////////////////////////////////////////
+	/*>!!!!!! 开关天窗 !!!!!!<*/
+	else if (iequals(type, KVTYPE_SLIT)) {
+
+	}
+	/////////////////////////////////////////////////////////////////////////
+	/*>!!!!!! 投递到观测系统 !!!!!!<*/
+	else {
+		MtxLck lck(mtx_obss_);
+		int matched(0);
+		for (ObsSysVec::iterator it = obss_.begin(); it != obss_.end() && matched != 1; ++it) {
+			if ((matched = (*it)->IsMatched(gid, uid)))
+				(*it)->NotifyKVProtocol(proto);
+		}
+	}
+}// void GeneralControl::process_kv_client(kvbase proto, const TcpCPtr client)
 
 void GeneralControl::process_kv_mount(kvbase proto, const TcpCPtr client) {
-
+	string type = proto->type;
+	string gid  = proto->gid;
+	string uid  = proto->uid;
 }
 
 void GeneralControl::process_kv_camera(kvbase proto, const TcpCPtr client) {
@@ -322,6 +405,23 @@ void GeneralControl::process_nonkv_mount_annex(nonkvbase proto, const TcpCPtr cl
 
 //////////////////////////////////////////////////////////////////////////////
 /*----------------- 观测计划 -----------------*/
+bool GeneralControl::acquire_new_plan(const string& gid, const string& uid) {
+	return false;
+}
+
+//////////////////////////////////////////////////////////////////////////////
+/*----------------- 观测系统 -----------------*/
+ObsSysPtr GeneralControl::find_obss(const string& gid, const string& uid) {
+	MtxLck lck(mtx_obss_);
+	ObsSysPtr obss;
+	ObsSysVec::iterator it;
+	for (it = obss_.begin(); it != obss_.end() && !(*it)->IsMatched(gid, uid); ++it);
+	if (it != obss_.end())
+		obss = *it;
+	else
+		obss = ObservationSystem::Create(gid, uid);
+	return obss;
+}
 
 //////////////////////////////////////////////////////////////////////////////
 /*----------------- 多线程 -----------------*/
@@ -337,13 +437,13 @@ void GeneralControl::interrupt_thread(ThreadPtr& thrd) {
 void GeneralControl::thread_network_event() {
 	boost::mutex mtx;
 	MtxLck lck(mtx);
+	NetEvPtr netEvPtr;
 
 	while (1) {
 		cv_netev_.wait(lck);
 
 		while (queNetEv_.size()) {
-			NetEvPtr netEvPtr;
-			{// 减少队列互斥锁时间
+			{// 取队首网络事件
 				MtxLck lck_net(mtx_netev_);
 				netEvPtr = queNetEv_.front();
 				queNetEv_.pop_front();

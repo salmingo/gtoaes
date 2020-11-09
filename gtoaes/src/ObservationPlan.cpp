@@ -46,6 +46,27 @@ bool ObservationPlan::GetNext(ObsPlanItemPtr& plan) {
 	return true;
 }
 
+ObsPlanItemPtr ObservationPlan::Find(const string& plan_sn) {
+	MtxLck lck(mtx_);
+	ObsPlanItemPtr plan;
+	ObsPlanVec::iterator it;
+	for (it = plans_.begin(); it != plans_.end() && plan_sn != (*it)->plan_sn; ++it);
+	if (it != plans_.end()) plan = *it;
+	return plan;
+}
+
+ObsPlanItemPtr ObservationPlan::Erase(const string& plan_sn) {
+	MtxLck lck(mtx_);
+	ObsPlanItemPtr plan;
+	ObsPlanVec::iterator it;
+	for (it = plans_.begin(); it != plans_.end() && plan_sn != (*it)->plan_sn; ++it);
+	if (it != plans_.end()) {
+		plan = *it;
+		plans_.erase(it);
+	}
+	return plan;
+}
+
 void ObservationPlan::thread_cycle() {
 	boost::chrono::minutes period(5);
 

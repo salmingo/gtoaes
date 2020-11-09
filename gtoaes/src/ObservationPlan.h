@@ -71,6 +71,20 @@ public:
 	 * 获取成功标志
 	 */
 	bool GetNext(ObsPlanItemPtr& plan);
+	/*!
+	 * @brief 搜索plan_sn对应的观测计划
+	 * @param plan_sn  计划编号
+	 * @return
+	 * 对应的观测计划
+	 */
+	ObsPlanItemPtr Find(const string& plan_sn);
+	/*!
+	 * @brief 搜索plan_sn对应的观测计划, 并将其移出队列
+	 * @param plan_sn  计划编号
+	 * @return
+	 * 对应的观测计划
+	 */
+	ObsPlanItemPtr Erase(const string& plan_sn);
 
 protected:
 	/*!
