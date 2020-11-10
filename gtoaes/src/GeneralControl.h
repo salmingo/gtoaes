@@ -24,6 +24,7 @@
 #include "NonkvProtocol.h"
 #include "ObservationPlan.h"
 #include "ObservationSystem.h"
+#include "DatabaseCurl.h"
 
 //////////////////////////////////////////////////////////////////////////////
 class GeneralControl {
@@ -89,7 +90,6 @@ protected:
 	TcpSPtr tcps_mount_annex_;	///< 网络服务: 转台附属
 	TcpSPtr tcps_camera_annex_;	///< 网络服务: 相机附属
 
-	UdpPtr  udps_client_;		///< 网络服务: 客户端, UDP
 	UdpPtr  udps_env_;			///< 网络服务: 气象环境, UDP
 
 	TcpCVec tcpc_client_;
@@ -113,17 +113,18 @@ protected:
 	NonkvProtoPtr nonkvProto_;	///< 非键值对格式协议访问接口
 
 	/* 观测计划 */
-	ObsPlanPtr obsPlans_;
+	ObsPlanPtr obsPlans_;		///< 观测计划集合
+	boost::mutex mtx_obsPlans_;	///< 互斥锁: 观测计划集合
 
 	/* 观测系统 */
 	ObsSysVec obss_;		///< 观测系统集合
 	boost::mutex mtx_obss_;	///< 互斥锁: 观测系统
 
 	/* 数据库 */
+	DBCurlPtr dbPtr_;	///< 数据库访问接口
 
 	/* 多线程 */
 	ThreadPtr thrd_netevent_;
-	ThreadPtr thrd_clocksync_;
 	//////////////////////////////////////////////////////////////////////////////
 
 /* 接口 */
@@ -171,7 +172,7 @@ protected:
 	 */
 	void receive_client(const TcpCPtr client, const int ec);
 	/*!
-	 * @brief 处理GWAC望远镜信息
+	 * @brief 处理转台信息
 	 * @param client 网络资源
 	 * @param ec     错误代码. 0: 正确
 	 */
@@ -197,6 +198,12 @@ protected:
 
 protected:
 	/*----------------- 消息机制 -----------------*/
+	/*!
+	 * @brief 从网络资源存储区里移除指定连接
+	 * @param buff    存储区
+	 * @param client  网络连接
+	 */
+	void erase_tcpclient(TcpCVec& buff, const TcpCPtr client);
 	/*!
 	 * @brief 响应消息MSG_RECEIVE_CLIENT
 	 * @param client 网络连接
@@ -274,13 +281,30 @@ protected:
 protected:
 	/*----------------- 观测计划 -----------------*/
 	/*!
-	 * @brief 回调函数, 为通用系统申请新的观测计划
-	 * @param gid  组标志
-	 * @param uid  单元标志
+	 * @brief 检查计划时间是否有效
+	 * @param plan  观测计划
+	 * @param now   当前UTC时间
 	 * @return
-	 * 计划获取结果
+	 * 时间有效性
 	 */
-	bool acquire_new_plan(const string& gid, const string& uid);
+	bool IsValidPlanTime(const ObsPlanItemPtr plan, const ptime& now);
+	/*!
+	 * @brief 回调函数, 为通用系统申请新的观测计划
+	 * @param 观测系统指针
+	 * @return
+	 * 获取到的观测计划
+	 */
+	ObsPlanItemPtr acquire_new_plan(const ObsSysPtr obss);
+	/*!
+	 * @brief 尝试立即执行计划
+	 * @param plan  观测计划
+	 */
+	void tryto_implement_plan(ObsPlanItemPtr plan);
+	/*!
+	 * @brief 尝试中止观测计划
+	 * @param plan_sn  计划编号
+	 */
+	void tryto_abort_plan(const string& plan_sn);
 
 protected:
 	/*----------------- 观测系统 -----------------*/
@@ -299,13 +323,7 @@ protected:
 	 * - 接收信息: 解析并投递执行
 	 * - 关闭: 释放资源
 	 */
-	void thread_network_event();
-	/*!
-	 * @brief 时钟同步
-	 * @note
-	 * - 1小时周期检查时钟偏差, 当时钟偏差大于阈值时修正本机时钟
-	 */
-	void thread_clocksync();
+	void monitor_network_event();
 };
 
 #endif /* SRC_GENERALCONTROL_H_ */

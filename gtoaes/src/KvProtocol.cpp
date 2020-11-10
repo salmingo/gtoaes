@@ -779,13 +779,13 @@ void KvProtocol::resolve_plan(likv& kvs, ObsPlanItemPtr plan) {
 			else if (iequals(keyword, "line2"))   plan->line2 = it->value;
 		}
 		else if ((ch = keyword[0]) == 'o') {
-			if      (iequals(keyword, "objname"))   plan->objname   = it->value;
-			else if (iequals(keyword, "observer"))  plan->observer  = it->value;
-			else if (iequals(keyword, "obstype"))   plan->obstype   = it->value;
-			else if (iequals(keyword, "objra"))     plan->objra     = stod(it->value);
-			else if (iequals(keyword, "objdec"))    plan->objdec    = stod(it->value);
-			else if (iequals(keyword, "objepoch"))  plan->objepoch  = stod(it->value);
-			else if (iequals(keyword, "objerror"))  plan->objerror  = it->value;
+			if      (iequals(keyword, "objname"))   plan->objname  = it->value;
+			else if (iequals(keyword, "observer"))  plan->observer = it->value;
+			else if (iequals(keyword, "obstype"))   plan->obstype  = it->value;
+			else if (iequals(keyword, "objra"))     plan->objra    = stod(it->value);
+			else if (iequals(keyword, "objdec"))    plan->objdec   = stod(it->value);
+			else if (iequals(keyword, "objepoch"))  plan->objepoch = stod(it->value);
+			else if (iequals(keyword, "objerror"))  plan->objerror = it->value;
 		}
 		else if (ch == 'p') {
 			if      (iequals(keyword, "priority"))  plan->priority  = stoi(it->value);
@@ -794,11 +794,11 @@ void KvProtocol::resolve_plan(likv& kvs, ObsPlanItemPtr plan) {
 			else if (iequals(keyword, "plan_type")) plan->plan_type = it->value;
 			else if (iequals(keyword, "pair_id"))   plan->pair_id   = stoi(it->value);
 		}
+		else if (iequals(keyword, "btime"))    plan->SetTimeBegin(it->value);
 		else if (iequals(keyword, "coorsys"))  plan->coorsys  = stoi(it->value);
 		else if (iequals(keyword, "delay"))    plan->delay    = stod(it->value);
 		else if (iequals(keyword, "runname"))  plan->runname  = it->value;
-		else if (iequals(keyword, "btime"))    plan->SetTimeBegin(it->value);
-		else if (iequals(keyword, "uid"))      plan->uid = it->value;
+		else if (iequals(keyword, "uid"))      plan->uid      = it->value;
 		else {
 			ObservationPlanItem::KVPair kv(it->keyword, it->value);
 			plan_kvs.push_back(kv);

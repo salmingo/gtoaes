@@ -18,6 +18,49 @@
 
 /* 状态与指令 */
 /////////////////////////////////////////////////////////////////////////////
+static const char* netdev_desc[] = {
+	"kv",
+	"non-kv"
+};
+
+/*!
+ * @class TypeNetworkDevice
+ * @breif 定义: 网络设备类型
+ */
+class TypeNetworkDevice {
+public:
+	enum {///< 坐标系类型
+		NETDEV_MIN = -1,
+		NETDEV_KV,		///< 键值对类型通信协议的网络设备
+		NETDEV_NONKV,	///< 非键值对类型通信协议的网络设备
+		NETDEV_MAX
+	};
+
+public:
+	static bool IsValid(int type) {
+		return type > NETDEV_MIN && type < NETDEV_MAX;
+	}
+
+	static const char* ToString(int type) {
+		return IsValid(type) ? netdev_desc[type] : NULL;
+	}
+
+	static int FromString(const char* name) {
+		int type(NETDEV_MIN);
+
+		if (name) {
+			if (isdigit(name[0])) {
+				type = atoi(name);
+			}
+			else {
+				for (type = NETDEV_MIN + 1; type < NETDEV_MAX && strcmp(name, netdev_desc[type]); ++type);
+			}
+		}
+		return IsValid(type) ? type : NETDEV_MIN;
+	}
+};
+
+/////////////////////////////////////////////////////////////////////////////
 static const char* coorsys_desc[] = {
 	"AltAzimuth",
 	"Equatorial",

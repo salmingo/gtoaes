@@ -3,8 +3,8 @@ gtoaes_SOURCES=daemon.cpp GLog.cpp Parameter.cpp NTPClient.cpp \
                AsioIOServiceKeep.cpp AsioTCP.cpp AsioUDP.cpp \
                ATimeSpace.cpp \
                KvProtocol.cpp NonkvProtocol.cpp \
-               CurlBase.cpp \
-               ObservationPlan.cpp GeneralControl.cpp gtoaes.cpp
+               CurlBase.cpp DatabaseCurl.cpp \
+               ObservationPlan.cpp ObservationSystem.cpp GeneralControl.cpp gtoaes.cpp
 
 if DEBUG
   AM_CFLAGS = -g3 -O0 -Wall -DNDEBUG

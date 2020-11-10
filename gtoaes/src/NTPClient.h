@@ -17,15 +17,17 @@
 #include <sys/socket.h>
 #include <netdb.h>
 #include <string>
-#include <boost/thread.hpp>
-#include <boost/smart_ptr.hpp>
+#include <boost/thread/mutex.hpp>
+#include <boost/thread/thread.hpp>
+#include <boost/smart_ptr/shared_ptr.hpp>
+#include <boost/smart_ptr/shared_array.hpp>
 
 class NTPClient {
 protected:
 	typedef struct _ntp_time {
 		unsigned int coarse;
 		unsigned int fine;
-	}ntp_time;
+	} ntp_time;
 
 	/**
 	 * offset = ((T2 - T1) + (T3 - T4)) / 2
@@ -33,7 +35,6 @@ protected:
 	 *
 	 * local_time_corrected = local_time_pc + offset
 	 */
-
 	struct ntp_packet {
 		unsigned char leap_ver_mode;
 		unsigned char stratum;

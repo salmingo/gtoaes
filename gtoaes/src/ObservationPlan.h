@@ -42,6 +42,8 @@ protected:
 	boost::mutex mtx_;		///< 互斥锁: 观测计划
 	ThreadPtr thrd_cycle_;	///< 定时检查计划的有效性, 无效计划移除队列
 
+	string gid_obss_, uid_obss_;	///< 搜索观测计划时的观测系统编号
+
 public:
 	/*!
 	 * @brief 创建实例并返回其指针
@@ -78,13 +80,6 @@ public:
 	 * 对应的观测计划
 	 */
 	ObsPlanItemPtr Find(const string& plan_sn);
-	/*!
-	 * @brief 搜索plan_sn对应的观测计划, 并将其移出队列
-	 * @param plan_sn  计划编号
-	 * @return
-	 * 对应的观测计划
-	 */
-	ObsPlanItemPtr Erase(const string& plan_sn);
 
 protected:
 	/*!

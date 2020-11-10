@@ -20,7 +20,7 @@ struct OBSSParam {
 	double 		siteLat;	///< 地理纬度, 北纬为正, 量纲: 角度
 	double		siteAlt;	///< 海拔高度, 量纲: 米
 	int			timeZone;	///< 时区, 量纲: 小时
-	double		eleLimit;	///< 水平限位, 最低仰角, 量纲: 角度
+	double		altLimit;	///< 水平限位, 最低仰角, 量纲: 角度
 	bool		doNormalObs;///< 执行一般观测流程: 本底、暗场、平场
 
 	/* 天窗与随动圆顶 */
@@ -29,7 +29,7 @@ struct OBSSParam {
 	int			opDome;			///< 执行对象: 转台; 转台附属
 	/* 镜盖 */
 	bool		useMirrorCover;	///< 使用: 镜盖
-	int			opMirrorCover;	///< 执行对象: 转台; 转台附属
+	int			opMirrorCover;	///< 执行对象: 转台; 转台附属; 相机; 相机附属
 	/* 转台 */
 	bool		useHomeSync;	///< 使用: 同步零点
 	bool		useGuide;		///< 使用: 导星
@@ -55,7 +55,7 @@ public:
 			siteLat		= other.siteLat;
 			siteAlt		= other.siteAlt;
 			timeZone	= other.timeZone;
-			eleLimit	= other.eleLimit;
+			altLimit	= other.altLimit;
 			doNormalObs = other.doNormalObs;
 			useDomeFollow	= other.useDomeFollow;
 			useDomeSlit		= other.useDomeSlit;

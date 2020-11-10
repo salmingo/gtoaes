@@ -44,7 +44,7 @@ void Parameter::Init(const string &filepath) {
 	node4.add("Site.<xmlattr>.Lat",	40.395933333333333);
 	node4.add("Site.<xmlattr>.Alt", 900);
 	node4.add("Site.<xmlattr>.TZ",	8);
-	node4.add("EleLimit", 20);
+	node4.add("AltLimit", 20);
 	node4.add("NormalFlow.<xmlattr>.Use",			false);
 	node4.add("Dome.<xmlattr>.FollowMount",			false);
 	node4.add("Dome.<xmlattr>.Slit",				false);
@@ -102,7 +102,7 @@ const char* Parameter::Load(const string &filepath) {
 				prm.siteLat		= child.second.get("Site.<xmlattr>.Lat",		0.0);
 				prm.siteAlt		= child.second.get("Site.<xmlattr>.Alt",		0.0);
 				prm.timeZone	= child.second.get("Site.<xmlattr>.TZ",			8);
-				prm.eleLimit	= child.second.get("EleLimit",					20.0);
+				prm.altLimit	= child.second.get("AltLimit",					20.0);
 				prm.doNormalObs	= child.second.get("NormalFlow.<xmlattr>.Use",	false);
 
 				prm.useDomeFollow	= child.second.get("Dome.<xmlattr>.FollowMount",	false);

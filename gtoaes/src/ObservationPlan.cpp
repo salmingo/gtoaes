@@ -8,6 +8,7 @@
 
 #include "ObservationPlan.h"
 #include "GLog.h"
+//#include "DBxxxx.h"
 
 ObservationPlan::ObservationPlan() {
 	itnow_ = itend_ = plans_.end();
@@ -32,18 +33,20 @@ void ObservationPlan::AddPlan(ObsPlanItemPtr plan) {
 
 bool ObservationPlan::Find(const string& gid, const string& uid) {
 	MtxLck lck(mtx_);
+	gid_obss_ = gid;
+	uid_obss_ = uid;
 	for (itnow_ = plans_.begin(); itnow_ != itend_ && !(*itnow_)->IsMatched(gid, uid); ++itnow_);
 	return itnow_ != itend_;
 }
 
 bool ObservationPlan::GetNext(ObsPlanItemPtr& plan) {
 	MtxLck lck(mtx_);
-	if (itnow_ == itend_)
-		return false;
-
-	plan = *itnow_;
-	++itnow_;
-	return true;
+	plan.reset();
+	if (itnow_ != itend_) {
+		plan = *itnow_;
+		while (++itnow_ != itend_ && !(*itnow_)->IsMatched(gid_obss_, uid_obss_));
+	}
+	return plan.use_count();
 }
 
 ObsPlanItemPtr ObservationPlan::Find(const string& plan_sn) {
@@ -52,18 +55,6 @@ ObsPlanItemPtr ObservationPlan::Find(const string& plan_sn) {
 	ObsPlanVec::iterator it;
 	for (it = plans_.begin(); it != plans_.end() && plan_sn != (*it)->plan_sn; ++it);
 	if (it != plans_.end()) plan = *it;
-	return plan;
-}
-
-ObsPlanItemPtr ObservationPlan::Erase(const string& plan_sn) {
-	MtxLck lck(mtx_);
-	ObsPlanItemPtr plan;
-	ObsPlanVec::iterator it;
-	for (it = plans_.begin(); it != plans_.end() && plan_sn != (*it)->plan_sn; ++it);
-	if (it != plans_.end()) {
-		plan = *it;
-		plans_.erase(it);
-	}
 	return plan;
 }
 
@@ -83,6 +74,7 @@ void ObservationPlan::thread_cycle() {
 					(*it)->state = StateObservationPlan::OBSPLAN_ABANDONED;
 				if ((*it)->state >= StateObservationPlan::OBSPLAN_OVER) {
 					_gLog.Write("plan[%s] : %s", (*it)->plan_sn.c_str(), StateObservationPlan::ToString((*it)->state));
+					//...上传到数据库
 					it = plans_.erase(it);
 				}
 				else ++it;

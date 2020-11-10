@@ -10,13 +10,17 @@
 #define OBSERVATIONSYSTEM_H_
 
 #include <deque>
+#include <boost/enable_shared_from_this.hpp>
 #include "AsioTCP.h"
 #include "ATimeSpace.h"
 #include "KvProtocol.h"
+#include "NonkvProtocol.h"
 #include "ObservationPlanBase.h"
 #include "Parameter.h"
+#include "ATimeSpace.h"
+#include "DatabaseCurl.h"
 
-class ObservationSystem {
+class ObservationSystem : public boost::enable_shared_from_this<ObservationSystem> {
 public:
 	ObservationSystem(const string& gid, const string& uid);
 	virtual ~ObservationSystem();
@@ -31,29 +35,98 @@ public:
 	/*!
 	 * @brief 回调函数, 尝试从队列里获取可用的观测计划
 	 */
-	using AcquirePlanFunc = boost::signals2::signal<bool (const Pointer, ObsPlanItemPtr& plan)>;
+	using AcquirePlanFunc = boost::signals2::signal<ObsPlanItemPtr (const Pointer)>;
 	using CBSlot = AcquirePlanFunc::slot_type;
 
+	enum {///< 观测系统工作模式
+		OBSS_ERROR,		///< 错误
+		OBSS_MANUAL,	///< 手动
+		OBSS_AUTO		///< 自动
+	};
+
 protected:
+	struct NetworkMount {
+		TcpCPtr client;		///< 网络连接
+		int type;			///< 通信协议类型
+		int state;			///< 工作状态
+		int errcode;		///< 错误代码
+		double ra, dec;		///< 赤经/赤纬, 角度
+		double azi, alt;	///< 方位/高度, 角度
+		int coorsys;		///< 目标坐标系
+		double objra, objdec;	///< 目标赤经/赤纬, 角度
+		double objazi, objalt;	///< 目标方位/高度, 角度
+
+	public:
+		/*!
+		 * @brief 重定义操作符(), 引用网络连接
+		 * @return
+		 * 网络连接
+		 */
+		TcpCPtr operator()() {
+			return client;
+		}
+	};
+
+	struct NetworkCamera {
+		TcpCPtr client;		///< 网络连接
+		string  cid;		///< 相机编号
+		int		state;		///< 工作状态
+		int		errcode;	///< 错误代码
+		int		coolget;	///< 探测器温度, 量纲: 摄氏度
+		string	filter;		///< 滤光片
+
+	public:
+		/*!
+		 * @brief 重定义操作符(), 引用网络连接
+		 * @return
+		 * 网络连接
+		 */
+		TcpCPtr operator()() {
+			return client;
+		}
+	};
+	using NetCamVec = std::vector<NetworkCamera>;
 
 protected:
 	/* 成员变量 */
 	string gid_;	///< 组标志
 	string uid_;	///< 单元标志
+	/*!
+	 * @brief 自动化模式
+	 * - true: 自动化模式
+	 *   当转台、相机等设备状态良好时, 系统切换到自动观测模式
+	 * - false: 非自动化模式
+	 *   当转台、相机等设备状态良好时, 系统切换到手动响应模式
+	 */
+	bool robotic_;
+	int mode_;		///< 系统工作模式
+
+	double altLimit_;	///< 高度限位, 弧度
+	const OBSSParam* param_;	///< 观测系统工作参数
+	AstroUtil::ATimeSpace ats_;	///< 时空转换接口
 
 	/* 观测计划 */
-	AcquirePlanFunc acqplan_;	///< 回调函数, 尝试获取观测计划
-
-	/* 网络资源 */
-	TcpCPtr tcpc_mount_;
 	ObsPlanItemPtr plan_now_;	///< 观测计划: 正在执行
 	ObsPlanItemPtr plan_wait_;	///< 观测计划: 等待执行
+	AcquirePlanFunc acqPlan_;	///< 回调函数, 尝试获取观测计划
+	ThreadPtr thrd_acqPlan_;	///< 线程: 尝试获取观测计划
+	boost::condition_variable cv_acqPlan_;	///< 条件变量: 获取观测计划
+
+	/* 网络资源 */
+	NetworkMount tcpc_mount_;	///< 网络连接: 转台
+
+	boost::shared_array<char> bufrcv_;	///< 网络信息存储区: 消息队列中调用
+	KvProtoPtr kvProto_;		///< 键值对格式协议访问接口
+	NonkvProtoPtr nonkvProto_;	///< 非键值对格式协议访问接口
 
 	/* 被投递的通信协议 */
 	KvProtoQue queKv_;			///< 被投递的键值对协议队列
 	boost::mutex mtx_queKv_;	///< 互斥锁: 键值对协议队列
 	boost::condition_variable cv_queKv_;	///< 条件变量: 新的协议进入队列
 	ThreadPtr thrd_queKv_;		///< 线程: 监测键值对协议队列
+
+	/* 数据库 */
+	DBCurlPtr dbPtr_;	///< 数据库访问接口
 
 public:
 	/* 接口 */
@@ -65,6 +138,34 @@ public:
 	static Pointer Create(const string& gid, const string& uid) {
 		return Pointer(new ObservationSystem(gid, uid));
 	}
+	/*!
+	 * @brief 设置观测系统工作参数
+	 * @param param  参数指针
+	 */
+	void SetParameter(const OBSSParam* param);
+	/*!
+	 * @brief 设置数据库访问接口
+	 */
+	void SetDBPtr(DBCurlPtr ptr);
+	/*!
+	 * @brief 注册回调函数: 请求新的观测计划
+	 * @param slot  插槽函数
+	 */
+	void RegisterAcquirePlan(const CBSlot& slot);
+	/*!
+	 * @brief 查看观测系统唯一性标志组合
+	 * @param gid  组标志
+	 * @param uid  单元标志
+	 */
+	void GetIDs(string& gid, string& uid);
+	/*!
+	 * @brief 检查观测计划是否在可指向安全范围内
+	 * @param plan  观测计划
+	 * @param now   当前时间
+	 * @return
+	 * 是否在安全范围内
+	 */
+	bool IsSafePoint(ObsPlanItemPtr plan, const ptime& now);
 	/*!
 	 * @brief 启动系统工作流程
 	 * @return
@@ -111,12 +212,12 @@ public:
 	 * @brief 关联观测系统与转台
 	 * @param client  网络连接
 	 */
-	void CoupleMount(const TcpCPtr client, int type);
+	bool CoupleMount(const TcpCPtr client, int type);
 	/*!
 	 * @brief 关联观测系统与相机
 	 * @param client  网络连接
 	 */
-	void CoupleCamera(const TcpCPtr client, const string& cid);
+	bool CoupleCamera(const TcpCPtr client, const string& cid);
 	/*!
 	 * @brief 关联观测系统与转台附属设备
 	 * @param client  网络连接
@@ -167,6 +268,23 @@ protected:
 	 * @param proto  通信协议
 	 */
 	void process_kv_client(kvbase proto);
+	/*!
+	 * @brief 处理转台信息
+	 * @param client 网络资源
+	 * @param ec     错误代码. 0: 正确
+	 */
+	void receive_mount(const TcpCPtr client, const int ec);
+
+	//////////////////////////////////////////////////////////////////////////////
+	/* 观测计划 */
+	/*!
+	 * @brief 尝试执行当前观测计划
+	 */
+	void process_plan();
+	/*!
+	 * @brief 尝试中止当前观测计划
+	 */
+	void abort_plan();
 
 protected:
 	//////////////////////////////////////////////////////////////////////////////
@@ -190,6 +308,13 @@ protected:
 	 * - 判据:
 	 */
 	void monitor_network_connection();
+	/*!
+	 * @brief 线程: 尝试获取新的计划
+	 * @note
+	 * - 当前计划完成后, 尝试获取新计划
+	 * -
+	 */
+	void thread_acquire_plan();
 };
 using ObsSysPtr = ObservationSystem::Pointer;
 

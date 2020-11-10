@@ -80,7 +80,7 @@ struct ObservationPlanItem {
 
 public:
 	ObservationPlanItem() {
-		coorsys = -1;
+		coorsys = TypeCoorSys::COORSYS_EQUA;
 		lon = lat = 1E30;
 		epoch = 2000.0;
 		objra = objdec = 1E30;
@@ -116,7 +116,7 @@ public:
 	 * - false: 观测计划不可以在该系统上执行
 	 */
 	bool IsMatched(const string& _gid, const string& _uid) {
-		return !gid.size() || (gid == _gid && (!uid.size() || uid == _uid));
+		return gid.empty() || (gid == _gid && (uid.empty() || uid == _uid));
 	}
 
 	/*!
