@@ -55,20 +55,16 @@ void KvProtocol::compact_base(kvbase base, string &output) {
 	if (base->cid.size()) join_kv(output, "cid", base->cid);
 }
 
-bool KvProtocol::resolve_kv(string& kv, string& keyword, string& value) {
-	char seps[] = "=";	// 分隔符: 等号
+void KvProtocol::resolve_rcvd(const char* rcvd, kv_proto_base &basis, likv &kvs) {
+	const char seps[] = ",", *ptr;
 	listring tokens;
+	string type, keyword, value;
 
-	keyword = "";
-	value   = "";
-	algorithm::split(tokens, kv, is_any_of(seps), token_compress_on);
-	if (!tokens.empty()) { keyword = tokens.front(); trim(keyword); tokens.pop_front(); }
-	if (!tokens.empty()) { value   = tokens.front(); trim(value); }
-	return (!(keyword.empty() || value.empty()));
-}
-
-void KvProtocol::resolve_kv_array(listring &tokens, likv &kvs, kv_proto_base &basis) {
-	string keyword, value;
+	// 提取协议类型
+	for (ptr = rcvd; *ptr && *ptr != ' '; ++ptr) type += *ptr;
+	while (*ptr && *ptr == ' ') ++ptr;
+	// 分解键值对
+	if (*ptr) algorithm::split(tokens, ptr, is_any_of(seps), token_compress_on);
 
 	for (listring::iterator it = tokens.begin(); it != tokens.end(); ++it) {// 遍历键值对
 		if (!resolve_kv(*it, keyword, value)) continue;
@@ -84,6 +80,18 @@ void KvProtocol::resolve_kv_array(listring &tokens, likv &kvs, kv_proto_base &ba
 			kvs.push_back(kv);
 		}
 	}
+}
+
+bool KvProtocol::resolve_kv(string& kv, string& keyword, string& value) {
+	char seps[] = "=";	// 分隔符: 等号
+	listring tokens;
+
+	keyword = "";
+	value   = "";
+	algorithm::split(tokens, kv, is_any_of(seps), token_compress_on);
+	if (!tokens.empty()) { keyword = tokens.front(); trim(keyword); tokens.pop_front(); }
+	if (!tokens.empty()) { value   = tokens.front(); trim(value); }
+	return (!(keyword.empty() || value.empty()));
 }
 
 bool KvProtocol::compact_plan(ObsPlanItemPtr plan, string& output) {
@@ -600,22 +608,17 @@ const char *KvProtocol::CompactCloud(kvcloud proto, int &n) {
 
 //////////////////////////////////////////////////////////////////////////////
 kvbase KvProtocol::Resolve(const char *rcvd) {
-	const char seps[] = ",", *ptr;
-	char ch;
-	listring tokens;
 	kvbase proto;
-	string type;
 	kv_proto_base basis;
 	likv kvs;
+	string type;
+	char ch;
 
-	// 提取协议类型
-	for (ptr = rcvd; *ptr && *ptr != ' '; ++ptr) type += *ptr;
-	while (*ptr && *ptr == ' ') ++ptr;
-	// 分解键值对
-	if (*ptr) algorithm::split(tokens, ptr, is_any_of(seps), token_compress_on);
-	resolve_kv_array(tokens, kvs, basis);
+	resolve_rcvd(rcvd, basis, kvs);
+	type = basis.type;
+	ch = type[0];
 	// 按照协议类型解析键值对
-	if ((ch = type[0]) == 'a' || ch == 'A') {
+	if (ch == 'a' || ch == 'A') {
 		if      (iequals(type, KVTYPE_ABTSLEW))  proto = resolve_abortslew  (kvs);
 		else if (iequals(type, KVTYPE_ABTIMG))   proto = resolve_abortimg   (kvs);
 		else if (iequals(type, KVTYPE_APPPLAN))  proto = resolve_append_plan(kvs);
@@ -673,6 +676,135 @@ kvbase KvProtocol::Resolve(const char *rcvd) {
 	else if (iequals(type, KVTYPE_TAKIMG))   proto = resolve_takeimg       (kvs);
 	else if (iequals(type, KVTYPE_UNREG))    proto = resolve_unregister    (kvs);
 
+	if (proto.unique()) *proto = basis;
+	return proto;
+}
+
+kvbase KvProtocol::ResolveClient(const char* rcvd) {
+	kvbase proto;
+	kv_proto_base basis;
+	likv kvs;
+	string type;
+	char ch;
+
+	resolve_rcvd(rcvd, basis, kvs);
+	type = basis.type;
+	ch = type[0];
+	/*---------------- 分项解析 ----------------*/
+	if (ch == 'a' || ch == 'A') {
+		if      (iequals(type, KVTYPE_ABTSLEW))  proto = resolve_abortslew  (kvs);
+		else if (iequals(type, KVTYPE_ABTIMG))   proto = resolve_abortimg   (kvs);
+		else if (iequals(type, KVTYPE_APPPLAN))  proto = resolve_append_plan(kvs);
+		else if (iequals(type, KVTYPE_ABTPLAN))  proto = resolve_abort_plan (kvs);
+	}
+	else if (ch == 'f' || ch == 'F') {
+		if (iequals(type, KVTYPE_FWHM))          proto = resolve_fwhm    (kvs);
+		else if (iequals(type, KVTYPE_FOCUS))    proto = resolve_focus   (kvs);
+		else if (iequals(type, KVTYPE_FINDHOME)) proto = resolve_findhome(kvs);
+	}
+	else if (ch == 's' || ch == 'S') {
+		if      (iequals(type, KVTYPE_SLEWTO))   proto = resolve_slewto(kvs);
+		else if (iequals(type, KVTYPE_START))    proto = resolve_start (kvs);
+		else if (iequals(type, KVTYPE_STOP))     proto = resolve_stop  (kvs);
+		else if (iequals(type, KVTYPE_SLIT))     proto = resolve_slit  (kvs);
+	}
+	else if (iequals(type, KVTYPE_CHKPLAN))  proto = resolve_check_plan    (kvs);
+	else if (iequals(type, KVTYPE_DISABLE))  proto = resolve_disable       (kvs);
+	else if (iequals(type, KVTYPE_ENABLE))   proto = resolve_enable        (kvs);
+	else if (iequals(type, KVTYPE_PARK))     proto = resolve_park          (kvs);
+	else if (iequals(type, KVTYPE_REG))      proto = resolve_register      (kvs);
+	else if (iequals(type, KVTYPE_MCOVER))   proto = resolve_mcover        (kvs);
+	else if (iequals(type, KVTYPE_GUIDE))    proto = resolve_guide         (kvs);
+	else if (iequals(type, KVTYPE_HOMESYNC)) proto = resolve_homesync      (kvs);
+	else if (iequals(type, KVTYPE_IMPPLAN))  proto = resolve_implement_plan(kvs);
+	else if (iequals(type, KVTYPE_TAKIMG))   proto = resolve_takeimg       (kvs);
+	else if (iequals(type, KVTYPE_UNREG))    proto = resolve_unregister    (kvs);
+
+	/*---------------- 分项解析 ----------------*/
+	if (proto.unique()) *proto = basis;
+	return proto;
+}
+
+kvbase KvProtocol::ResolveMount(const char* rcvd) {
+	kvbase proto;
+	kv_proto_base basis;
+	likv kvs;
+	string type;
+	char ch;
+
+	resolve_rcvd(rcvd, basis, kvs);
+	type = basis.type;
+	ch = type[0];
+	/*---------------- 分项解析 ----------------*/
+	if (ch == 'f' || ch == 'F') {
+		if      (iequals(type, KVTYPE_FWHM))     proto = resolve_fwhm    (kvs);
+		else if (iequals(type, KVTYPE_FOCUS))    proto = resolve_focus   (kvs);
+		else if (iequals(type, KVTYPE_FINDHOME)) proto = resolve_findhome(kvs);
+	}
+	else if (ch == 's' || ch == 'S') {
+		if      (iequals(type, KVTYPE_SLEWTO))   proto = resolve_slewto(kvs);
+		else if (iequals(type, KVTYPE_SLIT))     proto = resolve_slit  (kvs);
+	}
+	else if (ch == 'm' || ch == 'M') {
+		if      (iequals(type, KVTYPE_MOUNT))    proto = resolve_mount (kvs);
+		else if (iequals(type, KVTYPE_MCOVER))   proto = resolve_mcover(kvs);
+	}
+	else if (iequals(type, KVTYPE_ABTSLEW))  proto = resolve_abortslew(kvs);
+	else if (iequals(type, KVTYPE_DOME))     proto = resolve_dome     (kvs);
+	else if (iequals(type, KVTYPE_PARK))     proto = resolve_park     (kvs);
+	else if (iequals(type, KVTYPE_GUIDE))    proto = resolve_guide    (kvs);
+	else if (iequals(type, KVTYPE_HOMESYNC)) proto = resolve_homesync (kvs);
+	/*---------------- 分项解析 ----------------*/
+	if (proto.unique()) *proto = basis;
+	return proto;
+}
+
+kvbase KvProtocol::ResolveCamera(const char* rcvd) {
+	kvbase proto;
+	kv_proto_base basis;
+	likv kvs;
+	string type;
+	char ch;
+
+	resolve_rcvd(rcvd, basis, kvs);
+	type = basis.type;
+	ch = type[0];
+	/*---------------- 分项解析 ----------------*/
+	if (ch == 'f' || ch == 'F') {
+		if      (iequals(type, KVTYPE_FILEINFO)) proto = resolve_fileinfo(kvs);
+		else if (iequals(type, KVTYPE_FILESTAT)) proto = resolve_filestat(kvs);
+		else if (iequals(type, KVTYPE_FOCUS))    proto = resolve_focus   (kvs);
+	}
+	else if (ch == 'o' || ch == 'O') {
+		if      (iequals(type, KVTYPE_OBJECT))   proto = resolve_object(kvs);
+		else if (iequals(type, KVTYPE_OBSITE))   proto = resolve_obsite(kvs);
+	}
+	else if (iequals(type, KVTYPE_ABTIMG))   proto = resolve_abortimg(kvs);
+	else if (iequals(type, KVTYPE_CAMERA))   proto = resolve_camera  (kvs);
+	else if (iequals(type, KVTYPE_EXPOSE))   proto = resolve_expose  (kvs);
+	else if (iequals(type, KVTYPE_SLEWTO))   proto = resolve_slewto  (kvs);
+	else if (iequals(type, KVTYPE_MCOVER))   proto = resolve_mcover  (kvs);
+	else if (iequals(type, KVTYPE_TAKIMG))   proto = resolve_takeimg (kvs);
+	/*---------------- 分项解析 ----------------*/
+	if (proto.unique()) *proto = basis;
+	return proto;
+}
+
+kvbase KvProtocol::ResolveEnv(const char* rcvd) {
+	kvbase proto;
+	kv_proto_base basis;
+	likv kvs;
+	string type;
+	char ch;
+
+	resolve_rcvd(rcvd, basis, kvs);
+	type = basis.type;
+	ch = type[0];
+	/*---------------- 分项解析 ----------------*/
+	if      (iequals(type, KVTYPE_RAINFALL)) proto = resolve_rainfall(kvs);
+	else if (iequals(type, KVTYPE_WIND))     proto = resolve_wind    (kvs);
+	else if (iequals(type, KVTYPE_CLOUD))    proto = resolve_cloud   (kvs);
+	/*---------------- 分项解析 ----------------*/
 	if (proto.unique()) *proto = basis;
 	return proto;
 }

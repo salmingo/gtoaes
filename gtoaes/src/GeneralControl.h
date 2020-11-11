@@ -54,26 +54,47 @@ protected:
 	 * @struct network_event
 	 * @brief 网络事件
 	 */
-	struct network_event {
-		using Pointer = boost::shared_ptr<network_event>;
+	struct NetworkEvent {
+		using Pointer = boost::shared_ptr<NetworkEvent>;
 
-		int peer;		///< 主机类型
-		TcpCPtr tcpc;	///< 网络连接
-		int type;		///< 事件类型. 0: 接收信息; 其它: 关闭
+		TcpCPtr client;	///< 网络连接
+		int peer;	///< 主机类型
+		int type;	///< 事件类型. 0: 接收信息; 其它: 关闭
 
 	public:
-		network_event(int _peer, TcpCPtr _tcpc, int _type) {
-			peer = _peer;
-			tcpc = _tcpc;
-			type = _type;
+		NetworkEvent(TcpCPtr _client, int _peer, int _type) {
+			client = _client;
+			peer   = _peer;
+			type   = _type;
 		}
 
-		static Pointer Create(int _peer, TcpCPtr _tcpc, int _type) {
-			return Pointer(new network_event(_peer, _tcpc, _type));
+		static Pointer Create(TcpCPtr _client, int _peer, int _type) {
+			return Pointer(new NetworkEvent(_client, _peer, _type));
 		}
 	};
-	using NetEvPtr = network_event::Pointer;
+	using NetEvPtr = NetworkEvent::Pointer;
 	using NetEvQue = std::deque<NetEvPtr>;
+
+	/*!
+	 * @struct EnvInfo
+	 * @brief 环境信息
+	 */
+	struct EnvInfo {
+		using Pointer = boost::shared_ptr<EnvInfo>;
+
+		string gid;	///< 组标志
+		int rain;	///< 雨量标志
+		int orient;	///< 风向
+		int speed;	///< 风速
+		int cloud;	///< 云量
+
+	public:
+		static Pointer Create() {
+			return Pointer(new EnvInfo);
+		}
+	};
+	using NfEnvPtr = EnvInfo::Pointer;
+	using NfEnvVec = std::vector<NfEnvPtr>;
 
 	//////////////////////////////////////////////////////////////////////////////
 
@@ -108,7 +129,8 @@ protected:
 	boost::mutex mtx_netev_;	///< 互斥锁: 网络事件
 	boost::condition_variable cv_netev_;	///< 条件触发: 网络事件
 
-	boost::shared_array<char> bufrcv_;	///< 网络信息存储区: 消息队列中调用
+	boost::shared_array<char> buftcp_;	///< 网络信息存储区: 消息队列中调用
+	boost::shared_array<char> bufudp_;	///< 网络信息存储区: 消息队列中调用
 	KvProtoPtr kvProto_;		///< 键值对格式协议访问接口
 	NonkvProtoPtr nonkvProto_;	///< 非键值对格式协议访问接口
 
@@ -120,11 +142,15 @@ protected:
 	ObsSysVec obss_;		///< 观测系统集合
 	boost::mutex mtx_obss_;	///< 互斥锁: 观测系统
 
+	/* 环境信息 */
+	NfEnvVec nfEnv_;	///< 环境
+
 	/* 数据库 */
 	DBCurlPtr dbPtr_;	///< 数据库访问接口
 
 	/* 多线程 */
 	ThreadPtr thrd_netevent_;
+
 	//////////////////////////////////////////////////////////////////////////////
 
 /* 接口 */
@@ -170,31 +196,35 @@ protected:
 	 * @param client 网络资源
 	 * @param ec     错误代码. 0: 正确
 	 */
-	void receive_client(const TcpCPtr client, const int ec);
+	void receive_client(const TcpCPtr client, const error_code& ec);
 	/*!
 	 * @brief 处理转台信息
 	 * @param client 网络资源
 	 * @param ec     错误代码. 0: 正确
 	 */
-	void receive_mount(const TcpCPtr client, const int ec);
+	void receive_mount(const TcpCPtr client, const error_code& ec);
 	/*!
 	 * @brief 处理相机信息
 	 * @param client 网络资源
 	 * @param ec     错误代码. 0: 正确
 	 */
-	void receive_camera(const TcpCPtr client, const int ec);
+	void receive_camera(const TcpCPtr client, const error_code& ec);
 	/*!
 	 * @brief 处理镜盖+调焦信息
 	 * @param client 网络资源
 	 * @param ec     错误代码. 0: 正确
 	 */
-	void receive_mount_annex(const TcpCPtr client, const int ec);
+	void receive_mount_annex(const TcpCPtr client, const error_code& ec);
 	/*!
 	 * @brief 处理温控+真空信息
 	 * @param client 网络资源
 	 * @param ec     错误代码. 0: 正确
 	 */
-	void receive_camera_annex(const TcpCPtr client, const int ec);
+	void receive_camera_annex(const TcpCPtr client, const error_code& ec);
+	/*!
+	 * @brief 处理环境监测信息
+	 */
+	void receive_environment(const UdpPtr client, const error_code& ec);
 
 protected:
 	/*----------------- 消息机制 -----------------*/
@@ -269,14 +299,38 @@ protected:
 	 */
 	void resolve_protocol(const TcpCPtr client, int peer);
 
-	void process_kv_client      (kvbase proto, const TcpCPtr client);
-	void process_kv_mount       (kvbase proto, const TcpCPtr client);
-	void process_kv_camera      (kvbase proto, const TcpCPtr client);
-	void process_kv_mount_annex (kvbase proto, const TcpCPtr client);
-	void process_kv_camera_annex(kvbase proto, const TcpCPtr client);
+	/*!
+	 * @fn process_kv_client
+	 * @brief  处理客户端的键值对协议
+	 * @fn process_kv_mount
+	 * @brief  处理转台的键值对协议
+	 * @fn process_kv_camera
+	 * @brief  处理相机的键值对协议
+	 * @fn process_kv_mount_annex
+	 * @brief  处理转台附属设备的键值对协议
+	 * @fn process_kv_clientprocess_kv_camera_annex
+	 * @brief  处理相机附属设备的键值对协议
+	 *
+	 * @param base    通信协议
+	 * @param client  网络连接
+	 */
+	void process_kv_client      (kvbase base, const TcpCPtr client);
+	void process_kv_mount       (kvbase base, const TcpCPtr client);
+	void process_kv_camera      (kvbase base, const TcpCPtr client);
+	void process_kv_mount_annex (kvbase base, const TcpCPtr client);
+	void process_kv_camera_annex(kvbase base, const TcpCPtr client);
 
-	void process_nonkv_mount(nonkvbase proto, const TcpCPtr client);
-	void process_nonkv_mount_annex(nonkvbase proto, const TcpCPtr client);
+	/*!
+	 * @fn process_nonkv_mount
+	 * @brief   处理转台的非键值对协议
+	 * @fn process_nonkv_mount_annex
+	 * @brief   处理转台附属设备的非键值对协议
+	 *
+	 * @param proto   通信协议
+	 * @param client  网络连接
+	 */
+	void process_nonkv_mount(nonkvbase base, const TcpCPtr client);
+	void process_nonkv_mount_annex(nonkvbase base, const TcpCPtr client);
 
 protected:
 	/*----------------- 观测计划 -----------------*/
@@ -287,7 +341,7 @@ protected:
 	 * @return
 	 * 时间有效性
 	 */
-	bool IsValidPlanTime(const ObsPlanItemPtr plan, const ptime& now);
+	bool is_valid_plantime(const ObsPlanItemPtr plan, const ptime& now);
 	/*!
 	 * @brief 回调函数, 为通用系统申请新的观测计划
 	 * @param 观测系统指针
@@ -308,7 +362,24 @@ protected:
 
 protected:
 	/*----------------- 观测系统 -----------------*/
+	/*!
+	 * @brief 查找与(gid, uid)对应的观测系统. 若系统不存在, 则创建系统并启动工作流程
+	 * @param gid  组标志
+	 * @param uid  单元标志
+	 * @return
+	 * 观测系统实例指针
+	 */
 	ObsSysPtr find_obss(const string& gid, const string& uid);
+
+protected:
+	/*----------------- 环境信息 -----------------*/
+	/*!
+	 * @brief 查找与gid对应的环境信息记录. 若记录不存在, 则创建记录
+	 * @param gid  组标志
+	 * @return
+	 * 记录实例指针
+	 */
+	NfEnvPtr find_info_env(const string& gid);
 
 protected:
 	/*----------------- 多线程 -----------------*/

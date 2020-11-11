@@ -39,7 +39,7 @@ public:
 	 * @param 1 客户端对象
 	 * @param 2 错误描述
 	 */
-	using CallbackFunc = boost::signals2::signal<void (Pointer, const error_code&)>;
+	using CallbackFunc = boost::signals2::signal<void (const Pointer, const error_code&)>;
 	using CBSlot = CallbackFunc::slot_type;
 	using UDP = boost::asio::ip::udp;	// boost::ip::udp类型
 	using CBuff = boost::shared_array<char>;	//< char型数组

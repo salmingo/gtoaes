@@ -26,7 +26,7 @@ void Parameter::Init(const string &filepath) {
 	node1.add("Camera.<xmlattr>.Port",			4012);
 	node1.add("MountAnnex.<xmlattr>.Port",		4013);
 	node1.add("CameraAnnex.<xmlattr>.Port",		4014);
-	node1.add("Environment.<xmlattr>.UdpPort",	4015);
+	node1.add("Environment.<xmlattr>.Port",		4015);
 
 	ptree &node2 = pt.add("NTP", "");
 	node2.add("<xmlattr>.Enable",			false);
@@ -82,7 +82,7 @@ const char* Parameter::Load(const string &filepath) {
 				portCamera		= child.second.get("Camera.<xmlattr>.Port",			4012);
 				portMountAnnex	= child.second.get("MountAnnex.<xmlattr>.Port",		4013);
 				portCameraAnnex	= child.second.get("CameraAnnex.<xmlattr>.Port",	4014);
-				udpPortEnv		= child.second.get("Environment.<xmlattr>.UdpPort",	4015);
+				portEnv			= child.second.get("Environment.<xmlattr>.Port",	4015);
 			}
 			else if (boost::iequals(child.first, "NTP")) {
 				ntpEnable	= child.second.get("<xmlattr>.Enable",			false);

@@ -680,6 +680,13 @@ protected:
 	}
 
 	/*!
+	 * @brief 解析字符串, 生成通项和键值对
+	 * @param rcvd   接收到的字符串
+	 * @param basis  通信协议通项
+	 * @param kvs    键值对
+	 */
+	void resolve_rcvd(const char* rcvd, kv_proto_base &basis, likv &kvs);
+	/*!
 	 * @brief 解析单个关键字和对应数值
 	 * @param kv       keyword=value对
 	 * @param keyword  关键字
@@ -688,10 +695,6 @@ protected:
 	 * 关键字和数值非空
 	 */
 	bool resolve_kv(string& kv, string& keyword, string& value);
-	/**
-	 * @brief 解析键值对集合并提取通用项
-	 */
-	void resolve_kv_array(listring &tokens, likv &kvs, kv_proto_base &basis);
 
 	/**
 	 * @brief 封装通用观测计划
@@ -877,8 +880,39 @@ public:
 	 * @param rcvd 待解析字符串
 	 * @return
 	 * 统一转换为kvbase类型
+	 * @note
+	 * - 解析通信协议的完备接口
+	 * - 为提高解析效率, 分类实现以下接口
 	 */
-	kvbase Resolve(const char *rcvd);
+	kvbase Resolve(const char* rcvd);
+	/*!
+	 * @brief 解析与客户端的通信内容并生成结构化通信协议
+	 * @param rcvd  待解析字符串
+	 * @return
+	 * kvbase类型实例指针
+	 */
+	kvbase ResolveClient(const char* rcvd);
+	/*!
+	 * @brief 解析与转台的通信内容并生成结构化通信协议
+	 * @param rcvd  待解析字符串
+	 * @return
+	 * kvbase类型实例指针
+	 */
+	kvbase ResolveMount(const char* rcvd);
+	/*!
+	 * @brief 解析与相机的通信内容并生成结构化通信协议
+	 * @param rcvd  待解析字符串
+	 * @return
+	 * kvbase类型实例指针
+	 */
+	kvbase ResolveCamera(const char* rcvd);
+	/*!
+	 * @brief 解析环境信息并生成结构化通信协议
+	 * @param rcvd  待解析字符串
+	 * @return
+	 * kvbase类型实例指针
+	 */
+	kvbase ResolveEnv(const char* rcvd);
 
 protected:
 	/*!

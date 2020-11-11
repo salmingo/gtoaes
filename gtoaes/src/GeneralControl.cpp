@@ -24,7 +24,8 @@ GeneralControl::~GeneralControl() {
 //////////////////////////////////////////////////////////////////////////////
 bool GeneralControl::Start() {
 	param_.Load(gConfigPath);
-	bufrcv_.reset(new char[TCP_PACK_SIZE]);
+	buftcp_.reset(new char[TCP_PACK_SIZE]);
+	bufudp_.reset(new char[UDP_PACK_SIZE]);
 	kvProto_    = KvProtocol::Create();
 	nonkvProto_ = NonkvProtocol::Create();
 	obsPlans_   = ObservationPlan::Create();
@@ -60,6 +61,7 @@ int GeneralControl::create_server(TcpSPtr *server, const uint16_t port) {
 bool GeneralControl::create_all_server() {
 	int ec;
 
+	/* 启动TCP服务 */
 	if ((ec = create_server(&tcps_client_, param_.portClient))) {
 		_gLog.Write(LOG_FAULT, "File[%s], Line[%d]. ErrorCode<%d>", __FILE__, __LINE__, ec);
 		return false;
@@ -79,6 +81,11 @@ bool GeneralControl::create_all_server() {
 	if ((ec = create_server(&tcps_camera_annex_, param_.portCameraAnnex))) {
 		_gLog.Write(LOG_FAULT, "File[%s], Line[%d]. ErrorCode<%d>", __FILE__, __LINE__, ec);
 		return false;
+	}
+	/* 启动UDP服务 */
+	udps_env_ = UdpSession::Create();
+	if (udps_env_->Open(param_.portEnv)) {
+		const UdpSession::CBSlot& slot = boost::bind(&receive_environment, this);
 	}
 
 	thrd_netevent_.reset(new boost::thread(boost::bind(&GeneralControl::monitor_network_event, this)));
@@ -118,39 +125,76 @@ void GeneralControl::network_accept(const TcpCPtr client, const TcpSPtr server) 
 	}
 }
 
-void GeneralControl::receive_client(const TcpCPtr client, const int ec) {
+void GeneralControl::receive_client(const TcpCPtr client, const error_code& ec) {
 	MtxLck lck(mtx_netev_);
-	NetEvPtr netev = network_event::Create(PEER_CLIENT, client, ec);
+	NetEvPtr netev = NetworkEvent::Create(client, PEER_MOUNT, ec.value());
 	queNetEv_.push_back(netev);
 	cv_netev_.notify_one();
 }
 
-void GeneralControl::receive_mount(const TcpCPtr client, const int ec) {
+void GeneralControl::receive_mount(const TcpCPtr client, const error_code& ec) {
 	MtxLck lck(mtx_netev_);
-	NetEvPtr netev = network_event::Create(PEER_MOUNT, client, ec);
+	NetEvPtr netev = NetworkEvent::Create(client, PEER_MOUNT, ec.value());
 	queNetEv_.push_back(netev);
 	cv_netev_.notify_one();
 }
 
-void GeneralControl::receive_camera(const TcpCPtr client, const int ec) {
+void GeneralControl::receive_camera(const TcpCPtr client, const error_code& ec) {
 	MtxLck lck(mtx_netev_);
-	NetEvPtr netev = network_event::Create(PEER_CAMERA, client, ec);
+	NetEvPtr netev = NetworkEvent::Create(client, PEER_MOUNT, ec.value());
 	queNetEv_.push_back(netev);
 	cv_netev_.notify_one();
 }
 
-void GeneralControl::receive_mount_annex(const TcpCPtr client, const int ec) {
+void GeneralControl::receive_mount_annex(const TcpCPtr client, const error_code& ec) {
 	MtxLck lck(mtx_netev_);
-	NetEvPtr netev = network_event::Create(PEER_MOUNT_ANNEX, client, ec);
+	NetEvPtr netev = NetworkEvent::Create(client, PEER_MOUNT, ec.value());
 	queNetEv_.push_back(netev);
 	cv_netev_.notify_one();
 }
 
-void GeneralControl::receive_camera_annex(const TcpCPtr client, const int ec) {
+void GeneralControl::receive_camera_annex(const TcpCPtr client, const error_code& ec) {
 	MtxLck lck(mtx_netev_);
-	NetEvPtr netev = network_event::Create(PEER_CAMERA_ANNEX, client, ec);
+	NetEvPtr netev = NetworkEvent::Create(client, PEER_MOUNT, ec.value());
 	queNetEv_.push_back(netev);
 	cv_netev_.notify_one();
+}
+
+void GeneralControl::receive_environment(const UdpPtr client, const error_code& ec) {
+	int n;
+
+	if (client->Read(bufudp_.get(), n)) {
+		if (bufudp_[n - 1] == '\n') {
+			bufudp_[n - 1] = 0;
+			kvbase base = kvProto_->ResolveEnv(bufudp_.get());
+			string type = base->type;
+			string gid  = base->gid;
+			NfEnvPtr nfEnv = find_info_env(gid);
+
+			if (iequals(type, KVTYPE_RAINFALL)) {
+				kvrain proto = from_kvbase<kv_proto_rainfall>(base);
+				if (nfEnv->rain != proto->value) {
+					nfEnv->rain = proto->value;
+					//...
+				}
+			}
+			else if (iequals(type, KVTYPE_WIND)) {
+				kvwind proto = from_kvbase<kv_proto_wind>(base);
+				nfEnv->orient = proto->orient;
+				if (nfEnv->speed != proto->speed) {
+					nfEnv->speed = proto->speed;
+					//...
+				}
+			}
+			else if (iequals(type, KVTYPE_CLOUD)) {
+				kvcloud proto = from_kvbase<kv_proto_cloud>(base);
+				if (nfEnv->cloud != proto->value) {
+					nfEnv->cloud = proto->value;
+					//...
+				}
+			}
+		}
+	}
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -218,23 +262,23 @@ void GeneralControl::resolve_protocol(const TcpCPtr client, int peer) {
 
 	while (client->IsOpen() && (pos = client->Lookup(term, lenTerm)) >= 0) {
 		if ((success = (toread = pos + lenTerm) > TCP_PACK_SIZE)) {
-			client->Read(bufrcv_.get(), toread);
-			bufrcv_[pos] = 0;
-			if (strstr(bufrcv_.get(), prefix)) {// 非键值对协议
-				nonkvbase proto = nonkvProto_->Resove(bufrcv_.get() + lenPre);
-				if ((success = proto.unique())) {
-					if      (peer == PEER_MOUNT)       process_nonkv_mount      (proto, client);
-					else if (peer == PEER_MOUNT_ANNEX) process_nonkv_mount_annex(proto, client);
+			client->Read(buftcp_.get(), toread);
+			buftcp_[pos] = 0;
+			if (strstr(buftcp_.get(), prefix)) {// 非键值对协议
+				nonkvbase base = nonkvProto_->Resove(buftcp_.get() + lenPre);
+				if ((success = base.unique())) {
+					if      (peer == PEER_MOUNT)       process_nonkv_mount      (base, client);
+					else if (peer == PEER_MOUNT_ANNEX) process_nonkv_mount_annex(base, client);
 				}
 			}
 			else {// 键值对协议
-				kvbase proto = kvProto_->Resolve(bufrcv_.get());
-				if ((success = proto.unique())) {
-					if      (peer == PEER_CLIENT)       process_kv_client      (proto, client);
-					else if (peer == PEER_MOUNT)        process_kv_mount       (proto, client);
-					else if (peer == PEER_CAMERA)       process_kv_camera      (proto, client);
-					else if (peer == PEER_MOUNT_ANNEX)  process_kv_mount_annex (proto, client);
-					else if (peer == PEER_CAMERA_ANNEX) process_kv_camera_annex(proto, client);
+				kvbase base = kvProto_->Resolve(buftcp_.get());
+				if ((success = base.unique())) {
+					if      (peer == PEER_CLIENT)       process_kv_client      (base, client);
+					else if (peer == PEER_MOUNT)        process_kv_mount       (base, client);
+					else if (peer == PEER_CAMERA)       process_kv_camera      (base, client);
+					else if (peer == PEER_MOUNT_ANNEX)  process_kv_mount_annex (base, client);
+					else if (peer == PEER_CAMERA_ANNEX) process_kv_camera_annex(base, client);
 				}
 			}
 
@@ -251,22 +295,22 @@ void GeneralControl::resolve_protocol(const TcpCPtr client, int peer) {
 	}
 }
 
-void GeneralControl::process_kv_client(kvbase proto, const TcpCPtr client) {
+void GeneralControl::process_kv_client(kvbase base, const TcpCPtr client) {
 	/*
 	 * 客户端接收到的信息, 分为两种处理方式:
 	 * 1. 本地处理
 	 * 2. 投递给观测系统
 	 */
-	string type = proto->type;
-	string gid  = proto->gid;
-	string uid  = proto->uid;
+	string type = base->type;
+	string gid  = base->gid;
+	string uid  = base->uid;
 
 	if (iequals(type, KVTYPE_APPPLAN) || iequals(type, KVTYPE_IMPPLAN)) {
 		/*>!!!!!! 新的观测计划 !!!!!!<*/
 		ObsPlanItemPtr plan;
 		bool opNow = (type[0] == 'a' || type[0] == 'A') ? 0 : 1;
-		plan = opNow ? from_kvbase<kv_proto_implement_plan>(proto)->plan
-				: from_kvbase<kv_proto_append_plan>(proto)->plan;
+		plan = opNow ? from_kvbase<kv_proto_implement_plan>(base)->plan
+				: from_kvbase<kv_proto_append_plan>(base)->plan;
 		if (plan->CompleteCheck()) {
 			obsPlans_->AddPlan(plan);	// 计划加入队列
 
@@ -279,12 +323,12 @@ void GeneralControl::process_kv_client(kvbase proto, const TcpCPtr client) {
 	}
 	else if (iequals(type, KVTYPE_ABTPLAN)) {
 		/*>!!!!!! 中止观测计划 !!!!!!<*/
-		tryto_abort_plan(from_kvbase<kv_proto_abort_plan>(proto)->plan_sn);
+		tryto_abort_plan(from_kvbase<kv_proto_abort_plan>(base)->plan_sn);
 	}
 	/////////////////////////////////////////////////////////////////////////
 	/*>!!!!!! 检查观测计划 !!!!!!<*/
 	else if (iequals(type, KVTYPE_CHKPLAN)) {// 查看观测计划状态
-		string plan_sn = from_kvbase<kv_proto_check_plan>(proto)->plan_sn;
+		string plan_sn = from_kvbase<kv_proto_check_plan>(base)->plan_sn;
 		ObsPlanItemPtr plan = obsPlans_->Find(plan_sn);
 		kvplan proto_rsp = boost::make_shared<kv_proto_plan>();
 		const char* s;
@@ -310,15 +354,15 @@ void GeneralControl::process_kv_client(kvbase proto, const TcpCPtr client) {
 		int matched(0);
 		for (ObsSysVec::iterator it = obss_.begin(); it != obss_.end() && matched != 1; ++it) {
 			if ((matched = (*it)->IsMatched(gid, uid)))
-				(*it)->NotifyKVProtocol(proto);
+				(*it)->NotifyKVProtocol(base);
 		}
 	}
 } // void GeneralControl::process_kv_client(kvbase proto, const TcpCPtr client)
 
-void GeneralControl::process_kv_mount(kvbase proto, const TcpCPtr client) {
+void GeneralControl::process_kv_mount(kvbase base, const TcpCPtr client) {
 	// kv协议的转台连接耦合到观测系统
-	string gid  = proto->gid;
-	string uid  = proto->uid;
+	string gid = base->gid;
+	string uid = base->uid;
 	if (gid.empty() || uid.empty()) {
 		_gLog.Write(LOG_FAULT, "requires non-empty mount IDs[%s:%s]",
 				gid.c_str(), uid.c_str());
@@ -333,11 +377,11 @@ void GeneralControl::process_kv_mount(kvbase proto, const TcpCPtr client) {
 	}
 }
 
-void GeneralControl::process_kv_camera(kvbase proto, const TcpCPtr client) {
+void GeneralControl::process_kv_camera(kvbase base, const TcpCPtr client) {
 	// kv协议的相机连接耦合到观测系统
-	string gid  = proto->gid;
-	string uid  = proto->uid;
-	string cid  = proto->cid;
+	string gid  = base->gid;
+	string uid  = base->uid;
+	string cid  = base->cid;
 	if (gid.empty() || uid.empty() || cid.empty()) {
 		_gLog.Write(LOG_FAULT, "requires non-empty camera IDs[%s:%s:%s]",
 				gid.c_str(), uid.c_str(), cid.c_str());
@@ -352,25 +396,25 @@ void GeneralControl::process_kv_camera(kvbase proto, const TcpCPtr client) {
 	}
 }
 
-void GeneralControl::process_kv_mount_annex(kvbase proto, const TcpCPtr client) {
+void GeneralControl::process_kv_mount_annex(kvbase base, const TcpCPtr client) {
 
 }
 
-void GeneralControl::process_kv_camera_annex(kvbase proto, const TcpCPtr client) {
+void GeneralControl::process_kv_camera_annex(kvbase base, const TcpCPtr client) {
 
 }
 
-void GeneralControl::process_nonkv_mount(nonkvbase proto, const TcpCPtr client){
+void GeneralControl::process_nonkv_mount(nonkvbase base, const TcpCPtr client){
 
 }
 
-void GeneralControl::process_nonkv_mount_annex(nonkvbase proto, const TcpCPtr client){
+void GeneralControl::process_nonkv_mount_annex(nonkvbase base, const TcpCPtr client){
 
 }
 
 //////////////////////////////////////////////////////////////////////////////
 /*----------------- 观测计划 -----------------*/
-bool GeneralControl::IsValidPlanTime(const ObsPlanItemPtr plan, const ptime& now) {
+bool GeneralControl::is_valid_plantime(const ObsPlanItemPtr plan, const ptime& now) {
 	int tmLeadMax(300);	// 时间提前量, 秒
 
 	return ((plan->tmbegin - now).total_seconds() <= tmLeadMax
@@ -388,7 +432,7 @@ ObsPlanItemPtr GeneralControl::acquire_new_plan(const ObsSysPtr obss) {
 	obss->GetIDs(gid, uid);
 	if (obsPlans_->Find(gid, uid)) {
 		while (!found && obsPlans_->GetNext(plan)) {
-			found = IsValidPlanTime(plan, now)
+			found = is_valid_plantime(plan, now)
 					&& obss->IsSafePoint(plan, now);
 		}
 	}
@@ -411,7 +455,7 @@ void GeneralControl::tryto_implement_plan(ObsPlanItemPtr plan) {
 	 * - 观测系统优先级最低
 	 * - 坐标在安全范围内
 	 **/
-	if (IsValidPlanTime(plan, now)) {
+	if (is_valid_plantime(plan, now)) {
 		for (ObsSysVec::iterator it = obss_.begin(); it != obss_.end() && matched != 1 && prio_min > 0; ++it) {
 			if ((matched = (*it)->IsMatched(gid, uid))
 					&& (prio = (*it)->GetPriority()) < prio_plan
@@ -481,6 +525,13 @@ ObsSysPtr GeneralControl::find_obss(const string& gid, const string& uid) {
 }
 
 //////////////////////////////////////////////////////////////////////////////
+GeneralControl::NfEnvPtr GeneralControl::find_info_env(const string& gid) {
+	GeneralControl envPtr;
+
+	return envPtr;
+}
+
+//////////////////////////////////////////////////////////////////////////////
 /*----------------- 多线程 -----------------*/
 void GeneralControl::interrupt_thread(ThreadPtr& thrd) {
 	if (thrd.unique()) {
@@ -507,44 +558,34 @@ void GeneralControl::monitor_network_event() {
 			}
 			switch(netEvPtr->peer) {
 			case PEER_MOUNT:
-				if (netEvPtr->type) {
-					on_close_mount(netEvPtr->tcpc);
-				}
-				else if (netEvPtr->tcpc->IsOpen()) {
-					on_receive_mount(netEvPtr->tcpc);
-				}
+				if (netEvPtr->type)
+					on_close_mount(netEvPtr->client);
+				else if (netEvPtr->client->IsOpen())
+					on_receive_mount(netEvPtr->client);
 				break;
 			case PEER_CAMERA:
-				if (netEvPtr->type) {
-					on_close_camera(netEvPtr->tcpc);
-				}
-				else if (netEvPtr->tcpc->IsOpen()) {
-					on_receive_camera(netEvPtr->tcpc);
-				}
+				if (netEvPtr->type)
+					on_close_camera(netEvPtr->client);
+				else if (netEvPtr->client->IsOpen())
+					on_receive_camera(netEvPtr->client);
 				break;
 			case PEER_MOUNT_ANNEX:
-				if (netEvPtr->type) {
-					on_close_mount_annex(netEvPtr->tcpc);
-				}
-				else if (netEvPtr->tcpc->IsOpen()) {
-					on_receive_mount_annex(netEvPtr->tcpc);
-				}
+				if (netEvPtr->type)
+					on_close_mount_annex(netEvPtr->client);
+				else if (netEvPtr->client->IsOpen())
+					on_receive_mount_annex(netEvPtr->client);
 				break;
 			case PEER_CAMERA_ANNEX:
-				if (netEvPtr->type) {
-					on_close_camera_annex(netEvPtr->tcpc);
-				}
-				else if (netEvPtr->tcpc->IsOpen()) {
-					on_receive_camera_annex(netEvPtr->tcpc);
-				}
+				if (netEvPtr->type)
+					on_close_camera_annex(netEvPtr->client);
+				else if (netEvPtr->client->IsOpen())
+					on_receive_camera_annex(netEvPtr->client);
 				break;
 			default:
-				if (netEvPtr->type) {
-					on_close_client(netEvPtr->tcpc);
-				}
-				else if (netEvPtr->tcpc->IsOpen()) {
-					on_receive_client(netEvPtr->tcpc);
-				}
+				if (netEvPtr->type)
+					on_close_client(netEvPtr->client);
+				else if (netEvPtr->client->IsOpen())
+					on_receive_client(netEvPtr->client);
 				break;
 			}
 		}

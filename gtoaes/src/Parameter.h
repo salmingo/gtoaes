@@ -91,7 +91,7 @@ public:
 	int portCamera;		///< TCP服务端口: 相机
 	int portMountAnnex;	///< TCP服务端口: 转台附属
 	int portCameraAnnex;///< TCP服务端口: 相机附属
-	int udpPortEnv;		///< UDP服务端口: 气象环境
+	int portEnv;		///< UDP服务端口: 气象环境
 
 	/* NTP时间服务器 */
 	bool ntpEnable;		///< 启用NTP

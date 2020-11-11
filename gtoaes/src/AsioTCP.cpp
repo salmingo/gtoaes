@@ -179,7 +179,7 @@ void TcpClient::start_write() {
 
 /* 响应async_函数的回调函数 */
 void TcpClient::handle_connect(const error_code& ec) {
-	cbconn_(shared_from_this(), ec.value());
+	cbconn_(shared_from_this(), ec);
 	if (!ec) {
 		sock_.set_option(socket_base::keep_alive(true));
 		start_read();
@@ -195,7 +195,7 @@ void TcpClient::handle_read(const error_code& ec, int n) {
 		}
 		else byte_read_ = n;
 	}
-	cbread_(shared_from_this(), ec.value());
+	cbread_(shared_from_this(), ec);
 	if (!ec) start_read();
 }
 
@@ -205,7 +205,7 @@ void TcpClient::handle_write(const error_code& ec, int n) {
 		crcbuf_write_.erase_begin(n);
 		start_write();
 	}
-	cbwrite_(shared_from_this(), ec.value());
+	cbwrite_(shared_from_this(), ec);
 }
 
 /////////////////////////////////////////////////////////////////////

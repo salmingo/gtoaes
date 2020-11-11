@@ -19,6 +19,7 @@
 #ifndef SRC_ASIOTCP_H_
 #define SRC_ASIOTCP_H_
 
+#include <boost/system/error_code.hpp>
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/signals2/signal.hpp>
 #include <boost/circular_buffer.hpp>
@@ -27,6 +28,8 @@
 #include <string.h>
 #include <string>
 #include "AsioIOServiceKeep.h"
+
+using namespace boost::system;
 
 /////////////////////////////////////////////////////////////////////
 /*--------------------- 客户端 ---------------------*/
@@ -40,7 +43,7 @@ public:
 	 * @param 1 客户端对象
 	 * @param 2 实例指针
 	 */
-	using CallbackFunc = boost::signals2::signal<void (const Pointer, const int)>;
+	using CallbackFunc = boost::signals2::signal<void (const Pointer, const error_code&)>;
 	using CBSlot = CallbackFunc::slot_type;
 	using TCP = boost::asio::ip::tcp;	// boost::ip::tcp类型
 	using CRCBuff = boost::circular_buffer<char>;	// 字符型循环数组
