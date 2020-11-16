@@ -36,7 +36,7 @@ public:
 //< 数据类型
 protected:
 	//////////////////////////////////////////////////////////////////////////////
-	typedef std::vector<TcpCPtr> TcpCVec;		//< 网络连接存储区
+	typedef std::vector<TcpCPtr> TcpCVec; //< 网络连接存储区
 	using MtxLck = boost::unique_lock<boost::mutex>;	//< 信号灯互斥锁
 	using ThreadPtr = boost::shared_ptr<boost::thread>;	//< boost线程指针
 	using ObsSysVec = std::vector<ObsSysPtr>;
@@ -113,11 +113,11 @@ protected:
 
 	UdpPtr  udps_env_;			///< 网络服务: 气象环境, UDP
 
-	TcpCVec tcpc_client_;
-	TcpCVec tcpc_mount_;
-	TcpCVec tcpc_camera_;
-	TcpCVec tcpc_mount_annex_;
-	TcpCVec tcpc_camera_annex_;
+	TcpCVec tcpc_client_;			///< 网络连接: 客户端
+	TcpCVec tcpc_mount_;			///< 网络连接: 转台
+	TcpCVec tcpc_camera_;			///< 网络连接: 相机
+	TcpCVec tcpc_mount_annex_;		///< 网络连接: 转台附属设备
+	TcpCVec tcpc_camera_annex_;	///< 网络连接: 相机附属设备
 
 	boost::mutex mtx_tcpc_client_;			///< 互斥锁: 客户端
 	boost::mutex mtx_tcpc_mount_;			///< 互斥锁: GWAC望远镜
@@ -300,25 +300,25 @@ protected:
 	void resolve_protocol(const TcpCPtr client, int peer);
 
 	/*!
-	 * @fn process_kv_client
-	 * @brief  处理客户端的键值对协议
-	 * @fn process_kv_mount
-	 * @brief  处理转台的键值对协议
-	 * @fn process_kv_camera
-	 * @brief  处理相机的键值对协议
-	 * @fn process_kv_mount_annex
-	 * @brief  处理转台附属设备的键值对协议
-	 * @fn process_kv_clientprocess_kv_camera_annex
-	 * @brief  处理相机附属设备的键值对协议
-	 *
-	 * @param base    通信协议
+	 * @fn resolve_kv_client
+	 * @brief  解析处理客户端的键值对协议
+	 * @fn resolve_kv_mount
+	 * @brief  解析处理转台的键值对协议
+	 * @fn resolve_kv_camera
+	 * @brief  解析处理相机的键值对协议
+	 * @fn resolve_kv_mount_annex
+	 * @brief  解析处理转台附属设备的键值对协议
+	 * @fn resolve_kv_camera_annex
+	 * @brief  解析处理相机附属设备的键值对协议
 	 * @param client  网络连接
+	 * @return
+	 * 通信协议解析结果
 	 */
-	void process_kv_client      (kvbase base, const TcpCPtr client);
-	void process_kv_mount       (kvbase base, const TcpCPtr client);
-	void process_kv_camera      (kvbase base, const TcpCPtr client);
-	void process_kv_mount_annex (kvbase base, const TcpCPtr client);
-	void process_kv_camera_annex(kvbase base, const TcpCPtr client);
+	bool resolve_kv_client      (const TcpCPtr client);
+	bool resolve_kv_mount       (const TcpCPtr client);
+	bool resolve_kv_camera      (const TcpCPtr client);
+	bool resolve_kv_mount_annex (const TcpCPtr client);
+	bool resolve_kv_camera_annex(const TcpCPtr client);
 
 	/*!
 	 * @fn process_nonkv_mount

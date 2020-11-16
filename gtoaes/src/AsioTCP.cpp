@@ -23,6 +23,10 @@ TcpClient::TcpClient(bool modeAsync)
 		crcbuf_read_.set_capacity(TCP_PACK_SIZE * 50);
 		crcbuf_write_.set_capacity(TCP_PACK_SIZE * 50);
 	}
+
+	first_ = false;
+	idrcv_ = 0;
+	p2h_   = false;
 }
 
 TcpClient::~TcpClient() {
@@ -141,6 +145,8 @@ int TcpClient::Lookup(const char* flag, const int n, const int from) {
 }
 
 void TcpClient::Start() {
+	first_ = true;
+	idrcv_ = 0;
 	sock_.set_option(socket_base::keep_alive(true));
 	start_read();
 }
@@ -158,6 +164,18 @@ void TcpClient::RegisterRead(const CBSlot& slot) {
 void TcpClient::RegisterWrite(const CBSlot& slot) {
 	cbwrite_.disconnect_all_slots();
 	cbwrite_.connect(slot);
+}
+
+bool TcpClient::IsFirstRcv() {
+	return first_;
+}
+
+void TcpClient::SetType(bool p2h) {
+	p2h_ = p2h;
+}
+
+bool TcpClient::IsP2H() {
+	return p2h_;
 }
 
 void TcpClient::start_read() {
@@ -194,6 +212,7 @@ void TcpClient::handle_read(const error_code& ec, int n) {
 				crcbuf_read_.push_back(buf_read_[i]);
 		}
 		else byte_read_ = n;
+		if (first_ && ++idrcv_ > 1) first_ = false;
 	}
 	cbread_(shared_from_this(), ec);
 	if (!ec) start_read();

@@ -211,23 +211,28 @@ public:
 	/*!
 	 * @brief 关联观测系统与转台
 	 * @param client  网络连接
+	 * @param p2h     Peer2Hub类型
 	 */
-	bool CoupleMount(const TcpCPtr client, int type);
+	bool CoupleMount(const TcpCPtr client, bool p2h = false);
 	/*!
 	 * @brief 关联观测系统与相机
 	 * @param client  网络连接
+	 * @param cid     相机标志
+	 * @param p2h     Peer2Hub类型
 	 */
-	bool CoupleCamera(const TcpCPtr client, const string& cid);
+	bool CoupleCamera(const TcpCPtr client, const string& cid, bool p2h = false);
 	/*!
 	 * @brief 关联观测系统与转台附属设备
 	 * @param client  网络连接
+	 * @param p2h     Peer2Hub类型
 	 */
-	void CoupleMountAnnex(const TcpCPtr client);
+	void CoupleMountAnnex(const TcpCPtr client, bool p2h = false);
 	/*!
 	 * @brief 关联观测系统与相机附属设备
 	 * @param client  网络连接
+	 * @param p2h     Peer2Hub类型
 	 */
-	void CoupleCameraAnnex(const TcpCPtr client);
+	void CoupleCameraAnnex(const TcpCPtr client, bool p2h = false);
 	/*!
 	 * @brief 解除观测系统与客户端的关联
 	 * @param client  网络连接
@@ -238,6 +243,11 @@ public:
 	 * @param client  网络连接
 	 */
 	void DecoupleMount(const TcpCPtr client);
+	/*!
+	 * @brief 解除观测系统与相机的关联
+	 * @param client  网络连接
+	 */
+	void DecoupleCamera(const TcpCPtr client);
 	/*!
 	 * @brief 解除观测系统与转台附属设备的关联
 	 * @param client  网络连接

@@ -201,7 +201,7 @@ void GeneralControl::receive_environment(const UdpPtr client, const error_code& 
 /*----------------- 消息机制 -----------------*/
 void GeneralControl::erase_tcpclient(TcpCVec& buff, const TcpCPtr client) {
 	TcpCVec::iterator it;
-	for (it = buff.begin(); it != buff.end() && client != *it; ++it);
+	for (it = buff.begin(); it != buff.end() && (*it) != client; ++it);
 	if (it != buff.end()) buff.erase(it);
 }
 
@@ -257,50 +257,49 @@ void GeneralControl::resolve_protocol(const TcpCPtr client, int peer) {
 	const char prefix[] = "g#";	// 非键值对格式的引导符
 	int lenTerm = strlen(term);		// 结束符长度
 	int lenPre  = strlen(prefix);	// 引导符长度
-	int pos, toread;
+	int pos;
 	bool success(true);
 
 	while (client->IsOpen() && (pos = client->Lookup(term, lenTerm)) >= 0) {
-		if ((success = (toread = pos + lenTerm) > TCP_PACK_SIZE)) {
-			client->Read(buftcp_.get(), toread);
-			buftcp_[pos] = 0;
-			if (strstr(buftcp_.get(), prefix)) {// 非键值对协议
-				nonkvbase base = nonkvProto_->Resove(buftcp_.get() + lenPre);
-				if ((success = base.unique())) {
-					if      (peer == PEER_MOUNT)       process_nonkv_mount      (base, client);
-					else if (peer == PEER_MOUNT_ANNEX) process_nonkv_mount_annex(base, client);
-				}
+		client->Read(buftcp_.get(), pos + lenTerm);
+		buftcp_[pos] = 0;
+		if (strstr(buftcp_.get(), prefix)) {// 非键值对协议
+			nonkvbase base = nonkvProto_->Resove(buftcp_.get() + lenPre);
+			if ((success = base.unique())) {
+				if      (peer == PEER_MOUNT)       process_nonkv_mount      (base, client);
+				else if (peer == PEER_MOUNT_ANNEX) process_nonkv_mount_annex(base, client);
 			}
-			else {// 键值对协议
-				kvbase base = kvProto_->Resolve(buftcp_.get());
-				if ((success = base.unique())) {
-					if      (peer == PEER_CLIENT)       process_kv_client      (base, client);
-					else if (peer == PEER_MOUNT)        process_kv_mount       (base, client);
-					else if (peer == PEER_CAMERA)       process_kv_camera      (base, client);
-					else if (peer == PEER_MOUNT_ANNEX)  process_kv_mount_annex (base, client);
-					else if (peer == PEER_CAMERA_ANNEX) process_kv_camera_annex(base, client);
-				}
-			}
+		}
+		else {// 键值对协议
+			if      (peer == PEER_CLIENT)       success = resolve_kv_client      (client);
+			else if (peer == PEER_MOUNT)        success = resolve_kv_mount       (client);
+			else if (peer == PEER_CAMERA)       success = resolve_kv_camera      (client);
+			else if (peer == PEER_MOUNT_ANNEX)  success = resolve_kv_mount_annex (client);
+			else if (peer == PEER_CAMERA_ANNEX) success = resolve_kv_camera_annex(client);
+		}
 
-			if (!success) {
-				_gLog.Write(LOG_FAULT, "File[%s], Line[%s], Peer Type[%s]. protocol resolver failed",
-						__FILE__, __LINE__,
-						peer == PEER_CLIENT ? "Client" :
-							(peer == PEER_MOUNT ? "Mount" :
-								(peer == PEER_CAMERA ? "Camera" :
-									(peer == PEER_MOUNT_ANNEX ? "Mount-Annex" : "Camera-Annex"))));
-				client->Close();
-			}
+		if (!success) {
+			_gLog.Write(LOG_FAULT, "File[%s], Line[%s], Peer Type[%s]. protocol resolver failed",
+					__FILE__, __LINE__,
+					peer == PEER_CLIENT ? "Client" :
+						(peer == PEER_MOUNT ? "Mount" :
+							(peer == PEER_CAMERA ? "Camera" :
+								(peer == PEER_MOUNT_ANNEX ? "Mount-Annex" : "Camera-Annex"))));
+			client->Close();
 		}
 	}
 }
 
-void GeneralControl::process_kv_client(kvbase base, const TcpCPtr client) {
+bool GeneralControl::resolve_kv_client(const TcpCPtr client) {
 	/*
 	 * 客户端接收到的信息, 分为两种处理方式:
 	 * 1. 本地处理
 	 * 2. 投递给观测系统
 	 */
+	kvbase base = kvProto_->ResolveClient(buftcp_.get());
+	if (!base.unique())
+		return false;
+
 	string type = base->type;
 	string gid  = base->gid;
 	string uid  = base->uid;
@@ -318,7 +317,7 @@ void GeneralControl::process_kv_client(kvbase base, const TcpCPtr client) {
 				tryto_implement_plan(plan);
 		}
 		else {
-			_gLog.Write(LOG_FAULT, "plan[%s] does't pass validity check", plan->plan_sn.c_str());
+			_gLog.Write(LOG_FAULT, "plan[%s] couldn't pass validity check", plan->plan_sn.c_str());
 		}
 	}
 	else if (iequals(type, KVTYPE_ABTPLAN)) {
@@ -345,7 +344,14 @@ void GeneralControl::process_kv_client(kvbase base, const TcpCPtr client) {
 	/////////////////////////////////////////////////////////////////////////
 	/*>!!!!!! 开关天窗 !!!!!!<*/
 	else if (iequals(type, KVTYPE_SLIT)) {
-		//...
+		const OBSSParam* param = param_.GetParamOBSS(gid);
+		if (param) {
+
+		}
+		else {
+			_gLog.Write(LOG_FAULT, "not found any setting for ObservationSsytem[%s:%s]",
+					gid.c_str());
+		}
 	}
 	/////////////////////////////////////////////////////////////////////////
 	/*>!!!!!! 投递到观测系统 !!!!!!<*/
@@ -357,9 +363,15 @@ void GeneralControl::process_kv_client(kvbase base, const TcpCPtr client) {
 				(*it)->NotifyKVProtocol(base);
 		}
 	}
+
+	return true;
 } // void GeneralControl::process_kv_client(kvbase proto, const TcpCPtr client)
 
-void GeneralControl::process_kv_mount(kvbase base, const TcpCPtr client) {
+bool GeneralControl::resolve_kv_mount(const TcpCPtr client) {
+	kvbase base = kvProto_->ResolveClient(buftcp_.get());
+	if (!base.unique())
+		return false;
+
 	// kv协议的转台连接耦合到观测系统
 	string gid = base->gid;
 	string uid = base->uid;
@@ -375,9 +387,15 @@ void GeneralControl::process_kv_mount(kvbase base, const TcpCPtr client) {
 			erase_tcpclient(tcpc_mount_, client);
 		}
 	}
+
+	return true;
 }
 
-void GeneralControl::process_kv_camera(kvbase base, const TcpCPtr client) {
+bool GeneralControl::resolve_kv_camera(const TcpCPtr client) {
+	kvbase base = kvProto_->ResolveClient(buftcp_.get());
+	if (!base.unique())
+		return false;
+
 	// kv协议的相机连接耦合到观测系统
 	string gid  = base->gid;
 	string uid  = base->uid;
@@ -394,14 +412,23 @@ void GeneralControl::process_kv_camera(kvbase base, const TcpCPtr client) {
 			erase_tcpclient(tcpc_camera_, client);
 		}
 	}
+	return true;
 }
 
-void GeneralControl::process_kv_mount_annex(kvbase base, const TcpCPtr client) {
+bool GeneralControl::resolve_kv_mount_annex(const TcpCPtr client) {
+	kvbase base = kvProto_->ResolveClient(buftcp_.get());
+	if (!base.unique())
+		return false;
 
+	return true;
 }
 
-void GeneralControl::process_kv_camera_annex(kvbase base, const TcpCPtr client) {
+bool GeneralControl::resolve_kv_camera_annex(const TcpCPtr client) {
+	kvbase base = kvProto_->ResolveClient(buftcp_.get());
+	if (!base.unique())
+		return false;
 
+	return true;
 }
 
 void GeneralControl::process_nonkv_mount(nonkvbase base, const TcpCPtr client){
@@ -508,7 +535,7 @@ ObsSysPtr GeneralControl::find_obss(const string& gid, const string& uid) {
 				gid.c_str(), uid.c_str());
 		obss = ObservationSystem::Create(gid, uid);
 		const OBSSParam* param = param_.GetParamOBSS(gid);
-		if (!param) {
+		if (param) {
 			const ObservationSystem::CBSlot& slot = boost::bind(&GeneralControl::acquire_new_plan, this, _1);
 			obss->RegisterAcquirePlan(slot);
 			obss->SetParameter(param);
@@ -517,7 +544,7 @@ ObsSysPtr GeneralControl::find_obss(const string& gid, const string& uid) {
 				obss_.push_back(obss);
 		}
 		else {
-			_gLog.Write(LOG_FAULT, "not found any setting for ObservationSsytem[%s:%s]",
+			_gLog.Write(LOG_FAULT, "not found any setting for ObservationSystem[%s:%s]",
 					gid.c_str(), uid.c_str());
 		}
 	}

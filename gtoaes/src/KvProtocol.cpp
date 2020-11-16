@@ -172,7 +172,6 @@ const char *KvProtocol::CompactRegister(kvreg proto, int &n) {
 
 	string output;
 	compact_base(to_kvbase(proto), output);
-
 	return output_compacted(output, n);
 }
 

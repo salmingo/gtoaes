@@ -23,6 +23,16 @@ struct OBSSParam {
 	double		altLimit;	///< 水平限位, 最低仰角, 量纲: 角度
 	bool		doNormalObs;///< 执行一般观测流程: 本底、暗场、平场
 
+	/*!
+	 * 网络连接与设备对象的对应关系, 分为两类:
+	 * - p2p, 索引0, 一条网络连接对应一个设备
+	 * - p2h, 索引1, 一条网络连接对应多个设备
+	 */
+	bool		p2hMount;	///< 与转台是否Peer-Hub关系
+	bool		p2hCamera;	///< 与相机是否Peer-Hub关系
+	bool		p2hMountAnnex;	///< 与转台附属设备是否Point-Hub关系
+	bool		p2hCameraAnnex;	///< 与相机附属设备是否Point-Hub关系
+
 	/* 天窗与随动圆顶 */
 	bool		useDomeFollow;	///< 使用: 随动圆顶
 	bool		useDomeSlit;	///< 使用: 天窗
@@ -45,37 +55,6 @@ struct OBSSParam {
 	bool		useCloudCamera;	///< 使用: 云量
 	int			maxWindSpeed;	///< 最大风速: 可观测, 米/秒
 	int			maxCloudPerent;	///< 最大云量: 可观测, 百分比
-
-public:
-	OBSSParam & operator=(const OBSSParam &other) {
-		if (this != &other) {
-			gid			= other.gid;
-			siteName	= other.siteName;
-			siteLon		= other.siteLon;
-			siteLat		= other.siteLat;
-			siteAlt		= other.siteAlt;
-			timeZone	= other.timeZone;
-			altLimit	= other.altLimit;
-			doNormalObs = other.doNormalObs;
-			useDomeFollow	= other.useDomeFollow;
-			useDomeSlit		= other.useDomeSlit;
-			opDome			= other.opDome;
-			useMirrorCover	= other.useMirrorCover;
-			opMirrorCover	= other.opMirrorCover;
-			useHomeSync		= other.useHomeSync;
-			useGuide		= other.useGuide;
-			useAutoFocus	= other.useAutoFocus;
-			opAutoFocus		= other.opAutoFocus;
-			useTermDerot	= other.useTermDerot;
-			opTermDerot		= other.opTermDerot;
-			useRainfall		= other.useRainfall;
-			useWindSpeed	= other.useWindSpeed;
-			useCloudCamera	= other.useCloudCamera;
-			maxWindSpeed	= other.maxWindSpeed;
-			maxCloudPerent	= other.maxCloudPerent;
-		}
-		return *this;
-	}
 };
 typedef std::vector<OBSSParam> ObssPrmVec;
 
@@ -104,7 +83,7 @@ public:
 private:
 	string errmsg_;		///< 错误提示
 	/* 观测系统参数 */
-	ObssPrmVec prmOBSS_;///< 观测系统参数集合
+	ObssPrmVec prmOBSS_;	///< 观测系统参数集合
 
 public:
 	/*!

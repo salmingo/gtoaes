@@ -46,6 +46,12 @@ void Parameter::Init(const string &filepath) {
 	node4.add("Site.<xmlattr>.TZ",	8);
 	node4.add("AltLimit", 20);
 	node4.add("NormalFlow.<xmlattr>.Use",			false);
+
+	node4.add("P2H.<xmlattr>.Mount",       false);
+	node4.add("P2H.<xmlattr>.Camera",      false);
+	node4.add("P2H.<xmlattr>.MountAnnex",  false);
+	node4.add("P2H.<xmlattr>.CameraAnnex", false);
+
 	node4.add("Dome.<xmlattr>.FollowMount",			false);
 	node4.add("Dome.<xmlattr>.Slit",				false);
 	node4.add("Dome.<xmlattr>.Operator",			"mount-annex");
@@ -105,20 +111,25 @@ const char* Parameter::Load(const string &filepath) {
 				prm.altLimit	= child.second.get("AltLimit",					20.0);
 				prm.doNormalObs	= child.second.get("NormalFlow.<xmlattr>.Use",	false);
 
-				prm.useDomeFollow	= child.second.get("Dome.<xmlattr>.FollowMount",	false);
-				prm.useDomeSlit		= child.second.get("Dome.<xmlattr>.Slit",			false);
+				prm.p2hMount       = child.second.get("P2H.<xmlattr>.Mount",       false);
+				prm.p2hCamera      = child.second.get("P2H.<xmlattr>.Camera",      false);
+				prm.p2hMountAnnex  = child.second.get("P2H.<xmlattr>.MountAnnex",  false);
+				prm.p2hCameraAnnex = child.second.get("P2H.<xmlattr>.CameraAnnex", false);
+
+				prm.useDomeFollow	= child.second.get("Dome.<xmlattr>.FollowMount",  false);
+				prm.useDomeSlit		= child.second.get("Dome.<xmlattr>.Slit",         false);
 				prm.opDome			= ObservationOperator::FromString(child.second.get("Dome.<xmlattr>.Operator", "mount").c_str());
 
-				prm.useMirrorCover	= child.second.get("MirrorCover.<xmlattr>.Use",		false);
+				prm.useMirrorCover	= child.second.get("MirrorCover.<xmlattr>.Use", false);
 				prm.opMirrorCover	= ObservationOperator::FromString(child.second.get("MirrorCover.<xmlattr>.Operator","mount-annex").c_str());
 
-				prm.useHomeSync		= child.second.get("Mount.<xmlattr>.HomeSync",	false);
-				prm.useGuide		= child.second.get("Mount.<xmlattr>.Guide",		false);
+				prm.useHomeSync		= child.second.get("Mount.<xmlattr>.HomeSync", false);
+				prm.useGuide		= child.second.get("Mount.<xmlattr>.Guide",    false);
 
-				prm.useAutoFocus	= child.second.get("AutoFocus.<xmlattr>.Use",	false);
+				prm.useAutoFocus	= child.second.get("AutoFocus.<xmlattr>.Use",  false);
 				prm.opAutoFocus		= ObservationOperator::FromString(child.second.get("AutoFocus.<xmlattr>.Operator", "mount-annex").c_str());
 
-				prm.useTermDerot	= child.second.get("TermDerotator.<xmlattr>.Use",	false);
+				prm.useTermDerot	= child.second.get("TermDerotator.<xmlattr>.Use", false);
 				prm.opTermDerot		= ObservationOperator::FromString(child.second.get("TermDerotator.<xmlattr>.Operator", "camera").c_str());
 
 				const ptree& node_env = child.second.get_child("Environment");

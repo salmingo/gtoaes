@@ -118,11 +118,11 @@ void ObservationSystem::CoupleClient(const TcpCPtr client) {
 
 }
 
-bool ObservationSystem::CoupleMount(const TcpCPtr client, int type) {
+bool ObservationSystem::CoupleMount(const TcpCPtr client, bool p2h) {
 	if (!tcpc_mount_.client.use_count()) {
 		_gLog.Write("Mount[%s:%s] was on-line", gid_.c_str(), uid_.c_str());
 		tcpc_mount_.client = client;
-		tcpc_mount_.type   = type;
+//		tcpc_mount_.type   = type;
 	}
 	else if (tcpc_mount_() != client) {
 		_gLog.Write(LOG_FAULT, "OBSS[%s:%s] had related mount. Connection will be closed",
@@ -133,15 +133,15 @@ bool ObservationSystem::CoupleMount(const TcpCPtr client, int type) {
 	return true;
 }
 
-bool ObservationSystem::CoupleCamera(const TcpCPtr client, const string& cid) {
+bool ObservationSystem::CoupleCamera(const TcpCPtr client, const string& cid, bool p2h) {
 	return false;
 }
 
-void ObservationSystem::CoupleMountAnnex(const TcpCPtr client) {
+void ObservationSystem::CoupleMountAnnex(const TcpCPtr client, bool p2h) {
 
 }
 
-void ObservationSystem::CoupleCameraAnnex(const TcpCPtr client) {
+void ObservationSystem::CoupleCameraAnnex(const TcpCPtr client, bool p2h) {
 
 }
 
@@ -150,6 +150,10 @@ void ObservationSystem::DecoupleClient(const TcpCPtr client) {
 }
 
 void ObservationSystem::DecoupleMount(const TcpCPtr client) {
+
+}
+
+void ObservationSystem::DecoupleCamera(const TcpCPtr client) {
 
 }
 
