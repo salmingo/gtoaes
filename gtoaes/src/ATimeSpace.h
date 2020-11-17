@@ -677,20 +677,22 @@ public:
 public:
 	/*!
 	 * @brief 赤道坐标转换为地平坐标
-	 * @param ha  时角, 量纲: 弧度
-	 * @param dec 赤纬, 量纲: 弧度
-	 * @param azi 方位角, 量纲: 弧度. 南零点
-	 * @param alt 高度角, 量纲: 弧度
+	 * @param ha        时角, 量纲: 弧度
+	 * @param dec       赤纬, 量纲: 弧度
+	 * @param azi       方位角, 量纲: 弧度. 南零点
+	 * @param alt       高度角, 量纲: 弧度
+	 * @param southZero 南零点
 	 */
-	void Eq2Horizon(double ha, double dec, double& azi, double& alt);
+	void Eq2Horizon(double ha, double dec, double& azi, double& alt, bool southZero = true);
 	/*!
 	 * @brief 地平坐标转换为赤道坐标
-	 * @param azi 方位角, 量纲: 弧度. 南零点
-	 * @param alt 高度角, 量纲: 弧度
-	 * @param ha  时角, 量纲: 弧度
-	 * @param dec 赤纬, 量纲: 弧度
+	 * @param azi       方位角, 量纲: 弧度. 南零点
+	 * @param alt       高度角, 量纲: 弧度
+	 * @param ha        时角, 量纲: 弧度
+	 * @param dec       赤纬, 量纲: 弧度
+	 * @param southZero 南零点
 	 */
-	void Horizon2Eq(double azi, double alt, double& ha, double& dec);
+	void Horizon2Eq(double azi, double alt, double& ha, double& dec, bool southZero = true);
 	/*!
 	 * @brief 赤道坐标系转换为黄道坐标系
 	 * @param ra  赤经, 量纲: 弧度

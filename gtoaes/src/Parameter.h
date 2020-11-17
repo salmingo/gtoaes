@@ -21,6 +21,14 @@ struct OBSSParam {
 	double		siteAlt;	///< 海拔高度, 量纲: 米
 	int			timeZone;	///< 时区, 量纲: 小时
 	double		altLimit;	///< 水平限位, 最低仰角, 量纲: 角度
+
+	/*!
+	 * (altDay, altNight)之间是平场时间
+	 */
+	double		altDay;		///< 白天: 太阳中心高度大于该值, 量纲: 角度
+	double		altNight;	///< 夜间: 太阳中心高度小于该值, 量纲: 角度
+
+	/* 是否自动执行标准测光流程的准备工作 */
 	bool		autoBias;	///< 标准流程: 本底
 	bool		autoDark;	///< 标准流程: 暗场
 	bool		autoFlat;	///< 标准流程：平场. 若系统有滤光片, 则遍历所有
@@ -47,6 +55,7 @@ struct OBSSParam {
 	/* 转台 */
 	bool		useHomeSync;	///< 使用: 同步零点
 	bool		useGuide;		///< 使用: 导星
+	double      tArrive;		///< 指向公差, 角分
 	/* 调焦 */
 	bool		useAutoFocus;	///< 使用: 自动调焦
 	int			opAutoFocus;	///< 执行对象: 相机; 相机附属

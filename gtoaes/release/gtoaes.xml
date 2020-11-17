@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <version>v1.0 @ July, 2020</version>
-<date>20201117T012211</date>
+<date>20201117T152125</date>
 <Server>
     <Client Port="4010"/>
     <Mount Port="4011"/>
@@ -15,6 +15,10 @@
     <GroupID>001</GroupID>
     <Site Name="Xinglong" Lon="117.57454166666668" Lat="40.395933333333332" Alt="900" TZ="8"/>
     <AltLimit>20</AltLimit>
+    <SunCenterAlt>
+        <Daylight Min="-6"/>
+        <Night Max="-12"/>
+    </SunCenterAlt>
     <NormalFlow>
         <Bias Use="true"/>
         <Dark Use="true"/>
@@ -25,6 +29,7 @@
     <Dome FollowMount="false" Slit="false" Operator="mount-annex"/>
     <MirrorCover Use="false" Operator="mount-annex"/>
     <Mount HomeSync="false" Guide="false"/>
+    <Slewto Tolerance="0.5"/>
     <AutoFocus Use="false" Operator="mount-annex"/>
     <Environment>
         <Rainfall Use="false"/>

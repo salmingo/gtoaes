@@ -911,15 +911,17 @@ const char* ATimeSpace::DecDbl2Str(double dec, char str[]) {
 	return &str[0];
 }
 
-void ATimeSpace::Eq2Horizon(double ha, double dec, double& azi, double& alt) {
+void ATimeSpace::Eq2Horizon(double ha, double dec, double& azi, double& alt, bool southZero) {
 	double slat, clat, cha;
 	azi = atan2(sin(ha), (cha = cos(ha)) * (slat = sin(lat_)) - tan(dec) * (clat = cos(lat_)));
 	alt = asin(slat * sin(dec) + clat * cos(dec) * cha);
+	if (!southZero) azi += API;
 	if (azi < 0) azi += A2PI;
 }
 
-void ATimeSpace::Horizon2Eq(double azi, double alt, double& ha, double& dec) {
+void ATimeSpace::Horizon2Eq(double azi, double alt, double& ha, double& dec, bool southZero) {
 	double slat, clat, caz;
+	if (!southZero) azi += API;
 	ha  = atan2(sin(azi), (caz = cos(azi)) * (slat = sin(lat_)) + tan(alt) * (clat = cos(lat_)));
 	dec = asin(slat * sin(alt) - clat * cos(alt) * caz);
 	if (ha < 0) ha += A2PI;

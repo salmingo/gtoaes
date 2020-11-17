@@ -36,10 +36,8 @@ public:
 //< 数据类型
 protected:
 	//////////////////////////////////////////////////////////////////////////////
-	typedef std::vector<TcpCPtr> TcpCVec; //< 网络连接存储区
 	using MtxLck = boost::unique_lock<boost::mutex>;	//< 信号灯互斥锁
 	using ThreadPtr = boost::shared_ptr<boost::thread>;	//< boost线程指针
-	using ObsSysVec = std::vector<ObsSysPtr>;
 
 	enum {// 对应主机类型
 		PEER_CLIENT,			//< 客户端
@@ -49,6 +47,36 @@ protected:
 		PEER_CAMERA_ANNEX,		//< 温控+真空(GWAC-GY)
 		PEER_LAST		//< 占位, 不使用
 	};
+	//////////////////////////////////////////////////////////////////////////////
+
+/* 成员变量 */
+protected:
+	//////////////////////////////////////////////////////////////////////////////
+	Parameter param_;
+	NTPPtr ntp_;
+
+	/* 网络资源 */
+	TcpSPtr	tcpS_client_;		///< 网络服务: 客户端
+	TcpSPtr tcpS_mount_;		///< 网络服务: 转台
+	TcpSPtr tcpS_camera_;		///< 网络服务: 相机
+	TcpSPtr tcpS_mountAnnex_;	///< 网络服务: 转台附属
+	TcpSPtr tcpS_cameraAnnex_;	///< 网络服务: 相机附属
+
+	UdpPtr  udpS_env_;			///< 网络服务: 气象环境, UDP
+
+	using TcpCVec = std::vector<TcpCPtr> ; ///< 网络连接存储区
+	TcpCVec tcpC_client_;		///< 网络连接: 客户端
+	TcpCVec tcpC_mount_;		///< 网络连接: 转台
+	TcpCVec tcpC_camera_;		///< 网络连接: 相机
+	TcpCVec tcpC_mountAnnex_;	///< 网络连接: 转台附属设备
+	TcpCVec tcpC_cameraAnnex_;	///< 网络连接: 相机附属设备
+
+	boost::mutex mtx_tcpC_client_;		///< 互斥锁: 客户端
+	boost::mutex mtx_tcpC_mount_;		///< 互斥锁: GWAC望远镜
+	boost::mutex mtx_tcpC_camera_;		///< 互斥锁: 相机
+	boost::mutex mtx_tcpC_mountAnnex_;	///< 互斥锁: 转台附属
+	boost::mutex mtx_tcpC_cameraAnnex_;	///< 互斥锁: 相机附属
+	ThreadPtr thrd_tcpClean_;	///< 线程: 释放已关闭的网络连接
 
 	/*!
 	 * @struct TcpReceived
@@ -73,6 +101,26 @@ protected:
 	using TcpRcvPtr = TcpReceived::Pointer;
 	using TcpRcvQue = std::deque<TcpRcvPtr>;
 
+	TcpRcvQue que_tcpRcv_;		///< 网络事件队列
+	boost::mutex mtx_tcpRcv_;	///< 互斥锁: 网络事件
+	boost::condition_variable cv_tcpRcv_;	///< 条件触发: 网络事件
+	ThreadPtr thrd_tcpRcv_;		///< 线程: 处理网络接收信息
+
+	boost::shared_array<char> bufTcp_;	///< 网络信息存储区: 消息队列中调用
+	boost::shared_array<char> bufUdp_;	///< 网络信息存储区: 消息队列中调用
+	KvProtoPtr kvProto_;		///< 键值对格式协议访问接口
+	NonkvProtoPtr nonkvProto_;	///< 非键值对格式协议访问接口
+
+	/* 观测计划 */
+	ObsPlanPtr obsPlans_;		///< 观测计划集合
+	boost::mutex mtx_obsPlans_;	///< 互斥锁: 观测计划集合
+
+	/* 观测系统 */
+	using OBSSVec = std::vector<ObsSysPtr>;	///< 观测系统集合
+	OBSSVec obss_;		///< 观测系统集合
+	boost::mutex mtx_obss_;	///< 互斥锁: 观测系统
+
+	/* 环境信息 */
 	/*!
 	 * @struct EnvInfo
 	 * @brief 环境信息
@@ -106,65 +154,38 @@ protected:
 	using NfEnvVec = std::vector<NfEnvPtr>;
 	using NfEnvQue = std::deque<NfEnvPtr>;
 
-	//////////////////////////////////////////////////////////////////////////////
-
-/* 成员变量 */
-protected:
-	//////////////////////////////////////////////////////////////////////////////
-	Parameter param_;
-	NTPPtr ntp_;
-
-	/* 网络资源 */
-	TcpSPtr	tcpS_client_;		///< 网络服务: 客户端
-	TcpSPtr tcpS_mount_;		///< 网络服务: 转台
-	TcpSPtr tcpS_camera_;		///< 网络服务: 相机
-	TcpSPtr tcpS_mountAnnex_;	///< 网络服务: 转台附属
-	TcpSPtr tcpS_cameraAnnex_;	///< 网络服务: 相机附属
-
-	UdpPtr  udpS_env_;			///< 网络服务: 气象环境, UDP
-
-	TcpCVec tcpC_client_;		///< 网络连接: 客户端
-	TcpCVec tcpC_mount_;		///< 网络连接: 转台
-	TcpCVec tcpC_camera_;		///< 网络连接: 相机
-	TcpCVec tcpC_mountAnnex_;	///< 网络连接: 转台附属设备
-	TcpCVec tcpC_cameraAnnex_;	///< 网络连接: 相机附属设备
-
-	boost::mutex mtx_tcpC_client_;		///< 互斥锁: 客户端
-	boost::mutex mtx_tcpC_mount_;		///< 互斥锁: GWAC望远镜
-	boost::mutex mtx_tcpC_camera_;		///< 互斥锁: 相机
-	boost::mutex mtx_tcpC_mountAnnex_;	///< 互斥锁: 转台附属
-	boost::mutex mtx_tcpC_cameraAnnex_;	///< 互斥锁: 相机附属
-
-	TcpRcvQue que_tcpRcv_;		///< 网络事件队列
-	boost::mutex mtx_tcpRcv_;	///< 互斥锁: 网络事件
-	boost::condition_variable cv_tcpRcv_;	///< 条件触发: 网络事件
-
-	boost::shared_array<char> bufTcp_;	///< 网络信息存储区: 消息队列中调用
-	boost::shared_array<char> bufUdp_;	///< 网络信息存储区: 消息队列中调用
-	KvProtoPtr kvProto_;		///< 键值对格式协议访问接口
-	NonkvProtoPtr nonkvProto_;	///< 非键值对格式协议访问接口
-
-	/* 观测计划 */
-	ObsPlanPtr obsPlans_;		///< 观测计划集合
-	boost::mutex mtx_obsPlans_;	///< 互斥锁: 观测计划集合
-
-	/* 观测系统 */
-	ObsSysVec obss_;		///< 观测系统集合
-	boost::mutex mtx_obss_;	///< 互斥锁: 观测系统
-
-	/* 环境信息 */
 	NfEnvVec nfEnv_;			///< 环境信息: 在线信息集合
 	NfEnvQue que_nfEnv_;		///< 环境信息队列: 信息改变
 	boost::mutex mtx_nfEnv_;	///< 互斥锁: 环境信息
 	boost::condition_variable cv_nfEnvChanged_;	///< 条件触发: 信息改变
+	ThreadPtr thrd_nfEnvChanged_;	///< 线程: 环境信息变化
 
 	/* 数据库 */
 	DBCurlPtr dbPtr_;	///< 数据库访问接口
 
-	/* 多线程 */
-	ThreadPtr thrd_tcpRcv_;		///< 线程: 处理网络接收信息
-	ThreadPtr thrd_tcpClean_;	///< 线程: 释放已关闭的网络连接
-	ThreadPtr thrd_nfEnvChanged_;	///< 线程: 环境信息变化
+	/* 观测时间类型 */
+	/*!
+	 * @brief 封装观测时间类型
+	 */
+	struct ODT {
+		const OBSSParam* param;	///< 系统参数
+		int odt;	///< 观测时间类型
+
+	public:
+		ODT(const OBSSParam* param) {
+			this->param = param;
+			odt = TypeObservationDuration::ODT_MIN;
+		}
+
+		bool IsMatched(const string& gid) {
+			return (param->gid == gid);
+		}
+	};
+	using ODTVec = std::vector<ODT>;
+
+	ODTVec odt_;	///< 观测时间类型集合
+	boost::mutex mtx_odt_;	///< 互斥锁: 观测时间类型
+	ThreadPtr thrd_odt_;		///< 线程: 计算观测系统所处的观测时间类型
 
 	//////////////////////////////////////////////////////////////////////////////
 
@@ -252,14 +273,12 @@ protected:
 	 * @fn resolve_kv_camera_annex
 	 * @brief  解析处理相机附属设备的键值对协议
 	 * @param client  网络连接
-	 * @return
-	 * 通信协议解析结果
 	 */
-	bool resolve_kv_client      (const TcpCPtr client);
-	bool resolve_kv_mount       (const TcpCPtr client);
-	bool resolve_kv_camera      (const TcpCPtr client);
-	bool resolve_kv_mount_annex (const TcpCPtr client);
-	bool resolve_kv_camera_annex(const TcpCPtr client);
+	void resolve_kv_client      (const TcpCPtr client);
+	void resolve_kv_mount       (const TcpCPtr client);
+	void resolve_kv_camera      (const TcpCPtr client);
+	void resolve_kv_mount_annex (const TcpCPtr client);
+	void resolve_kv_camera_annex(const TcpCPtr client);
 
 	/*!
 	 * @fn process_nonkv_mount
@@ -294,12 +313,12 @@ protected:
 	 * @brief 尝试立即执行计划
 	 * @param plan  观测计划
 	 */
-	void tryto_implement_plan(ObsPlanItemPtr plan);
+	void try_implement_plan(ObsPlanItemPtr plan);
 	/*!
 	 * @brief 尝试中止观测计划
 	 * @param plan_sn  计划编号
 	 */
-	void tryto_abort_plan(const string& plan_sn);
+	void try_abort_plan(const string& plan_sn);
 
 protected:
 	/*----------------- 观测系统 -----------------*/
@@ -312,12 +331,18 @@ protected:
 	 */
 	ObsSysPtr find_obss(const string& gid, const string& uid);
 	/*!
+	 * @brief 创建ODT对象
+	 * @param param  观测系统参数
+	 */
+	void create_odt(const OBSSParam* param);
+	/*!
 	 * @brief 天窗控制指令
 	 * @param gid    组标志
+	 * @param uid    单元标志
 	 * @param param  观测系统配置参数
 	 * @param cmd    控制指令
 	 */
-	void command_slit(const string& gid, const OBSSParam* param, int cmd);
+	void command_slit(const string& gid, const string& uid, const OBSSParam* param, int cmd);
 
 protected:
 	/*----------------- 环境信息 -----------------*/
@@ -351,6 +376,14 @@ protected:
 	 * @brief 处理变化的环境信息
 	 */
 	void thread_nfenv_changed();
+	/*!
+	 * @brief 计算观测时间类型
+	 * @note
+	 * - odt: Observation Duration Type
+	 * - 计算各组标志系统对应的odt
+	 * - odt执行不同类型的观测计划
+	 */
+	void thread_odt();
 };
 
 #endif /* SRC_GENERALCONTROL_H_ */

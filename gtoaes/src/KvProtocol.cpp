@@ -710,12 +710,12 @@ kvbase KvProtocol::ResolveClient(const char* rcvd) {
 	else if (iequals(type, KVTYPE_CHKPLAN))  proto = resolve_check_plan    (kvs);
 	else if (iequals(type, KVTYPE_DISABLE))  proto = resolve_disable       (kvs);
 	else if (iequals(type, KVTYPE_ENABLE))   proto = resolve_enable        (kvs);
-	else if (iequals(type, KVTYPE_PARK))     proto = resolve_park          (kvs);
-	else if (iequals(type, KVTYPE_REG))      proto = resolve_register      (kvs);
-	else if (iequals(type, KVTYPE_MCOVER))   proto = resolve_mcover        (kvs);
 	else if (iequals(type, KVTYPE_GUIDE))    proto = resolve_guide         (kvs);
 	else if (iequals(type, KVTYPE_HOMESYNC)) proto = resolve_homesync      (kvs);
 	else if (iequals(type, KVTYPE_IMPPLAN))  proto = resolve_implement_plan(kvs);
+	else if (iequals(type, KVTYPE_MCOVER))   proto = resolve_mcover        (kvs);
+	else if (iequals(type, KVTYPE_PARK))     proto = resolve_park          (kvs);
+	else if (iequals(type, KVTYPE_REG))      proto = resolve_register      (kvs);
 	else if (iequals(type, KVTYPE_TAKIMG))   proto = resolve_takeimg       (kvs);
 	else if (iequals(type, KVTYPE_UNREG))    proto = resolve_unregister    (kvs);
 
@@ -748,11 +748,13 @@ kvbase KvProtocol::ResolveMount(const char* rcvd) {
 		if      (iequals(type, KVTYPE_MOUNT))    proto = resolve_mount (kvs);
 		else if (iequals(type, KVTYPE_MCOVER))   proto = resolve_mcover(kvs);
 	}
-	else if (iequals(type, KVTYPE_ABTSLEW))  proto = resolve_abortslew(kvs);
-	else if (iequals(type, KVTYPE_DOME))     proto = resolve_dome     (kvs);
-	else if (iequals(type, KVTYPE_PARK))     proto = resolve_park     (kvs);
-	else if (iequals(type, KVTYPE_GUIDE))    proto = resolve_guide    (kvs);
-	else if (iequals(type, KVTYPE_HOMESYNC)) proto = resolve_homesync (kvs);
+	else if (iequals(type, KVTYPE_ABTSLEW))  proto = resolve_abortslew (kvs);
+	else if (iequals(type, KVTYPE_DOME))     proto = resolve_dome      (kvs);
+	else if (iequals(type, KVTYPE_GUIDE))    proto = resolve_guide     (kvs);
+	else if (iequals(type, KVTYPE_HOMESYNC)) proto = resolve_homesync  (kvs);
+	else if (iequals(type, KVTYPE_PARK))     proto = resolve_park      (kvs);
+	else if (iequals(type, KVTYPE_REG))      proto = resolve_register  (kvs);
+	else if (iequals(type, KVTYPE_UNREG))    proto = resolve_unregister(kvs);
 	/*---------------- 分项解析 ----------------*/
 	if (proto.unique()) *proto = basis;
 	return proto;
@@ -778,12 +780,14 @@ kvbase KvProtocol::ResolveCamera(const char* rcvd) {
 		if      (iequals(type, KVTYPE_OBJECT))   proto = resolve_object(kvs);
 		else if (iequals(type, KVTYPE_OBSITE))   proto = resolve_obsite(kvs);
 	}
-	else if (iequals(type, KVTYPE_ABTIMG))   proto = resolve_abortimg(kvs);
-	else if (iequals(type, KVTYPE_CAMERA))   proto = resolve_camera  (kvs);
-	else if (iequals(type, KVTYPE_EXPOSE))   proto = resolve_expose  (kvs);
-	else if (iequals(type, KVTYPE_SLEWTO))   proto = resolve_slewto  (kvs);
-	else if (iequals(type, KVTYPE_MCOVER))   proto = resolve_mcover  (kvs);
-	else if (iequals(type, KVTYPE_TAKIMG))   proto = resolve_takeimg (kvs);
+	else if (iequals(type, KVTYPE_ABTIMG))   proto = resolve_abortimg  (kvs);
+	else if (iequals(type, KVTYPE_CAMERA))   proto = resolve_camera    (kvs);
+	else if (iequals(type, KVTYPE_EXPOSE))   proto = resolve_expose    (kvs);
+	else if (iequals(type, KVTYPE_MCOVER))   proto = resolve_mcover    (kvs);
+	else if (iequals(type, KVTYPE_REG))      proto = resolve_register  (kvs);
+	else if (iequals(type, KVTYPE_SLEWTO))   proto = resolve_slewto    (kvs);
+	else if (iequals(type, KVTYPE_TAKIMG))   proto = resolve_takeimg   (kvs);
+	else if (iequals(type, KVTYPE_UNREG))    proto = resolve_unregister(kvs);
 	/*---------------- 分项解析 ----------------*/
 	if (proto.unique()) *proto = basis;
 	return proto;
@@ -885,7 +889,11 @@ void KvProtocol::resolve_plan(likv& kvs, ObsPlanItemPtr plan) {
 		keyword = (*it).keyword;
 		ch = keyword[0];
 
-		if (ch == 'e') {
+		if (ch == 'd') {
+			if      (iequals(keyword, "dec"))      plan->lat   = stod(it->value);
+			else if (iequals(keyword, "delay"))    plan->delay = stod(it->value);
+		}
+		else if (ch == 'e') {
 			if      (iequals(keyword, "epoch"))   plan->epoch  = stod(it->value);
 			else if (iequals(keyword, "expdur"))  plan->expdur = stoi(it->value);
 			else if (iequals(keyword, "etime"))   plan->SetTimeEnd(it->value);
@@ -909,7 +917,7 @@ void KvProtocol::resolve_plan(likv& kvs, ObsPlanItemPtr plan) {
 			else if (iequals(keyword, "line1"))   plan->line1 = it->value;
 			else if (iequals(keyword, "line2"))   plan->line2 = it->value;
 		}
-		else if ((ch = keyword[0]) == 'o') {
+		else if (ch == 'o') {
 			if      (iequals(keyword, "objname"))   plan->objname  = it->value;
 			else if (iequals(keyword, "observer"))  plan->observer = it->value;
 			else if (iequals(keyword, "obstype"))   plan->obstype  = it->value;
@@ -925,10 +933,12 @@ void KvProtocol::resolve_plan(likv& kvs, ObsPlanItemPtr plan) {
 			else if (iequals(keyword, "plan_type")) plan->plan_type = it->value;
 			else if (iequals(keyword, "pair_id"))   plan->pair_id   = stoi(it->value);
 		}
+		else if (ch == 'r') {
+			if      (iequals(keyword, "ra"))       plan->lon     = stod(it->value);
+			else if (iequals(keyword, "runname"))  plan->runname = it->value;
+		}
 		else if (iequals(keyword, "btime"))    plan->SetTimeBegin(it->value);
 		else if (iequals(keyword, "coorsys"))  plan->coorsys  = stoi(it->value);
-		else if (iequals(keyword, "delay"))    plan->delay    = stod(it->value);
-		else if (iequals(keyword, "runname"))  plan->runname  = it->value;
 		else if (iequals(keyword, "uid"))      plan->uid      = it->value;
 		else {
 			ObservationPlanItem::KVPair kv(it->keyword, it->value);
@@ -1001,7 +1011,7 @@ kvbase KvProtocol::resolve_homesync(likv &kvs) {
 		keyword = (*it).keyword;
 
 		if      (iequals(keyword, "ra"))     proto->ra    = stod(it->value);
-		else if (iequals(keyword, "dec"))    proto->dec    = stod(it->value);
+		else if (iequals(keyword, "dec"))    proto->dec   = stod(it->value);
 		else if (iequals(keyword, "epoch"))  proto->epoch = stod(it->value);
 	}
 	return to_kvbase(proto);
@@ -1014,12 +1024,12 @@ kvbase KvProtocol::resolve_slewto(likv &kvs) {
 	for (likv::iterator it = kvs.begin(); it != kvs.end(); ++it) {// 遍历键值对
 		keyword = (*it).keyword;
 
-		if      (iequals(keyword, "coorsys"))  proto->coorsys  = stoi(it->value);
-		else if (iequals(keyword, "lon"))      proto->lon      = stod(it->value);
-		else if (iequals(keyword, "lat"))      proto->lat      = stod(it->value);
-		else if (iequals(keyword, "epoch"))    proto->epoch    = stod(it->value);
-		else if (iequals(keyword, "line1"))    proto->line1    = it->value;
-		else if (iequals(keyword, "line2"))    proto->line2    = it->value;
+		if      (iequals(keyword, "coorsys"))  proto->coorsys = stoi(it->value);
+		else if (iequals(keyword, "lon"))      proto->lon     = stod(it->value);
+		else if (iequals(keyword, "lat"))      proto->lat     = stod(it->value);
+		else if (iequals(keyword, "epoch"))    proto->epoch   = stod(it->value);
+		else if (iequals(keyword, "line1"))    proto->line1   = it->value;
+		else if (iequals(keyword, "line2"))    proto->line2   = it->value;
 	}
 	return to_kvbase(proto);
 }

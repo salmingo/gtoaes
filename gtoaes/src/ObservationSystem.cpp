@@ -56,8 +56,7 @@ bool ObservationSystem::IsSafePoint(ObsPlanItemPtr plan, const ptime& now) {
 			|| plan->coorsys == TypeCoorSys::COORSYS_ALTAZ)) {// 位置
 		double lon = plan->lon * D2R;
 		double lat = plan->lat * D2R;
-		if (plan->coorsys == TypeCoorSys::COORSYS_ALTAZ)
-			safe = lat >= altLimit_;
+		if (plan->coorsys == TypeCoorSys::COORSYS_ALTAZ) safe = lat >= altLimit_;
 		else {
 			ptime::date_type today = now.date();
 			double lmst, azi, alt;
@@ -118,7 +117,7 @@ void ObservationSystem::CoupleClient(const TcpCPtr client) {
 
 }
 
-bool ObservationSystem::CoupleMount(const TcpCPtr client, bool p2h) {
+int ObservationSystem::CoupleMount(const TcpCPtr client) {
 	if (!tcpc_mount_.client.use_count()) {
 		_gLog.Write("Mount[%s:%s] was on-line", gid_.c_str(), uid_.c_str());
 		tcpc_mount_.client = client;
@@ -128,21 +127,21 @@ bool ObservationSystem::CoupleMount(const TcpCPtr client, bool p2h) {
 		_gLog.Write(LOG_FAULT, "OBSS[%s:%s] had related mount. Connection will be closed",
 				gid_.c_str(), uid_.c_str());
 		client->Close();
-		return false;
+		return 0;
 	}
-	return true;
+	return param_->p2hMount ? 2 : 1;
 }
 
-bool ObservationSystem::CoupleCamera(const TcpCPtr client, const string& cid, bool p2h) {
-	return false;
+int ObservationSystem::CoupleCamera(const TcpCPtr client, const string& cid) {
+	return param_->p2hCamera ? 2 : 1;
 }
 
-void ObservationSystem::CoupleMountAnnex(const TcpCPtr client, bool p2h) {
-
+int ObservationSystem::CoupleMountAnnex(const TcpCPtr client) {
+	return param_->p2hMountAnnex ? 2 : 1;
 }
 
-void ObservationSystem::CoupleCameraAnnex(const TcpCPtr client, bool p2h) {
-
+int ObservationSystem::CoupleCameraAnnex(const TcpCPtr client) {
+	return param_->p2hCameraAnnex ? 2 : 1;
 }
 
 void ObservationSystem::DecoupleClient(const TcpCPtr client) {

@@ -9,6 +9,7 @@
 #include "GLog.h"
 #include "GeneralControl.h"
 #include "ADefine.h"
+#include "ATimeSpace.h"
 
 using namespace boost;
 using namespace boost::posix_time;
@@ -35,18 +36,18 @@ bool GeneralControl::Start() {
 		ntp_ = NTPClient::Create(param_.ntpHost.c_str(), 123, param_.ntpDiffMax);
 		ntp_->EnableAutoSynch();
 	}
-	if (param_.dbEnable)
-		dbPtr_ = DatabaseCurl::Create(param_.dbUrl);
+	if (param_.dbEnable) dbPtr_ = DatabaseCurl::Create(param_.dbUrl);
 
 	return true;
 }
 
 void GeneralControl::Stop() {
+	interrupt_thread(thrd_odt_);
 	interrupt_thread(thrd_tcpRcv_);
 	interrupt_thread(thrd_tcpClean_);
 	interrupt_thread(thrd_nfEnvChanged_);
 
-	for (ObsSysVec::iterator it = obss_.begin(); it != obss_.end(); ++it)
+	for (OBSSVec::iterator it = obss_.begin(); it != obss_.end(); ++it)
 		(*it)->Stop();
 }
 
@@ -80,6 +81,7 @@ bool GeneralControl::create_all_server() {
 		udpS_env_->RegisterRead(slot);
 	}
 
+	thrd_odt_.reset(new boost::thread(boost::bind(&GeneralControl::thread_odt, this)));
 	thrd_tcpRcv_.reset(new boost::thread(boost::bind(&GeneralControl::thread_tcp_receive, this)));
 	thrd_tcpClean_.reset(new boost::thread(boost::bind(&GeneralControl::thread_clean_tcp, this)));
 	thrd_nfEnvChanged_.reset(new boost::thread(boost::bind(&GeneralControl::thread_nfenv_changed, this)));
@@ -162,6 +164,7 @@ void GeneralControl::receive_from_env(const UdpPtr client, const error_code& ec)
 				changed = true;
 			}
 		}
+
 		if (changed) {
 			MtxLck lck(mtx_nfEnv_);
 			que_nfEnv_.push_back(nfEnv);
@@ -171,18 +174,15 @@ void GeneralControl::receive_from_env(const UdpPtr client, const error_code& ec)
 }
 
 void GeneralControl::erase_coupled_tcp(TcpCVec& buff, const TcpCPtr client) {
-	TcpCVec::iterator it;
-	for (it = buff.begin(); it != buff.end() && (*it) != client; ++it);
-	if (it != buff.end())
-		buff.erase(it);
+	TcpCVec::iterator it, end = buff.end();
+	for (it = buff.begin(); it != end && (*it) != client; ++it);
+	if (it != end) buff.erase(it);
 }
 
 void GeneralControl::erase_closed_tcp(TcpCVec& buff) {
 	for (TcpCVec::iterator it = buff.begin(); it != buff.end(); ) {
-		if ((*it)->IsOpen())
-			++it;
-		else
-			it = buff.erase(it);
+		if ((*it)->IsOpen()) ++it;
+		else it = buff.erase(it);
 	}
 }
 
@@ -194,177 +194,188 @@ void GeneralControl::resolve_from_peer(const TcpCPtr client, int peer) {
 	int lenTerm = strlen(term);		// 结束符长度
 	int lenPre  = strlen(prefix);	// 引导符长度
 	int pos;
-	bool success(true);
 
 	while (client->IsOpen() && (pos = client->Lookup(term, lenTerm)) >= 0) {
 		client->Read(bufTcp_.get(), pos + lenTerm);
 		bufTcp_[pos] = 0;
 		if (strstr(bufTcp_.get(), prefix)) {// 非键值对协议
 			nonkvbase base = nonkvProto_->Resove(bufTcp_.get() + lenPre);
-			if ((success = base.unique())) {
+			if (base.unique()) {
 				if      (peer == PEER_MOUNT)       process_nonkv_mount      (base, client);
 				else if (peer == PEER_MOUNT_ANNEX) process_nonkv_mount_annex(base, client);
 			}
 		}
 		else {// 键值对协议
-			if      (peer == PEER_CLIENT)       success = resolve_kv_client      (client);
-			else if (peer == PEER_MOUNT)        success = resolve_kv_mount       (client);
-			else if (peer == PEER_CAMERA)       success = resolve_kv_camera      (client);
-			else if (peer == PEER_MOUNT_ANNEX)  success = resolve_kv_mount_annex (client);
-			else if (peer == PEER_CAMERA_ANNEX) success = resolve_kv_camera_annex(client);
-		}
-
-		if (!success) {
-			_gLog.Write(LOG_FAULT, "File[%s], Line[%s], Peer Type[%s]. protocol resolver failed",
-					__FILE__, __LINE__,
-					peer == PEER_CLIENT ? "Client" :
-						(peer == PEER_MOUNT ? "Mount" :
-							(peer == PEER_CAMERA ? "Camera" :
-								(peer == PEER_MOUNT_ANNEX ? "Mount-Annex" : "Camera-Annex"))));
-			client->Close();
+			if      (peer == PEER_CLIENT)       resolve_kv_client      (client);
+			else if (peer == PEER_MOUNT)        resolve_kv_mount       (client);
+			else if (peer == PEER_CAMERA)       resolve_kv_camera      (client);
+			else if (peer == PEER_MOUNT_ANNEX)  resolve_kv_mount_annex (client);
+			else if (peer == PEER_CAMERA_ANNEX) resolve_kv_camera_annex(client);
 		}
 	}
 }
 
-bool GeneralControl::resolve_kv_client(const TcpCPtr client) {
+void GeneralControl::resolve_kv_client(const TcpCPtr client) {
 	/*
 	 * 客户端接收到的信息, 分为两种处理方式:
 	 * 1. 本地处理
 	 * 2. 投递给观测系统
 	 */
 	kvbase base = kvProto_->ResolveClient(bufTcp_.get());
-	if (!base.unique())
-		return false;
-
-	string type = base->type;
-	string gid  = base->gid;
-	string uid  = base->uid;
-
-	if (iequals(type, KVTYPE_APPPLAN) || iequals(type, KVTYPE_IMPPLAN)) {
-		/*>!!!!!! 新的观测计划 !!!!!!<*/
-		ObsPlanItemPtr plan;
-		bool opNow = (type[0] == 'a' || type[0] == 'A') ? 0 : 1;
-		plan = opNow ? from_kvbase<kv_proto_implement_plan>(base)->plan
-				: from_kvbase<kv_proto_append_plan>(base)->plan;
-		if (plan->CompleteCheck()) {
-			obsPlans_->AddPlan(plan);	// 计划加入队列
-
-			if (opNow)
-				tryto_implement_plan(plan);
-		}
-		else {
-			_gLog.Write(LOG_FAULT, "plan[%s] couldn't pass validity check", plan->plan_sn.c_str());
-		}
+	if (!base.unique()) {
+		_gLog.Write(LOG_FAULT, "unknown protocol from client: %s", bufTcp_.get());
+		client->Close();
 	}
-	else if (iequals(type, KVTYPE_ABTPLAN)) {
-		/*>!!!!!! 中止观测计划 !!!!!!<*/
-		tryto_abort_plan(from_kvbase<kv_proto_abort_plan>(base)->plan_sn);
-	}
-	/////////////////////////////////////////////////////////////////////////
-	/*>!!!!!! 检查观测计划 !!!!!!<*/
-	else if (iequals(type, KVTYPE_CHKPLAN)) {// 查看观测计划状态
-		string plan_sn = from_kvbase<kv_proto_check_plan>(base)->plan_sn;
-		ObsPlanItemPtr plan = obsPlans_->Find(plan_sn);
-		kvplan proto_rsp = boost::make_shared<kv_proto_plan>();
-		const char* s;
-		int n;
-
-		proto_rsp->plan_sn = plan_sn;
-		if (plan.use_count())
-			proto_rsp->state = plan->state;
-		else
-			proto_rsp->state = StateObservationPlan::OBSPLAN_ERROR;
-		s = kvProto_->CompactPlan(proto_rsp, n);
-		client->Write(s, n);
-	} // if (iequals(type, KVTYPE_CHKPLAN))
-	/////////////////////////////////////////////////////////////////////////
-	/*>!!!!!! 开关天窗 !!!!!!<*/
-	else if (iequals(type, KVTYPE_SLIT)) {
-		const OBSSParam* param = param_.GetParamOBSS(gid);
-		if (param) {
-
-		}
-		else {
-			_gLog.Write(LOG_FAULT, "not found any setting for ObservationSsytem[%s:%s]",
-					gid.c_str());
-		}
-	}
-	/////////////////////////////////////////////////////////////////////////
-	/*>!!!!!! 投递到观测系统 !!!!!!<*/
 	else {
-		MtxLck lck(mtx_obss_);
-		int matched(0);
-		for (ObsSysVec::iterator it = obss_.begin(); it != obss_.end() && matched != 1; ++it) {
-			if ((matched = (*it)->IsMatched(gid, uid)))
-				(*it)->NotifyKVProtocol(base);
+		string type = base->type;
+		string gid  = base->gid;
+		string uid  = base->uid;
+
+		if (iequals(type, KVTYPE_APPPLAN) || iequals(type, KVTYPE_IMPPLAN)) {
+			/*>!!!!!! 新的观测计划 !!!!!!<*/
+			ObsPlanItemPtr plan;
+			bool opNow = (type[0] == 'a' || type[0] == 'A') ? 0 : 1;
+			plan = opNow ? from_kvbase<kv_proto_implement_plan>(base)->plan
+					: from_kvbase<kv_proto_append_plan>(base)->plan;
+			if (plan->CompleteCheck()) {
+				obsPlans_->AddPlan(plan);	// 计划加入队列
+				if (opNow) try_implement_plan(plan);
+			}
+			else {
+				_gLog.Write(LOG_FAULT, "plan[%s] couldn't pass validity check", plan->plan_sn.c_str());
+			}
+		}
+		else if (iequals(type, KVTYPE_ABTPLAN)) {
+			/*>!!!!!! 中止观测计划 !!!!!!<*/
+			try_abort_plan(from_kvbase<kv_proto_abort_plan>(base)->plan_sn);
+		}
+		/////////////////////////////////////////////////////////////////////////
+		/*>!!!!!! 检查观测计划 !!!!!!<*/
+		else if (iequals(type, KVTYPE_CHKPLAN)) {// 查看观测计划状态
+			string plan_sn = from_kvbase<kv_proto_check_plan>(base)->plan_sn;
+			ObsPlanItemPtr plan = obsPlans_->Find(plan_sn);
+			kvplan proto_rsp = boost::make_shared<kv_proto_plan>();
+			const char* s;
+			int n;
+
+			proto_rsp->plan_sn = plan_sn;
+			if (plan.use_count()) proto_rsp->state = plan->state;
+			else proto_rsp->state = StateObservationPlan::OBSPLAN_ERROR;
+			s = kvProto_->CompactPlan(proto_rsp, n);
+			client->Write(s, n);
+		} // if (iequals(type, KVTYPE_CHKPLAN))
+		/////////////////////////////////////////////////////////////////////////
+		/*>!!!!!! 开关天窗 !!!!!!<*/
+		else if (iequals(type, KVTYPE_SLIT)) {
+			const OBSSParam* param = param_.GetParamOBSS(gid);
+			if (param) {
+
+			}
+			else {
+				_gLog.Write(LOG_FAULT, "not found any setting for ObservationSsytem[%s:%s]",
+						gid.c_str());
+			}
+		}
+		/////////////////////////////////////////////////////////////////////////
+		/*>!!!!!! 投递到观测系统 !!!!!!<*/
+		else {
+			MtxLck lck(mtx_obss_);
+			int matched(0);
+			for (OBSSVec::iterator it = obss_.begin(); it != obss_.end() && matched != 1; ++it) {
+				if ((matched = (*it)->IsMatched(gid, uid))) (*it)->NotifyKVProtocol(base);
+			}
 		}
 	}
-
-	return true;
 } // void GeneralControl::process_kv_client(kvbase proto, const TcpCPtr client)
 
-bool GeneralControl::resolve_kv_mount(const TcpCPtr client) {
+void GeneralControl::resolve_kv_mount(const TcpCPtr client) {
 	kvbase base = kvProto_->ResolveClient(bufTcp_.get());
-	if (!base.unique())
-		return false;
-
-	// kv协议的转台连接耦合到观测系统
-	string gid = base->gid;
-	string uid = base->uid;
-	if (gid.empty() || uid.empty()) {
-		_gLog.Write(LOG_FAULT, "requires non-empty mount IDs[%s:%s]",
-				gid.c_str(), uid.c_str());
+	if (!base.unique()) {
+		_gLog.Write(LOG_FAULT, "unknown protocol from mount: %s", bufTcp_.get());
 		client->Close();
 	}
 	else {
-		ObsSysPtr obss = find_obss(gid, uid);
-		if (obss->CoupleMount(client, TypeNetworkDevice::NETDEV_KV)) {
-			MtxLck lck(mtx_tcpC_mount_);
-			erase_coupled_tcp(tcpC_mount_, client);
+		// kv协议的转台连接耦合到观测系统
+		string gid = base->gid;
+		string uid = base->uid;
+		if (gid.empty() || uid.empty()) {
+			_gLog.Write(LOG_FAULT, "requires non-empty mount IDs[%s:%s]",
+					gid.c_str(), uid.c_str());
+			client->Close();
+		}
+		else {
+			int mode;
+			ObsSysPtr obss = find_obss(gid, uid);
+			if ((mode = obss->CoupleMount(client))) {// P2P或P2H模式
+				obss->NotifyKVProtocol(base);
+				if (mode == 1) {// 释放由GeneralControl维持的资源
+					MtxLck lck(mtx_tcpC_mount_);
+					erase_coupled_tcp(tcpC_mount_, client);
+				}
+			}
+			else {
+				_gLog.Write(LOG_FAULT, "failed to couple mount with OBSS[%s:%s]", gid.c_str(), uid.c_str());
+				client->Close();
+			}
 		}
 	}
-
-	return true;
 }
 
-bool GeneralControl::resolve_kv_camera(const TcpCPtr client) {
-	kvbase base = kvProto_->ResolveClient(bufTcp_.get());
-	if (!base.unique())
-		return false;
-
-	// kv协议的相机连接耦合到观测系统
-	string gid  = base->gid;
-	string uid  = base->uid;
-	string cid  = base->cid;
-	if (gid.empty() || uid.empty() || cid.empty()) {
-		_gLog.Write(LOG_FAULT, "requires non-empty camera IDs[%s:%s:%s]",
-				gid.c_str(), uid.c_str(), cid.c_str());
+void GeneralControl::resolve_kv_camera(const TcpCPtr client) {
+	kvbase base = kvProto_->ResolveCamera(bufTcp_.get());
+	if (!base.unique()) {
+		_gLog.Write(LOG_FAULT, "unknown protocol from camera: %s", bufTcp_.get());
 		client->Close();
 	}
 	else {
-		ObsSysPtr obss = find_obss(gid, uid);
-		if (obss->CoupleCamera(client, cid)) {
-			MtxLck lck(mtx_tcpC_camera_);
-			erase_coupled_tcp(tcpC_camera_, client);
+		// kv协议的相机连接耦合到观测系统
+		string gid  = base->gid;
+		string uid  = base->uid;
+		string cid  = base->cid;
+		if (gid.empty() || uid.empty() || cid.empty()) {
+			_gLog.Write(LOG_FAULT, "requires non-empty camera IDs[%s:%s:%s]",
+					gid.c_str(), uid.c_str(), cid.c_str());
+			client->Close();
+		}
+		else {
+			int mode;
+			ObsSysPtr obss = find_obss(gid, uid);
+			if ((mode = obss->CoupleCamera(client, cid))) {// P2P或P2H模式
+				obss->NotifyKVProtocol(base);
+				if (mode == 1) {
+					MtxLck lck(mtx_tcpC_camera_);
+					erase_coupled_tcp(tcpC_camera_, client);
+				}
+			}
+			else {
+				_gLog.Write(LOG_FAULT, "failed to couple camera[%s] with OBSS[%s:%s]",
+						cid.c_str(), gid.c_str(), uid.c_str());
+				client->Close();
+			}
 		}
 	}
-	return true;
 }
 
-bool GeneralControl::resolve_kv_mount_annex(const TcpCPtr client) {
-	kvbase base = kvProto_->ResolveClient(bufTcp_.get());
-	if (!base.unique())
-		return false;
+void GeneralControl::resolve_kv_mount_annex(const TcpCPtr client) {
+	kvbase base = kvProto_->ResolveMount(bufTcp_.get());
+	if (!base.unique()) {
+		_gLog.Write(LOG_FAULT, "unknown protocol from mount-annex: %s", bufTcp_.get());
+		client->Close();
+	}
+	else {
 
-	return true;
+	}
 }
 
-bool GeneralControl::resolve_kv_camera_annex(const TcpCPtr client) {
-	kvbase base = kvProto_->ResolveClient(bufTcp_.get());
-	if (!base.unique())
-		return false;
+void GeneralControl::resolve_kv_camera_annex(const TcpCPtr client) {
+	kvbase base = kvProto_->ResolveCamera(bufTcp_.get());
+	if (!base.unique()) {
+		_gLog.Write(LOG_FAULT, "unknown protocol from camera-annex: %s", bufTcp_.get());
+		client->Close();
+	}
+	else {
 
-	return true;
+	}
 }
 
 void GeneralControl::process_nonkv_mount(nonkvbase base, const TcpCPtr client){
@@ -394,16 +405,16 @@ ObsPlanItemPtr GeneralControl::acquire_new_plan(const ObsSysPtr obss) {
 
 	obss->GetIDs(gid, uid);
 	if (obsPlans_->Find(gid, uid)) {
-		while (!found && obsPlans_->GetNext(plan))
+		while (!found && obsPlans_->GetNext(plan)) {
 			found = is_valid_plantime(plan, now) && obss->IsSafePoint(plan, now);
+		}
 
-		if (!found)
-			plan.reset();
+		if (!found) plan.reset();
 	}
 	return plan;
 }
 
-void GeneralControl::tryto_implement_plan(ObsPlanItemPtr plan) {
+void GeneralControl::try_implement_plan(ObsPlanItemPtr plan) {
 	// kv_proto_implement_plan指向的观测计划需要立即执行, 选择合适的观测系统.
 	MtxLck lck(mtx_obss_);
 	string gid = plan->gid;
@@ -420,7 +431,7 @@ void GeneralControl::tryto_implement_plan(ObsPlanItemPtr plan) {
 	 * - 坐标在安全范围内
 	 **/
 	if (is_valid_plantime(plan, now)) {
-		for (ObsSysVec::iterator it = obss_.begin(); it != obss_.end() && matched != 1 && prio_min > 0; ++it) {
+		for (OBSSVec::iterator it = obss_.begin(); it != obss_.end() && matched != 1 && prio_min > 0; ++it) {
 			if ((matched = (*it)->IsMatched(gid, uid))
 					&& (prio = (*it)->GetPriority()) < prio_plan
 					&& prio < prio_min
@@ -436,7 +447,7 @@ void GeneralControl::tryto_implement_plan(ObsPlanItemPtr plan) {
 		_gLog.Write(LOG_WARN, "plan[%s] will delay implementation", plan->plan_sn.c_str());
 }
 
-void GeneralControl::tryto_abort_plan(const string& plan_sn) {
+void GeneralControl::try_abort_plan(const string& plan_sn) {
 	// 尝试中止计划
 	ObsPlanItemPtr plan = obsPlans_->Find(plan_sn);
 
@@ -462,10 +473,9 @@ void GeneralControl::tryto_abort_plan(const string& plan_sn) {
 ObsSysPtr GeneralControl::find_obss(const string& gid, const string& uid) {
 	MtxLck lck(mtx_obss_);
 	ObsSysPtr obss;
-	ObsSysVec::iterator it;
-	for (it = obss_.begin(); it != obss_.end() && !(*it)->IsMatched(gid, uid); ++it);
-	if (it != obss_.end())
-		obss = *it;
+	OBSSVec::iterator it, end = obss_.end();
+	for (it = obss_.begin(); it != end && !(*it)->IsMatched(gid, uid); ++it);
+	if (it != end) obss = *it;
 	else {
 		/* 新建观测系统 */
 		_gLog.Write("try to create ObservationSystem[%s:%s]",
@@ -477,8 +487,9 @@ ObsSysPtr GeneralControl::find_obss(const string& gid, const string& uid) {
 			obss->RegisterAcquirePlan(slot);
 			obss->SetParameter(param);
 			obss->SetDBPtr(dbPtr_);
-			if (obss->Start())
-				obss_.push_back(obss);
+			if (obss->Start()) obss_.push_back(obss);
+
+			create_odt(param);	// 检查并创建新的ODT
 		}
 		else {
 			_gLog.Write(LOG_FAULT, "not found any setting for ObservationSystem[%s:%s]",
@@ -488,10 +499,22 @@ ObsSysPtr GeneralControl::find_obss(const string& gid, const string& uid) {
 	return obss;
 }
 
-void GeneralControl::command_slit(const string& gid, const OBSSParam* param, int cmd) {
+void GeneralControl::create_odt(const OBSSParam* param) {
+	MtxLck lck(mtx_odt_);
+	string gid = param->gid;
+	ODTVec::iterator it, end = odt_.end();
+	for (it = odt_.begin(); it != end && !(*it).IsMatched(gid); ++it);
+	if (it == end) {
+		ODT odt(param);
+		odt_.push_back(odt);
+	}
+}
+
+void GeneralControl::command_slit(const string& gid, const string& uid, const OBSSParam* param, int cmd) {
 	// 检查 天窗状态是否符合操作要求...
 
-	_gLog.Write("try to %s SLIT[%s]", CommandSlit::ToString(cmd), gid.c_str());
+	_gLog.Write("try to %s SLIT[%s:%s]", CommandSlit::ToString(cmd), gid.c_str(),
+			uid.empty() ? "all" : uid.c_str());
 
 	if (param->opDome == ObservationOperator::OPOBS_MOUNT) {// 执行对象: 转台
 		if (param->p2hMount) {// 找到操作对象
@@ -515,10 +538,9 @@ void GeneralControl::command_slit(const string& gid, const OBSSParam* param, int
 GeneralControl::NfEnvPtr GeneralControl::find_info_env(const string& gid) {
 	MtxLck lck(mtx_nfEnv_);
 	NfEnvPtr env;
-	NfEnvVec::iterator it;
-	for (it = nfEnv_.begin(); it != nfEnv_.end() && (*it)->gid != gid; ++it);
-	if (it != nfEnv_.end())
-		env = *it;
+	NfEnvVec::iterator it, end = nfEnv_.end();
+	for (it = nfEnv_.begin(); it != end && (*it)->gid != gid; ++it);
+	if (it != end) env = *it;
 	else {
 		/* 新建环境气象 */
 		_gLog.Write("creating Environment Information[%s]", gid.c_str());
@@ -622,8 +644,59 @@ void GeneralControl::thread_nfenv_changed() {
 				if (safe != nfEnv->safe) {
 					_gLog.Write("Environment[%s] shows %s", safe ? "safe" : "!!! DANGER !!!");
 					nfEnv->safe = safe;
-					if (!safe && param->useDomeSlit)
-						command_slit(gid, param, CommandSlit::SLITC_CLOSE);
+					if (!safe && param->useDomeSlit) command_slit(gid, "", param, CommandSlit::SLITC_CLOSE);
+				}
+			}
+		}
+	}
+}
+
+void GeneralControl::thread_odt() {
+	boost::chrono::minutes period(2);
+	ATimeSpace ats;
+	const OBSSParam* param;
+	ptime now;
+	ptime::date_type today;
+	double fd, mjd, lmst;
+	double ra, dec;		// 太阳赤道坐标
+	double azi, alt;	// 太阳地平坐标
+	int odt;
+
+	while (1) {
+		boost::this_thread::sleep_for(period);
+
+		/* 更新各系统的观测时间类型标志 */
+		MtxLck lck(mtx_odt_);
+		now = second_clock::universal_time();
+		today = now.date();
+		fd = now.time_of_day().total_seconds() / DAYSEC;
+		ats.SetUTC(today.year(), today.month(), today.day(), fd);
+		mjd = ats.ModifiedJulianDay();
+		ats.SunPosition(ra, dec);
+
+		for (ODTVec::iterator it = odt_.begin(); it != odt_.end(); ++it) {
+			param = it->param;
+			ats.SetSite(param->siteLon, param->siteLat, param->siteAlt, param->timeZone);
+			lmst = ats.LocalMeanSiderealTime(mjd, param->siteLon * D2R);
+			ats.Eq2Horizon(lmst - ra, dec, azi, alt);
+			alt *= R2D;
+			//...检验极昼极夜的判决是否正确
+			if (alt > param->altDay)        odt = TypeObservationDuration::ODT_DAYTIME;
+			else if (alt < param->altNight) odt = TypeObservationDuration::ODT_NIGHT;
+			else                            odt = TypeObservationDuration::ODT_FLAT;
+
+			if (odt != it->odt) {
+				_gLog.Write("OBSS[%s:all] enter %s duration", param->gid.c_str(),
+						TypeObservationDuration::ToString(odt));
+				it->odt = odt;
+				if (param->useDomeSlit) {
+					if (odt == TypeObservationDuration::ODT_DAYTIME) // 白天: 关闭天窗
+						command_slit(param->gid, "", param, CommandSlit::SLITC_CLOSE);
+					else {// 当气象条件满足时, 打开天窗
+						NfEnvPtr nfEnv = find_info_env(param->gid);
+						if (nfEnv.use_count() && nfEnv->safe)
+							command_slit(param->gid, "", param, CommandSlit::SLITC_OPEN);
+					}
 				}
 			}
 		}

@@ -211,28 +211,40 @@ public:
 	/*!
 	 * @brief 关联观测系统与转台
 	 * @param client  网络连接
-	 * @param p2h     Peer2Hub类型
+	 * @return
+	 * 0: 失败
+	 * 1: 成功; 连接类型是P2P
+	 * 2: 成功: 连接类型是P2H
 	 */
-	bool CoupleMount(const TcpCPtr client, bool p2h = false);
+	int CoupleMount(const TcpCPtr client);
 	/*!
 	 * @brief 关联观测系统与相机
 	 * @param client  网络连接
 	 * @param cid     相机标志
-	 * @param p2h     Peer2Hub类型
+	 * @return
+	 * 0: 失败
+	 * 1: 成功; 连接类型是P2P
+	 * 2: 成功: 连接类型是P2H
 	 */
-	bool CoupleCamera(const TcpCPtr client, const string& cid, bool p2h = false);
+	int CoupleCamera(const TcpCPtr client, const string& cid);
 	/*!
 	 * @brief 关联观测系统与转台附属设备
 	 * @param client  网络连接
-	 * @param p2h     Peer2Hub类型
+	 * @return
+	 * 0: 失败
+	 * 1: 成功; 连接类型是P2P
+	 * 2: 成功: 连接类型是P2H
 	 */
-	void CoupleMountAnnex(const TcpCPtr client, bool p2h = false);
+	int CoupleMountAnnex(const TcpCPtr client);
 	/*!
 	 * @brief 关联观测系统与相机附属设备
 	 * @param client  网络连接
-	 * @param p2h     Peer2Hub类型
+	 * @return
+	 * 0: 失败
+	 * 1: 成功; 连接类型是P2P
+	 * 2: 成功: 连接类型是P2H
 	 */
-	void CoupleCameraAnnex(const TcpCPtr client, bool p2h = false);
+	int CoupleCameraAnnex(const TcpCPtr client);
 	/*!
 	 * @brief 解除观测系统与客户端的关联
 	 * @param client  网络连接
