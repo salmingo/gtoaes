@@ -51,29 +51,27 @@ protected:
 	};
 
 	/*!
-	 * @struct network_event
+	 * @struct TcpReceived
 	 * @brief 网络事件
 	 */
-	struct NetworkEvent {
-		using Pointer = boost::shared_ptr<NetworkEvent>;
+	struct TcpReceived {
+		using Pointer = boost::shared_ptr<TcpReceived>;
 
 		TcpCPtr client;	///< 网络连接
 		int peer;	///< 主机类型
-		int type;	///< 事件类型. 0: 接收信息; 其它: 关闭
 
 	public:
-		NetworkEvent(TcpCPtr _client, int _peer, int _type) {
+		TcpReceived(TcpCPtr _client, int _peer) {
 			client = _client;
 			peer   = _peer;
-			type   = _type;
 		}
 
-		static Pointer Create(TcpCPtr _client, int _peer, int _type) {
-			return Pointer(new NetworkEvent(_client, _peer, _type));
+		static Pointer Create(TcpCPtr _client, int _peer) {
+			return Pointer(new TcpReceived(_client, _peer));
 		}
 	};
-	using NetEvPtr = NetworkEvent::Pointer;
-	using NetEvQue = std::deque<NetEvPtr>;
+	using TcpRcvPtr = TcpReceived::Pointer;
+	using TcpRcvQue = std::deque<TcpRcvPtr>;
 
 	/*!
 	 * @struct EnvInfo
@@ -83,18 +81,30 @@ protected:
 		using Pointer = boost::shared_ptr<EnvInfo>;
 
 		string gid;	///< 组标志
+		bool safe;	///< 安全判定: 气象条件
 		int rain;	///< 雨量标志
 		int orient;	///< 风向
 		int speed;	///< 风速
 		int cloud;	///< 云量
+		const OBSSParam* param;	///< 观测系统参数
 
 	public:
-		static Pointer Create() {
-			return Pointer(new EnvInfo);
+		EnvInfo(const string& gid) {
+			this->gid = gid;
+			safe = false;
+			rain = -1;
+			orient = speed = -1;
+			cloud = -1;
+			param = NULL;
+		}
+
+		static Pointer Create(const string& gid) {
+			return Pointer(new EnvInfo(gid));
 		}
 	};
 	using NfEnvPtr = EnvInfo::Pointer;
 	using NfEnvVec = std::vector<NfEnvPtr>;
+	using NfEnvQue = std::deque<NfEnvPtr>;
 
 	//////////////////////////////////////////////////////////////////////////////
 
@@ -105,32 +115,32 @@ protected:
 	NTPPtr ntp_;
 
 	/* 网络资源 */
-	TcpSPtr	tcps_client_;		///< 网络服务: 客户端
-	TcpSPtr tcps_mount_;		///< 网络服务: 转台
-	TcpSPtr tcps_camera_;		///< 网络服务: 相机
-	TcpSPtr tcps_mount_annex_;	///< 网络服务: 转台附属
-	TcpSPtr tcps_camera_annex_;	///< 网络服务: 相机附属
+	TcpSPtr	tcpS_client_;		///< 网络服务: 客户端
+	TcpSPtr tcpS_mount_;		///< 网络服务: 转台
+	TcpSPtr tcpS_camera_;		///< 网络服务: 相机
+	TcpSPtr tcpS_mountAnnex_;	///< 网络服务: 转台附属
+	TcpSPtr tcpS_cameraAnnex_;	///< 网络服务: 相机附属
 
-	UdpPtr  udps_env_;			///< 网络服务: 气象环境, UDP
+	UdpPtr  udpS_env_;			///< 网络服务: 气象环境, UDP
 
-	TcpCVec tcpc_client_;			///< 网络连接: 客户端
-	TcpCVec tcpc_mount_;			///< 网络连接: 转台
-	TcpCVec tcpc_camera_;			///< 网络连接: 相机
-	TcpCVec tcpc_mount_annex_;		///< 网络连接: 转台附属设备
-	TcpCVec tcpc_camera_annex_;	///< 网络连接: 相机附属设备
+	TcpCVec tcpC_client_;		///< 网络连接: 客户端
+	TcpCVec tcpC_mount_;		///< 网络连接: 转台
+	TcpCVec tcpC_camera_;		///< 网络连接: 相机
+	TcpCVec tcpC_mountAnnex_;	///< 网络连接: 转台附属设备
+	TcpCVec tcpC_cameraAnnex_;	///< 网络连接: 相机附属设备
 
-	boost::mutex mtx_tcpc_client_;			///< 互斥锁: 客户端
-	boost::mutex mtx_tcpc_mount_;			///< 互斥锁: GWAC望远镜
-	boost::mutex mtx_tcpc_camera_;			///< 互斥锁: 相机
-	boost::mutex mtx_tcpc_mount_annex_;		///< 互斥锁: 转台附属
-	boost::mutex mtx_tcpc_camera_annex_;	///< 互斥锁: 相机附属
+	boost::mutex mtx_tcpC_client_;		///< 互斥锁: 客户端
+	boost::mutex mtx_tcpC_mount_;		///< 互斥锁: GWAC望远镜
+	boost::mutex mtx_tcpC_camera_;		///< 互斥锁: 相机
+	boost::mutex mtx_tcpC_mountAnnex_;	///< 互斥锁: 转台附属
+	boost::mutex mtx_tcpC_cameraAnnex_;	///< 互斥锁: 相机附属
 
-	NetEvQue queNetEv_;			///< 网络事件队列
-	boost::mutex mtx_netev_;	///< 互斥锁: 网络事件
-	boost::condition_variable cv_netev_;	///< 条件触发: 网络事件
+	TcpRcvQue que_tcpRcv_;		///< 网络事件队列
+	boost::mutex mtx_tcpRcv_;	///< 互斥锁: 网络事件
+	boost::condition_variable cv_tcpRcv_;	///< 条件触发: 网络事件
 
-	boost::shared_array<char> buftcp_;	///< 网络信息存储区: 消息队列中调用
-	boost::shared_array<char> bufudp_;	///< 网络信息存储区: 消息队列中调用
+	boost::shared_array<char> bufTcp_;	///< 网络信息存储区: 消息队列中调用
+	boost::shared_array<char> bufUdp_;	///< 网络信息存储区: 消息队列中调用
 	KvProtoPtr kvProto_;		///< 键值对格式协议访问接口
 	NonkvProtoPtr nonkvProto_;	///< 非键值对格式协议访问接口
 
@@ -143,13 +153,18 @@ protected:
 	boost::mutex mtx_obss_;	///< 互斥锁: 观测系统
 
 	/* 环境信息 */
-	NfEnvVec nfEnv_;	///< 环境
+	NfEnvVec nfEnv_;			///< 环境信息: 在线信息集合
+	NfEnvQue que_nfEnv_;		///< 环境信息队列: 信息改变
+	boost::mutex mtx_nfEnv_;	///< 互斥锁: 环境信息
+	boost::condition_variable cv_nfEnvChanged_;	///< 条件触发: 信息改变
 
 	/* 数据库 */
 	DBCurlPtr dbPtr_;	///< 数据库访问接口
 
 	/* 多线程 */
-	ThreadPtr thrd_netevent_;
+	ThreadPtr thrd_tcpRcv_;		///< 线程: 处理网络接收信息
+	ThreadPtr thrd_tcpClean_;	///< 线程: 释放已关闭的网络连接
+	ThreadPtr thrd_nfEnvChanged_;	///< 线程: 环境信息变化
 
 	//////////////////////////////////////////////////////////////////////////////
 
@@ -195,95 +210,26 @@ protected:
 	 * @brief 处理客户端信息
 	 * @param client 网络资源
 	 * @param ec     错误代码. 0: 正确
+	 * @param peer   远程主机类型
 	 */
-	void receive_client(const TcpCPtr client, const error_code& ec);
-	/*!
-	 * @brief 处理转台信息
-	 * @param client 网络资源
-	 * @param ec     错误代码. 0: 正确
-	 */
-	void receive_mount(const TcpCPtr client, const error_code& ec);
-	/*!
-	 * @brief 处理相机信息
-	 * @param client 网络资源
-	 * @param ec     错误代码. 0: 正确
-	 */
-	void receive_camera(const TcpCPtr client, const error_code& ec);
-	/*!
-	 * @brief 处理镜盖+调焦信息
-	 * @param client 网络资源
-	 * @param ec     错误代码. 0: 正确
-	 */
-	void receive_mount_annex(const TcpCPtr client, const error_code& ec);
-	/*!
-	 * @brief 处理温控+真空信息
-	 * @param client 网络资源
-	 * @param ec     错误代码. 0: 正确
-	 */
-	void receive_camera_annex(const TcpCPtr client, const error_code& ec);
+	void receive_from_peer(const TcpCPtr client, const error_code& ec, int peer);
 	/*!
 	 * @brief 处理环境监测信息
 	 */
-	void receive_environment(const UdpPtr client, const error_code& ec);
-
-protected:
-	/*----------------- 消息机制 -----------------*/
+	void receive_from_env(const UdpPtr client, const error_code& ec);
 	/*!
-	 * @brief 从网络资源存储区里移除指定连接
+	 * @brief 从网络资源存储区里移除指定连接, 该连接已关联观测系统
 	 * @param buff    存储区
 	 * @param client  网络连接
 	 */
-	void erase_tcpclient(TcpCVec& buff, const TcpCPtr client);
+	void erase_coupled_tcp(TcpCVec& buff, const TcpCPtr client);
 	/*!
-	 * @brief 响应消息MSG_RECEIVE_CLIENT
-	 * @param client 网络连接
+	 * @brief 从网络资源存储区里移除指定连接
+	 * @param buff    存储区
+	 * @note
+	 * 释放已关闭连接资源
 	 */
-	void on_receive_client(const TcpCPtr client);
-	/*!
-	 * @brief 响应消息MSG_RECEIVE_MOUNT
-	 * @param client 网络连接
-	 */
-	void on_receive_mount(const TcpCPtr client);
-	/*!
-	 * @brief 响应消息MSG_RECEIVE_CAMERA
-	 * @param client 网络连接
-	 */
-	void on_receive_camera(const TcpCPtr client);
-	/*!
-	 * @brief 响应消息MSG_RECEIVE_MOUNT_ANNEX
-	 * @param client 网络连接
-	 */
-	void on_receive_mount_annex(const TcpCPtr client);
-	/*!
-	 * @brief 响应消息MSG_RECEIVE_CAMERA_ANNEX
-	 * @param client 网络连接
-	 */
-	void on_receive_camera_annex(const TcpCPtr client);
-	/*!
-	 * @brief 响应消息MSG_CLOSE_CLIENT
-	 * @param client 网络连接
-	 */
-	void on_close_client(const TcpCPtr client);
-	/*!
-	 * @brief 响应消息MSG_CLOSE_MOUNT
-	 * @param client 网络连接
-	 */
-	void on_close_mount(const TcpCPtr client);
-	/*!
-	 * @brief 响应消息MSG_CLOSE_CAMERA
-	 * @param client 网络连接
-	 */
-	void on_close_camera(const TcpCPtr client);
-	/*!
-	 * @brief 响应消息MSG_CLOSE_MOUNT_ANNEX
-	 * @param client 网络连接
-	 */
-	void on_close_mount_annex(const TcpCPtr client);
-	/*!
-	 * @brief 响应消息MSG_CLOSE_CAMERA_ANNEX
-	 * @param client 网络连接
-	 */
-	void on_close_camera_annex(const TcpCPtr client);
+	void erase_closed_tcp(TcpCVec& buff);
 
 protected:
 	/*----------------- 解析/执行通信协议 -----------------*/
@@ -291,13 +237,8 @@ protected:
 	 * @brief 解析与用户/数据库、通用望远镜、相机、制冷(GWAC)、真空(GWAC)相关网络信息
 	 * @param client 网络资源
 	 * @param peer   远程主机类型
-	 * @note
-	 * 与转台无关远程主机类型包括:
-	 * - PEER_CLIENT
-	 * - PEER_CAMERA
-	 * - PEER_CAMERA_ANNEX
 	 */
-	void resolve_protocol(const TcpCPtr client, int peer);
+	void resolve_from_peer(const TcpCPtr client, int peer);
 
 	/*!
 	 * @fn resolve_kv_client
@@ -370,6 +311,13 @@ protected:
 	 * 观测系统实例指针
 	 */
 	ObsSysPtr find_obss(const string& gid, const string& uid);
+	/*!
+	 * @brief 天窗控制指令
+	 * @param gid    组标志
+	 * @param param  观测系统配置参数
+	 * @param cmd    控制指令
+	 */
+	void command_slit(const string& gid, const OBSSParam* param, int cmd);
 
 protected:
 	/*----------------- 环境信息 -----------------*/
@@ -394,7 +342,15 @@ protected:
 	 * - 接收信息: 解析并投递执行
 	 * - 关闭: 释放资源
 	 */
-	void monitor_network_event();
+	void thread_tcp_receive();
+	/*!
+	 * @brief 集中清理已断开的网络连接
+	 */
+	void thread_clean_tcp();
+	/*!
+	 * @brief 处理变化的环境信息
+	 */
+	void thread_nfenv_changed();
 };
 
 #endif /* SRC_GENERALCONTROL_H_ */

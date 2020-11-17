@@ -21,7 +21,11 @@ struct OBSSParam {
 	double		siteAlt;	///< 海拔高度, 量纲: 米
 	int			timeZone;	///< 时区, 量纲: 小时
 	double		altLimit;	///< 水平限位, 最低仰角, 量纲: 角度
-	bool		doNormalObs;///< 执行一般观测流程: 本底、暗场、平场
+	bool		autoBias;	///< 标准流程: 本底
+	bool		autoDark;	///< 标准流程: 暗场
+	bool		autoFlat;	///< 标准流程：平场. 若系统有滤光片, 则遍历所有
+	int			autoFrmCnt;	///< 标准流程: 帧数
+	double		autoExpdur;	///< 标准流程: 曝光时间
 
 	/*!
 	 * 网络连接与设备对象的对应关系, 分为两类:
@@ -46,9 +50,6 @@ struct OBSSParam {
 	/* 调焦 */
 	bool		useAutoFocus;	///< 使用: 自动调焦
 	int			opAutoFocus;	///< 执行对象: 相机; 相机附属
-	/* 消旋 */
-	bool		useTermDerot;	///< 使用: 终端消旋
-	int			opTermDerot;	///< 执行对象: 转台; 转台附属; 相机; 相机附属
 	/* 环境信息 */
 	bool		useRainfall;	///< 使用: 雨量
 	bool		useWindSpeed;	///< 使用: 风速

@@ -1,25 +1,31 @@
 <?xml version="1.0" encoding="utf-8"?>
 <version>v1.0 @ July, 2020</version>
-<date>20201108T002015</date>
+<date>20201117T012211</date>
 <Server>
-    <Client Port="4010" UdpPort="4010"/>
+    <Client Port="4010"/>
     <Mount Port="4011"/>
     <Camera Port="4012"/>
     <MountAnnex Port="4013"/>
     <CameraAnnex Port="4014"/>
-    <Environment UdpPort="4011"/>
+    <Environment Port="4015"/>
 </Server>
 <NTP Enable="false" Host="172.28.1.3" SyncOnDiffMax="1000"/>
 <Database Enable="false" URL="http://172.28.8.8:8080/gwebend/"/>
 <ObservationSystem>
     <GroupID>001</GroupID>
     <Site Name="Xinglong" Lon="117.57454166666668" Lat="40.395933333333332" Alt="900" TZ="8"/>
-    <EleLimit>20</EleLimit>
+    <AltLimit>20</AltLimit>
+    <NormalFlow>
+        <Bias Use="true"/>
+        <Dark Use="true"/>
+        <Flat Use="true"/>
+        <Exposure FrameCount="10" Duration="10"/>
+    </NormalFlow>
+    <P2H Mount="false" Camera="false" MountAnnex="false" CameraAnnex="false"/>
     <Dome FollowMount="false" Slit="false" Operator="mount-annex"/>
     <MirrorCover Use="false" Operator="mount-annex"/>
     <Mount HomeSync="false" Guide="false"/>
     <AutoFocus Use="false" Operator="mount-annex"/>
-    <TermDerotator Use="false" Operator="camera"/>
     <Environment>
         <Rainfall Use="false"/>
         <WindSpeed Use="false" MaxPermitObserve="15"/>

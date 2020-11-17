@@ -21,12 +21,12 @@ void Parameter::Init(const string &filepath) {
 	pt.add("date", to_iso_string(second_clock::universal_time()));
 
 	ptree &node1 = pt.add("Server", "");
-	node1.add("Client.<xmlattr>.Port",			4010);
-	node1.add("Mount.<xmlattr>.Port",			4011);
-	node1.add("Camera.<xmlattr>.Port",			4012);
-	node1.add("MountAnnex.<xmlattr>.Port",		4013);
-	node1.add("CameraAnnex.<xmlattr>.Port",		4014);
-	node1.add("Environment.<xmlattr>.Port",		4015);
+	node1.add("Client.<xmlattr>.Port",       4010);
+	node1.add("Mount.<xmlattr>.Port",        4011);
+	node1.add("Camera.<xmlattr>.Port",       4012);
+	node1.add("MountAnnex.<xmlattr>.Port",   4013);
+	node1.add("CameraAnnex.<xmlattr>.Port",  4014);
+	node1.add("Environment.<xmlattr>.Port",  4015);
 
 	ptree &node2 = pt.add("NTP", "");
 	node2.add("<xmlattr>.Enable",			false);
@@ -45,31 +45,35 @@ void Parameter::Init(const string &filepath) {
 	node4.add("Site.<xmlattr>.Alt", 900);
 	node4.add("Site.<xmlattr>.TZ",	8);
 	node4.add("AltLimit", 20);
-	node4.add("NormalFlow.<xmlattr>.Use",			false);
+
+	ptree &node5 = node4.add("NormalFlow", "");
+	node5.add("Bias.<xmlattr>.Use", true);
+	node5.add("Dark.<xmlattr>.Use", true);
+	node5.add("Flat.<xmlattr>.Use", true);
+	node5.add("Exposure.<xmlattr>.FrameCount", 10);
+	node5.add("Exposure.<xmlattr>.Duration",   10.0);
 
 	node4.add("P2H.<xmlattr>.Mount",       false);
 	node4.add("P2H.<xmlattr>.Camera",      false);
 	node4.add("P2H.<xmlattr>.MountAnnex",  false);
 	node4.add("P2H.<xmlattr>.CameraAnnex", false);
 
-	node4.add("Dome.<xmlattr>.FollowMount",			false);
-	node4.add("Dome.<xmlattr>.Slit",				false);
-	node4.add("Dome.<xmlattr>.Operator",			"mount-annex");
-	node4.add("MirrorCover.<xmlattr>.Use",			false);
-	node4.add("MirrorCover.<xmlattr>.Operator",		"mount-annex");
-	node4.add("Mount.<xmlattr>.HomeSync",			false);
-	node4.add("Mount.<xmlattr>.Guide",				false);
-	node4.add("AutoFocus.<xmlattr>.Use",			false);
-	node4.add("AutoFocus.<xmlattr>.Operator",		"mount-annex");
-	node4.add("TermDerotator.<xmlattr>.Use",		false);
-	node4.add("TermDerotator.<xmlattr>.Operator",	"camera");
+	node4.add("Dome.<xmlattr>.FollowMount",     false);
+	node4.add("Dome.<xmlattr>.Slit",            false);
+	node4.add("Dome.<xmlattr>.Operator",        "mount-annex");
+	node4.add("MirrorCover.<xmlattr>.Use",      false);
+	node4.add("MirrorCover.<xmlattr>.Operator", "mount-annex");
+	node4.add("Mount.<xmlattr>.HomeSync",       false);
+	node4.add("Mount.<xmlattr>.Guide",          false);
+	node4.add("AutoFocus.<xmlattr>.Use",        false);
+	node4.add("AutoFocus.<xmlattr>.Operator",   "mount-annex");
 
-	ptree& node5 = node4.add("Environment", "");
-	node5.add("Rainfall.<xmlattr>.Use", false);
-	node5.add("WindSpeed.<xmlattr>.Use", false);
-	node5.add("WindSpeed.<xmlattr>.MaxPermitObserve", 15);
-	node5.add("CloudCamera.<xmlattr>.Use", false);
-	node5.add("CloudCamera.<xmlattr>.MaxPercentPermitObserve", 50);
+	ptree& node6 = node4.add("Environment", "");
+	node6.add("Rainfall.<xmlattr>.Use",    false);
+	node6.add("WindSpeed.<xmlattr>.Use",   false);
+	node6.add("WindSpeed.<xmlattr>.MaxPermitObserve", 15);
+	node6.add("CloudCamera.<xmlattr>.Use", false);
+	node6.add("CloudCamera.<xmlattr>.MaxPercentPermitObserve", 50);
 
 	xml_writer_settings<string> settings(' ', 4);
 	write_xml(filepath, pt, std::locale(), settings);
@@ -83,17 +87,17 @@ const char* Parameter::Load(const string &filepath) {
 
 		BOOST_FOREACH(ptree::value_type const &child, pt.get_child("")) {
 			if (boost::iequals(child.first, "Server")) {
-				portClient		= child.second.get("Client.<xmlattr>.Port",			4010);
-				portMount		= child.second.get("Mount.<xmlattr>.Port",		    4011);
-				portCamera		= child.second.get("Camera.<xmlattr>.Port",			4012);
-				portMountAnnex	= child.second.get("MountAnnex.<xmlattr>.Port",		4013);
-				portCameraAnnex	= child.second.get("CameraAnnex.<xmlattr>.Port",	4014);
-				portEnv			= child.second.get("Environment.<xmlattr>.Port",	4015);
+				portClient		= child.second.get("Client.<xmlattr>.Port",       4010);
+				portMount		= child.second.get("Mount.<xmlattr>.Port",        4011);
+				portCamera		= child.second.get("Camera.<xmlattr>.Port",       4012);
+				portMountAnnex	= child.second.get("MountAnnex.<xmlattr>.Port",   4013);
+				portCameraAnnex	= child.second.get("CameraAnnex.<xmlattr>.Port",  4014);
+				portEnv			= child.second.get("Environment.<xmlattr>.Port",  4015);
 			}
 			else if (boost::iequals(child.first, "NTP")) {
-				ntpEnable	= child.second.get("<xmlattr>.Enable",			false);
-				ntpHost		= child.second.get("<xmlattr>.Host",			"127.0.0.1");
-				ntpDiffMax	= child.second.get("<xmlattr>.SyncOnDiffMax",	1000);
+				ntpEnable	= child.second.get("<xmlattr>.Enable",        false);
+				ntpHost		= child.second.get("<xmlattr>.Host",          "127.0.0.1");
+				ntpDiffMax	= child.second.get("<xmlattr>.SyncOnDiffMax", 1000);
 			}
 			else if (boost::iequals(child.first, "Database")) {
 				dbEnable	= child.second.get("<xmlattr>.Enable",	false);
@@ -103,21 +107,26 @@ const char* Parameter::Load(const string &filepath) {
 				OBSSParam prm;
 				prm.gid		= child.second.get("GroupID", "");
 
-				prm.siteName	= child.second.get("Site.<xmlattr>.Name",		"");
-				prm.siteLon		= child.second.get("Site.<xmlattr>.Lon",		0.0);
-				prm.siteLat		= child.second.get("Site.<xmlattr>.Lat",		0.0);
-				prm.siteAlt		= child.second.get("Site.<xmlattr>.Alt",		0.0);
-				prm.timeZone	= child.second.get("Site.<xmlattr>.TZ",			8);
-				prm.altLimit	= child.second.get("AltLimit",					20.0);
-				prm.doNormalObs	= child.second.get("NormalFlow.<xmlattr>.Use",	false);
+				prm.siteName	= child.second.get("Site.<xmlattr>.Name",  "");
+				prm.siteLon		= child.second.get("Site.<xmlattr>.Lon",   0.0);
+				prm.siteLat		= child.second.get("Site.<xmlattr>.Lat",   0.0);
+				prm.siteAlt		= child.second.get("Site.<xmlattr>.Alt",   0.0);
+				prm.timeZone	= child.second.get("Site.<xmlattr>.TZ",    8);
+				prm.altLimit	= child.second.get("AltLimit",             20.0);
+
+				prm.autoBias   = child.second.get("NormalFlow.Bias.<xmlattr>.Use", true);
+				prm.autoDark   = child.second.get("NormalFlow.Dark.<xmlattr>.Use", true);
+				prm.autoFlat   = child.second.get("NormalFlow.Flat.<xmlattr>.Use", true);
+				prm.autoFrmCnt = child.second.get("NormalFlow.Exposure.<xmlattr>.FrameCount", 10);
+				prm.autoExpdur = child.second.get("NormalFlow.Exposure.<xmlattr>.Duration",   10.0);
 
 				prm.p2hMount       = child.second.get("P2H.<xmlattr>.Mount",       false);
 				prm.p2hCamera      = child.second.get("P2H.<xmlattr>.Camera",      false);
 				prm.p2hMountAnnex  = child.second.get("P2H.<xmlattr>.MountAnnex",  false);
 				prm.p2hCameraAnnex = child.second.get("P2H.<xmlattr>.CameraAnnex", false);
 
-				prm.useDomeFollow	= child.second.get("Dome.<xmlattr>.FollowMount",  false);
-				prm.useDomeSlit		= child.second.get("Dome.<xmlattr>.Slit",         false);
+				prm.useDomeFollow	= child.second.get("Dome.<xmlattr>.FollowMount", false);
+				prm.useDomeSlit		= child.second.get("Dome.<xmlattr>.Slit",        false);
 				prm.opDome			= ObservationOperator::FromString(child.second.get("Dome.<xmlattr>.Operator", "mount").c_str());
 
 				prm.useMirrorCover	= child.second.get("MirrorCover.<xmlattr>.Use", false);
@@ -129,9 +138,6 @@ const char* Parameter::Load(const string &filepath) {
 				prm.useAutoFocus	= child.second.get("AutoFocus.<xmlattr>.Use",  false);
 				prm.opAutoFocus		= ObservationOperator::FromString(child.second.get("AutoFocus.<xmlattr>.Operator", "mount-annex").c_str());
 
-				prm.useTermDerot	= child.second.get("TermDerotator.<xmlattr>.Use", false);
-				prm.opTermDerot		= ObservationOperator::FromString(child.second.get("TermDerotator.<xmlattr>.Operator", "camera").c_str());
-
 				const ptree& node_env = child.second.get_child("Environment");
 				prm.useRainfall		= node_env.get("Rainfall.<xmlattr>.Use",  false);
 				prm.useWindSpeed	= node_env.get("WindSpeed.<xmlattr>.Use", false);
@@ -139,7 +145,8 @@ const char* Parameter::Load(const string &filepath) {
 				prm.useCloudCamera	= node_env.get("CloudCamera.<xmlattr>.Use", false);
 				prm.maxCloudPerent	= node_env.get("CloudCamera.<xmlattr>.MaxPercentPermitObserve", 50);
 
-				prmOBSS_.push_back(prm);
+				if (prm.gid.size())
+					prmOBSS_.push_back(prm);
 			}
 		}
 
