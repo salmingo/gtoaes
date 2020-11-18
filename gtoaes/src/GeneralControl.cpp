@@ -489,7 +489,7 @@ ObsSysPtr GeneralControl::find_obss(const string& gid, const string& uid) {
 			obss->SetDBPtr(dbPtr_);
 			if (obss->Start()) obss_.push_back(obss);
 
-			create_odt(param);	// 检查并创建新的ODT
+			create_info_env(param);	// 检查并创建新的环境信息
 		}
 		else {
 			_gLog.Write(LOG_FAULT, "not found any setting for ObservationSystem[%s:%s]",
@@ -497,17 +497,6 @@ ObsSysPtr GeneralControl::find_obss(const string& gid, const string& uid) {
 		}
 	}
 	return obss;
-}
-
-void GeneralControl::create_odt(const OBSSParam* param) {
-	MtxLck lck(mtx_odt_);
-	string gid = param->gid;
-	ODTVec::iterator it, end = odt_.end();
-	for (it = odt_.begin(); it != end && !(*it).IsMatched(gid); ++it);
-	if (it == end) {
-		ODT odt(param);
-		odt_.push_back(odt);
-	}
 }
 
 void GeneralControl::command_slit(const string& gid, const string& uid, const OBSSParam* param, int cmd) {
@@ -549,6 +538,18 @@ GeneralControl::NfEnvPtr GeneralControl::find_info_env(const string& gid) {
 	}
 
 	return env;
+}
+
+void GeneralControl::create_info_env(const OBSSParam* param) {
+	MtxLck lck(mtx_nfEnv_);
+	string gid = param->gid;
+	NfEnvVec::iterator it, end = nfEnv_.end();
+	for (it = nfEnv_.begin(); it != end && (*it)->gid != gid; ++it);
+	if (it == end) {
+		NfEnvPtr env = EnvInfo::Create(gid);
+		env->param = param;
+		nfEnv_.push_back(env);
+	}
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -666,7 +667,7 @@ void GeneralControl::thread_odt() {
 		boost::this_thread::sleep_for(period);
 
 		/* 更新各系统的观测时间类型标志 */
-		MtxLck lck(mtx_odt_);
+		MtxLck lck(mtx_nfEnv_);
 		now = second_clock::universal_time();
 		today = now.date();
 		fd = now.time_of_day().total_seconds() / DAYSEC;
@@ -674,29 +675,25 @@ void GeneralControl::thread_odt() {
 		mjd = ats.ModifiedJulianDay();
 		ats.SunPosition(ra, dec);
 
-		for (ODTVec::iterator it = odt_.begin(); it != odt_.end(); ++it) {
-			param = it->param;
+		for (NfEnvVec::iterator it = nfEnv_.begin(); it != nfEnv_.end(); ++it) {
+			param = (*it)->param;
 			ats.SetSite(param->siteLon, param->siteLat, param->siteAlt, param->timeZone);
 			lmst = ats.LocalMeanSiderealTime(mjd, param->siteLon * D2R);
 			ats.Eq2Horizon(lmst - ra, dec, azi, alt);
 			alt *= R2D;
-			//...检验极昼极夜的判决是否正确
 			if (alt > param->altDay)        odt = TypeObservationDuration::ODT_DAYTIME;
 			else if (alt < param->altNight) odt = TypeObservationDuration::ODT_NIGHT;
 			else                            odt = TypeObservationDuration::ODT_FLAT;
 
-			if (odt != it->odt) {
+			if (odt != (*it)->odt) {
 				_gLog.Write("OBSS[%s:all] enter %s duration", param->gid.c_str(),
 						TypeObservationDuration::ToString(odt));
-				it->odt = odt;
+				(*it)->odt = odt;
 				if (param->useDomeSlit) {
 					if (odt == TypeObservationDuration::ODT_DAYTIME) // 白天: 关闭天窗
 						command_slit(param->gid, "", param, CommandSlit::SLITC_CLOSE);
-					else {// 当气象条件满足时, 打开天窗
-						NfEnvPtr nfEnv = find_info_env(param->gid);
-						if (nfEnv.use_count() && nfEnv->safe)
-							command_slit(param->gid, "", param, CommandSlit::SLITC_OPEN);
-					}
+					else if ((*it)->safe) // 当气象条件满足时, 打开天窗
+						command_slit(param->gid, "", param, CommandSlit::SLITC_OPEN);
 				}
 			}
 		}

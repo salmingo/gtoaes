@@ -120,6 +120,8 @@ protected:
 	OBSSVec obss_;		///< 观测系统集合
 	boost::mutex mtx_obss_;	///< 互斥锁: 观测系统
 
+	/* 天窗状态: 集中管理 */
+
 	/* 环境信息 */
 	/*!
 	 * @struct EnvInfo
@@ -128,22 +130,26 @@ protected:
 	struct EnvInfo {
 		using Pointer = boost::shared_ptr<EnvInfo>;
 
+		const OBSSParam* param;	///< 观测系统参数
 		string gid;	///< 组标志
+		/* 气象 */
 		bool safe;	///< 安全判定: 气象条件
 		int rain;	///< 雨量标志
 		int orient;	///< 风向
 		int speed;	///< 风速
 		int cloud;	///< 云量
-		const OBSSParam* param;	///< 观测系统参数
+		/* 时间 */
+		int odt;	///< 观测时间类型
 
 	public:
 		EnvInfo(const string& gid) {
-			this->gid = gid;
-			safe = false;
-			rain = -1;
-			orient = speed = -1;
-			cloud = -1;
 			param = NULL;
+			this->gid = gid;
+			safe   = false;
+			rain   = -1;
+			orient = speed = -1;
+			cloud  = -1;
+			odt    = -1;
 		}
 
 		static Pointer Create(const string& gid) {
@@ -164,27 +170,6 @@ protected:
 	DBCurlPtr dbPtr_;	///< 数据库访问接口
 
 	/* 观测时间类型 */
-	/*!
-	 * @brief 封装观测时间类型
-	 */
-	struct ODT {
-		const OBSSParam* param;	///< 系统参数
-		int odt;	///< 观测时间类型
-
-	public:
-		ODT(const OBSSParam* param) {
-			this->param = param;
-			odt = TypeObservationDuration::ODT_MIN;
-		}
-
-		bool IsMatched(const string& gid) {
-			return (param->gid == gid);
-		}
-	};
-	using ODTVec = std::vector<ODT>;
-
-	ODTVec odt_;	///< 观测时间类型集合
-	boost::mutex mtx_odt_;	///< 互斥锁: 观测时间类型
 	ThreadPtr thrd_odt_;		///< 线程: 计算观测系统所处的观测时间类型
 
 	//////////////////////////////////////////////////////////////////////////////
@@ -331,11 +316,6 @@ protected:
 	 */
 	ObsSysPtr find_obss(const string& gid, const string& uid);
 	/*!
-	 * @brief 创建ODT对象
-	 * @param param  观测系统参数
-	 */
-	void create_odt(const OBSSParam* param);
-	/*!
 	 * @brief 天窗控制指令
 	 * @param gid    组标志
 	 * @param uid    单元标志
@@ -353,6 +333,11 @@ protected:
 	 * 记录实例指针
 	 */
 	NfEnvPtr find_info_env(const string& gid);
+	/*!
+	 * @brief 创建ODT对象
+	 * @param param  观测系统参数
+	 */
+	void create_info_env(const OBSSParam* param);
 
 protected:
 	/*----------------- 多线程 -----------------*/
