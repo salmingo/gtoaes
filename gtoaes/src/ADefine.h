@@ -48,8 +48,8 @@ namespace AstroUtil {
 #define DAYSEC		86400.0		///< 每日秒数
 
 // 极限阈值
-#define EPS		1E-6			///< 最小值
-#define MAX		1E30			///< 最大值
+#define AEPS	1E-6			///< 最小值
+#define AMAX	1E30			///< 最大值
 /*--------------------------------------------------------------------------*/
 // 计算实数的小数部分
 #define frac(x)		(x - floor(x))

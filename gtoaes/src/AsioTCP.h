@@ -14,10 +14,6 @@
  * @date 2020-10-02
  * @note
  * - 优化
- * @version 1.1
- * @date 2020-11-16
- * @note
- * 适应gtoaes, 增加first和idrcv两个变量, 表征收到的第一条信息
  */
 
 #ifndef SRC_ASIOTCP_H_
@@ -68,10 +64,6 @@ protected:
 	CallbackFunc  cbread_;	//< read回调函数
 	CallbackFunc  cbwrite_;	//< write回调函数
 
-	bool first_;		///< 收到的第一条信息
-	uint16_t idrcv_;	///< 接收信息的序号
-	bool p2h_;			///< 连接类型: 是否Peer-Hub
-
 public:
 	TcpClient(bool modeAsync = true);
 	virtual ~TcpClient();
@@ -97,6 +89,15 @@ public:
 	 * 连接结果
 	 */
 	bool Connect(const std::string& host, const uint16_t port);
+	/*!
+	 * @brief 关闭在套接口上的操作
+	 * @param how 操作类型. 0: 读; 1: 写; 2: 读写
+	 * @return
+	 * 操作结果.
+	 * 0 -- 成功
+	 * 其它 -- 错误
+	 */
+	int ShutDown(int how);
 	/*!
 	 * @brief 关闭套接字
 	 * @return
@@ -163,23 +164,6 @@ public:
 	 * @param slot 函数插槽
 	 */
 	void RegisterWrite(const CBSlot& slot);
-	/*!
-	 * @brief 判定是否收到的第一条消息
-	 * @return
-	 * 第一条消息判定结果
-	 */
-	bool IsFirstRcv();
-	/*!
-	 * @brief 设置连接类型
-	 * @param p2h  连接类型, Peer-Hub类型判定
-	 */
-	void SetType(bool p2h);
-	/*!
-	 * @brief 判定是否Peer-Hub类型
-	 * @return
-	 * Peer-Hub类型判定结果
-	 */
-	bool IsP2H();
 
 protected:
 	/*!

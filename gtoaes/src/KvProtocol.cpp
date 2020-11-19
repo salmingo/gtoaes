@@ -62,6 +62,7 @@ void KvProtocol::resolve_rcvd(const char* rcvd, kv_proto_base &basis, likv &kvs)
 
 	// 提取协议类型
 	for (ptr = rcvd; *ptr && *ptr != ' '; ++ptr) type += *ptr;
+	basis.type = type;
 	while (*ptr && *ptr == ' ') ++ptr;
 	// 分解键值对
 	if (*ptr) algorithm::split(tokens, ptr, is_any_of(seps), token_compress_on);

@@ -108,9 +108,9 @@ am_gtoaes_OBJECTS = daemon.$(OBJEXT) GLog.$(OBJEXT) \
 	AsioIOServiceKeep.$(OBJEXT) AsioTCP.$(OBJEXT) \
 	AsioUDP.$(OBJEXT) ATimeSpace.$(OBJEXT) KvProtocol.$(OBJEXT) \
 	NonkvProtocol.$(OBJEXT) CurlBase.$(OBJEXT) \
-	DatabaseCurl.$(OBJEXT) ObservationPlan.$(OBJEXT) \
-	ObservationSystem.$(OBJEXT) GeneralControl.$(OBJEXT) \
-	gtoaes.$(OBJEXT)
+	DatabaseCurl.$(OBJEXT) MessageQueue.$(OBJEXT) \
+	ObservationPlan.$(OBJEXT) ObservationSystem.$(OBJEXT) \
+	GeneralControl.$(OBJEXT) gtoaes.$(OBJEXT)
 gtoaes_OBJECTS = $(am_gtoaes_OBJECTS)
 am__DEPENDENCIES_1 =
 gtoaes_DEPENDENCIES = $(am__DEPENDENCIES_1) $(am__DEPENDENCIES_1)
@@ -136,8 +136,8 @@ am__depfiles_remade = ./$(DEPDIR)/ATimeSpace.Po \
 	./$(DEPDIR)/AsioUDP.Po ./$(DEPDIR)/CurlBase.Po \
 	./$(DEPDIR)/DatabaseCurl.Po ./$(DEPDIR)/GLog.Po \
 	./$(DEPDIR)/GeneralControl.Po ./$(DEPDIR)/KvProtocol.Po \
-	./$(DEPDIR)/NTPClient.Po ./$(DEPDIR)/NonkvProtocol.Po \
-	./$(DEPDIR)/ObservationPlan.Po \
+	./$(DEPDIR)/MessageQueue.Po ./$(DEPDIR)/NTPClient.Po \
+	./$(DEPDIR)/NonkvProtocol.Po ./$(DEPDIR)/ObservationPlan.Po \
 	./$(DEPDIR)/ObservationSystem.Po ./$(DEPDIR)/Parameter.Po \
 	./$(DEPDIR)/daemon.Po ./$(DEPDIR)/gtoaes.Po
 am__mv = mv -f
@@ -289,7 +289,7 @@ gtoaes_SOURCES = daemon.cpp GLog.cpp Parameter.cpp NTPClient.cpp \
                AsioIOServiceKeep.cpp AsioTCP.cpp AsioUDP.cpp \
                ATimeSpace.cpp \
                KvProtocol.cpp NonkvProtocol.cpp \
-               CurlBase.cpp DatabaseCurl.cpp \
+               CurlBase.cpp DatabaseCurl.cpp MessageQueue.cpp \
                ObservationPlan.cpp ObservationSystem.cpp GeneralControl.cpp gtoaes.cpp
 
 @DEBUG_FALSE@AM_CFLAGS = -O3 -Wall
@@ -394,6 +394,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/GLog.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/GeneralControl.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/KvProtocol.Po@am__quote@ # am--include-marker
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/MessageQueue.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/NTPClient.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/NonkvProtocol.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ObservationPlan.Po@am__quote@ # am--include-marker
@@ -558,6 +559,7 @@ distclean: distclean-am
 	-rm -f ./$(DEPDIR)/GLog.Po
 	-rm -f ./$(DEPDIR)/GeneralControl.Po
 	-rm -f ./$(DEPDIR)/KvProtocol.Po
+	-rm -f ./$(DEPDIR)/MessageQueue.Po
 	-rm -f ./$(DEPDIR)/NTPClient.Po
 	-rm -f ./$(DEPDIR)/NonkvProtocol.Po
 	-rm -f ./$(DEPDIR)/ObservationPlan.Po
@@ -619,6 +621,7 @@ maintainer-clean: maintainer-clean-am
 	-rm -f ./$(DEPDIR)/GLog.Po
 	-rm -f ./$(DEPDIR)/GeneralControl.Po
 	-rm -f ./$(DEPDIR)/KvProtocol.Po
+	-rm -f ./$(DEPDIR)/MessageQueue.Po
 	-rm -f ./$(DEPDIR)/NTPClient.Po
 	-rm -f ./$(DEPDIR)/NonkvProtocol.Po
 	-rm -f ./$(DEPDIR)/ObservationPlan.Po

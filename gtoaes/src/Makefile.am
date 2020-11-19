@@ -3,7 +3,7 @@ gtoaes_SOURCES=daemon.cpp GLog.cpp Parameter.cpp NTPClient.cpp \
                AsioIOServiceKeep.cpp AsioTCP.cpp AsioUDP.cpp \
                ATimeSpace.cpp \
                KvProtocol.cpp NonkvProtocol.cpp \
-               CurlBase.cpp DatabaseCurl.cpp \
+               CurlBase.cpp DatabaseCurl.cpp MessageQueue.cpp \
                ObservationPlan.cpp ObservationSystem.cpp GeneralControl.cpp gtoaes.cpp
 
 if DEBUG

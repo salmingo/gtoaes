@@ -16,38 +16,19 @@
 
 #include <vector>
 #include <deque>
+#include "MessageQueue.h"
 #include "Parameter.h"
 #include "NTPClient.h"
-#include "AsioTCP.h"
 #include "AsioUDP.h"
-#include "KvProtocol.h"
-#include "NonkvProtocol.h"
-#include "ObservationPlan.h"
 #include "ObservationSystem.h"
 #include "DatabaseCurl.h"
 
 //////////////////////////////////////////////////////////////////////////////
-class GeneralControl {
+class GeneralControl : public MessageQueue {
 /* 构造函数 */
 public:
 	GeneralControl();
 	virtual ~GeneralControl();
-
-//< 数据类型
-protected:
-	//////////////////////////////////////////////////////////////////////////////
-	using MtxLck = boost::unique_lock<boost::mutex>;	//< 信号灯互斥锁
-	using ThreadPtr = boost::shared_ptr<boost::thread>;	//< boost线程指针
-
-	enum {// 对应主机类型
-		PEER_CLIENT,			//< 客户端
-		PEER_MOUNT,				//< GWAC望远镜
-		PEER_CAMERA,			//< 相机
-		PEER_MOUNT_ANNEX,		//< 镜盖+调焦+天窗(GWAC)
-		PEER_CAMERA_ANNEX,		//< 温控+真空(GWAC-GY)
-		PEER_LAST		//< 占位, 不使用
-	};
-	//////////////////////////////////////////////////////////////////////////////
 
 /* 成员变量 */
 protected:
@@ -63,64 +44,12 @@ protected:
 	TcpSPtr tcpS_cameraAnnex_;	///< 网络服务: 相机附属
 
 	UdpPtr  udpS_env_;			///< 网络服务: 气象环境, UDP
-
-	using TcpCVec = std::vector<TcpCPtr> ; ///< 网络连接存储区
-	TcpCVec tcpC_client_;		///< 网络连接: 客户端
-	TcpCVec tcpC_mount_;		///< 网络连接: 转台
-	TcpCVec tcpC_camera_;		///< 网络连接: 相机
-	TcpCVec tcpC_mountAnnex_;	///< 网络连接: 转台附属设备
-	TcpCVec tcpC_cameraAnnex_;	///< 网络连接: 相机附属设备
-
-	boost::mutex mtx_tcpC_client_;		///< 互斥锁: 客户端
-	boost::mutex mtx_tcpC_mount_;		///< 互斥锁: GWAC望远镜
-	boost::mutex mtx_tcpC_camera_;		///< 互斥锁: 相机
-	boost::mutex mtx_tcpC_mountAnnex_;	///< 互斥锁: 转台附属
-	boost::mutex mtx_tcpC_cameraAnnex_;	///< 互斥锁: 相机附属
-	ThreadPtr thrd_tcpClean_;	///< 线程: 释放已关闭的网络连接
-
-	/*!
-	 * @struct TcpReceived
-	 * @brief 网络事件
-	 */
-	struct TcpReceived {
-		using Pointer = boost::shared_ptr<TcpReceived>;
-
-		TcpCPtr client;	///< 网络连接
-		int peer;	///< 主机类型
-
-	public:
-		TcpReceived(TcpCPtr _client, int _peer) {
-			client = _client;
-			peer   = _peer;
-		}
-
-		static Pointer Create(TcpCPtr _client, int _peer) {
-			return Pointer(new TcpReceived(_client, _peer));
-		}
-	};
-	using TcpRcvPtr = TcpReceived::Pointer;
-	using TcpRcvQue = std::deque<TcpRcvPtr>;
-
-	TcpRcvQue que_tcpRcv_;		///< 网络事件队列
-	boost::mutex mtx_tcpRcv_;	///< 互斥锁: 网络事件
-	boost::condition_variable cv_tcpRcv_;	///< 条件触发: 网络事件
-	ThreadPtr thrd_tcpRcv_;		///< 线程: 处理网络接收信息
-
-	boost::shared_array<char> bufTcp_;	///< 网络信息存储区: 消息队列中调用
 	boost::shared_array<char> bufUdp_;	///< 网络信息存储区: 消息队列中调用
-	KvProtoPtr kvProto_;		///< 键值对格式协议访问接口
-	NonkvProtoPtr nonkvProto_;	///< 非键值对格式协议访问接口
-
-	/* 观测计划 */
-	ObsPlanPtr obsPlans_;		///< 观测计划集合
-	boost::mutex mtx_obsPlans_;	///< 互斥锁: 观测计划集合
 
 	/* 观测系统 */
 	using OBSSVec = std::vector<ObsSysPtr>;	///< 观测系统集合
 	OBSSVec obss_;		///< 观测系统集合
 	boost::mutex mtx_obss_;	///< 互斥锁: 观测系统
-
-	/* 天窗状态: 集中管理 */
 
 	/* 环境信息 */
 	/*!
@@ -170,7 +99,7 @@ protected:
 	DBCurlPtr dbPtr_;	///< 数据库访问接口
 
 	/* 观测时间类型 */
-	ThreadPtr thrd_odt_;		///< 线程: 计算观测系统所处的观测时间类型
+	ThreadPtr thrd_odt_;///< 线程: 计算观测系统所处的观测时间类型
 
 	//////////////////////////////////////////////////////////////////////////////
 
@@ -213,29 +142,14 @@ protected:
 	 */
 	void network_accept(const TcpCPtr client, const TcpSPtr server);
 	/*!
-	 * @brief 处理客户端信息
-	 * @param client 网络资源
-	 * @param ec     错误代码. 0: 正确
-	 * @param peer   远程主机类型
-	 */
-	void receive_from_peer(const TcpCPtr client, const error_code& ec, int peer);
-	/*!
 	 * @brief 处理环境监测信息
 	 */
 	void receive_from_env(const UdpPtr client, const error_code& ec);
 	/*!
 	 * @brief 从网络资源存储区里移除指定连接, 该连接已关联观测系统
-	 * @param buff    存储区
 	 * @param client  网络连接
 	 */
-	void erase_coupled_tcp(TcpCVec& buff, const TcpCPtr client);
-	/*!
-	 * @brief 从网络资源存储区里移除指定连接
-	 * @param buff    存储区
-	 * @note
-	 * 释放已关闭连接资源
-	 */
-	void erase_closed_tcp(TcpCVec& buff);
+	void erase_coupled_tcp(const TcpCPtr client);
 
 protected:
 	/*----------------- 解析/执行通信协议 -----------------*/
@@ -319,10 +233,12 @@ protected:
 	 * @brief 天窗控制指令
 	 * @param gid    组标志
 	 * @param uid    单元标志
-	 * @param param  观测系统配置参数
 	 * @param cmd    控制指令
+	 * @note
+	 * - 由OBSS发送控制指令
+	 * - 由天窗控制程序, 判断执行策略
 	 */
-	void command_slit(const string& gid, const string& uid, const OBSSParam* param, int cmd);
+	void command_slit(const string& gid, const string& uid, int cmd);
 
 protected:
 	/*----------------- 环境信息 -----------------*/
@@ -341,22 +257,6 @@ protected:
 
 protected:
 	/*----------------- 多线程 -----------------*/
-	/*!
-	 * @brief 中止线程
-	 * @param thrd 线程指针
-	 */
-	void interrupt_thread(ThreadPtr& thrd);
-	/*!
-	 * @brief 处理网络事件
-	 * @note
-	 * - 接收信息: 解析并投递执行
-	 * - 关闭: 释放资源
-	 */
-	void thread_tcp_receive();
-	/*!
-	 * @brief 集中清理已断开的网络连接
-	 */
-	void thread_clean_tcp();
 	/*!
 	 * @brief 处理变化的环境信息
 	 */

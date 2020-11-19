@@ -31,6 +31,7 @@ public:
 	using ThreadPtr = boost::shared_ptr<boost::thread>;
 	using MtxLck = boost::unique_lock<boost::mutex>;
 	using KvProtoQue = std::deque<kvbase>;
+	using NonkvProtoQue = std::deque<nonkvbase>;
 
 	/*!
 	 * @brief 回调函数, 尝试从队列里获取可用的观测计划
@@ -115,15 +116,12 @@ protected:
 	/* 网络资源 */
 	NetworkMount tcpc_mount_;	///< 网络连接: 转台
 
-	boost::shared_array<char> bufrcv_;	///< 网络信息存储区: 消息队列中调用
-	KvProtoPtr kvProto_;		///< 键值对格式协议访问接口
-	NonkvProtoPtr nonkvProto_;	///< 非键值对格式协议访问接口
-
 	/* 被投递的通信协议 */
 	KvProtoQue queKv_;			///< 被投递的键值对协议队列
 	boost::mutex mtx_queKv_;	///< 互斥锁: 键值对协议队列
-	boost::condition_variable cv_queKv_;	///< 条件变量: 新的协议进入队列
-	ThreadPtr thrd_queKv_;		///< 线程: 监测键值对协议队列
+
+	NonkvProtoQue queNonkv_;	///< 被投递的非键值对协议队列
+	boost::mutex mtx_queNonkv_;	///< 互斥锁: 非键值对协议队列
 
 	/* 数据库 */
 	DBCurlPtr dbPtr_;	///< 数据库访问接口
@@ -244,7 +242,7 @@ public:
 	 * 1: 成功; 连接类型是P2P
 	 * 2: 成功: 连接类型是P2H
 	 */
-	int CoupleCameraAnnex(const TcpCPtr client);
+	int CoupleCameraAnnex(const TcpCPtr client, const string& cid);
 	/*!
 	 * @brief 解除观测系统与客户端的关联
 	 * @param client  网络连接
@@ -275,6 +273,11 @@ public:
 	 * @param proto  通信协议
 	 */
 	void NotifyKVProtocol(kvbase proto);
+	/*!
+	 * @brief 投递来自客户端的键值对协议
+	 * @param proto  通信协议
+	 */
+	void NotifyNonkvProtocol(nonkvbase proto);
 	/*!
 	 * @brief 投递观测计划
 	 * @param plan  观测计划
@@ -311,25 +314,6 @@ protected:
 protected:
 	//////////////////////////////////////////////////////////////////////////////
 	/* 多线程 */
-	/*!
-	 * @brief 中止线程
-	 * @param thrd 线程指针
-	 */
-	void interrupt_thread(ThreadPtr& thrd);
-	/*!
-	 * @brief 线程: 监测并处理键值对队列中的通信协议
-	 * @note
-	 * - 通信协议由上层程序投递
-	 * - 通信协议来自客户端
-	 */
-	void monitor_kv_queue();
-	/*!
-	 * @brief 线程: 定时检查网络连接的有效性
-	 * @note
-	 * - 周期: 1分钟
-	 * - 判据:
-	 */
-	void monitor_network_connection();
 	/*!
 	 * @brief 线程: 尝试获取新的计划
 	 * @note

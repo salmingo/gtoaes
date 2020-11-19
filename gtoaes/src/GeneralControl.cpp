@@ -24,12 +24,11 @@ GeneralControl::~GeneralControl() {
 
 //////////////////////////////////////////////////////////////////////////////
 bool GeneralControl::Start() {
+	string name = DAEMON_NAME;
+	if (!MessageQueue::Start(name.c_str())) return false;
+
 	param_.Load(gConfigPath);
-	bufTcp_.reset(new char[TCP_PACK_SIZE]);
 	bufUdp_.reset(new char[UDP_PACK_SIZE]);
-	kvProto_    = KvProtocol::Create();
-	nonkvProto_ = NonkvProtocol::Create();
-	obsPlans_   = ObservationPlan::Create();
 
 	if (!create_all_server()) return false;
 	if (param_.ntpEnable) {
@@ -42,9 +41,8 @@ bool GeneralControl::Start() {
 }
 
 void GeneralControl::Stop() {
+	MessageQueue::Stop();
 	interrupt_thread(thrd_odt_);
-	interrupt_thread(thrd_tcpRcv_);
-	interrupt_thread(thrd_tcpClean_);
 	interrupt_thread(thrd_nfEnvChanged_);
 
 	for (OBSSVec::iterator it = obss_.begin(); it != obss_.end(); ++it)
@@ -82,52 +80,21 @@ bool GeneralControl::create_all_server() {
 	}
 
 	thrd_odt_.reset(new boost::thread(boost::bind(&GeneralControl::thread_odt, this)));
-	thrd_tcpRcv_.reset(new boost::thread(boost::bind(&GeneralControl::thread_tcp_receive, this)));
-	thrd_tcpClean_.reset(new boost::thread(boost::bind(&GeneralControl::thread_clean_tcp, this)));
 	thrd_nfEnvChanged_.reset(new boost::thread(boost::bind(&GeneralControl::thread_nfenv_changed, this)));
 	return true;
 }
 
 void GeneralControl::network_accept(const TcpCPtr client, const TcpSPtr server) {
-	if (server == tcpS_client_) {// 客户端
-		MtxLck lck(mtx_tcpC_client_);
-		const TcpClient::CBSlot& slot = boost::bind(&GeneralControl::receive_from_peer, this, _1, _2, PEER_CLIENT);
-		client->RegisterRead(slot);
-		tcpC_client_.push_back(client);
-	}
-	else if (server == tcpS_mount_) {// 转台
-		MtxLck lck(mtx_tcpC_mount_);
-		const TcpClient::CBSlot& slot = boost::bind(&GeneralControl::receive_from_peer, this, _1, _2, PEER_MOUNT);
-		client->RegisterRead(slot);
-		tcpC_mount_.push_back(client);
-	}
-	else if (server == tcpS_camera_) {// 相机
-		MtxLck lck(mtx_tcpC_camera_);
-		const TcpClient::CBSlot& slot = boost::bind(&GeneralControl::receive_from_peer, this, _1, _2, PEER_CAMERA);
-		client->RegisterRead(slot);
-		tcpC_camera_.push_back(client);
-	}
-	else if (server == tcpS_mountAnnex_) {// 转台附属
-		MtxLck lck(mtx_tcpC_mountAnnex_);
-		const TcpClient::CBSlot& slot = boost::bind(&GeneralControl::receive_from_peer, this, _1, _2, PEER_MOUNT_ANNEX);
-		client->RegisterRead(slot);
-		tcpC_mountAnnex_.push_back(client);
-	}
-	else if (server == tcpS_cameraAnnex_) {// 相机附属
-		MtxLck lck(mtx_tcpC_cameraAnnex_);
-		const TcpClient::CBSlot& slot = boost::bind(&GeneralControl::receive_from_peer, this, _1, _2, PEER_CAMERA_ANNEX);
-		client->RegisterRead(slot);
-		tcpC_cameraAnnex_.push_back(client);
-	}
-}
+	int peer(PEER_CLIENT);
+	if      (server == tcpS_mount_)       peer = PEER_MOUNT;
+	else if (server == tcpS_camera_)      peer = PEER_CAMERA;
+	else if (server == tcpS_mountAnnex_)  peer = PEER_MOUNT_ANNEX;
+	else if (server == tcpS_cameraAnnex_) peer = PEER_CAMERA_ANNEX;
 
-void GeneralControl::receive_from_peer(const TcpCPtr client, const error_code& ec, int peer) {
-	if (!ec) {
-		MtxLck lck(mtx_tcpRcv_);
-		TcpRcvPtr rcvd = TcpReceived::Create(client, peer);
-		que_tcpRcv_.push_back(rcvd);
-		cv_tcpRcv_.notify_one();
-	}
+	MtxLck lck(mtx_tcpC_buff_);
+	const TcpClient::CBSlot& slot = boost::bind(&GeneralControl::receive_from_peer, this, _1, _2, peer);
+	client->RegisterRead(slot);
+	tcpC_buff_.push_back(client);
 }
 
 void GeneralControl::receive_from_env(const UdpPtr client, const error_code& ec) {
@@ -173,45 +140,38 @@ void GeneralControl::receive_from_env(const UdpPtr client, const error_code& ec)
 	}
 }
 
-void GeneralControl::erase_coupled_tcp(TcpCVec& buff, const TcpCPtr client) {
-	TcpCVec::iterator it, end = buff.end();
-	for (it = buff.begin(); it != end && (*it) != client; ++it);
-	if (it != end) buff.erase(it);
-}
-
-void GeneralControl::erase_closed_tcp(TcpCVec& buff) {
-	for (TcpCVec::iterator it = buff.begin(); it != buff.end(); ) {
-		if ((*it)->IsOpen()) ++it;
-		else it = buff.erase(it);
-	}
+void GeneralControl::erase_coupled_tcp(const TcpCPtr client) {
+	MtxLck lck(mtx_tcpC_buff_);
+	TcpCVec::iterator it, end = tcpC_buff_.end();
+	for (it = tcpC_buff_.begin(); it != end && (*it) != client; ++it);
+	if (it != end) tcpC_buff_.erase(it);
 }
 
 //////////////////////////////////////////////////////////////////////////////
 /*----------------- 解析/执行通信协议 -----------------*/
 void GeneralControl::resolve_from_peer(const TcpCPtr client, int peer) {
-	const char term[] = "\n";	// 信息结束符: 换行
 	const char prefix[] = "g#";	// 非键值对格式的引导符
-	int lenTerm = strlen(term);		// 结束符长度
 	int lenPre  = strlen(prefix);	// 引导符长度
-	int pos;
 
-	while (client->IsOpen() && (pos = client->Lookup(term, lenTerm)) >= 0) {
-		client->Read(bufTcp_.get(), pos + lenTerm);
-		bufTcp_[pos] = 0;
-		if (strstr(bufTcp_.get(), prefix)) {// 非键值对协议
-			nonkvbase base = nonkvProto_->Resove(bufTcp_.get() + lenPre);
-			if (base.unique()) {
-				if      (peer == PEER_MOUNT)       process_nonkv_mount      (base, client);
-				else if (peer == PEER_MOUNT_ANNEX) process_nonkv_mount_annex(base, client);
-			}
+	if (strstr(bufTcp_.get(), prefix)) {// 非键值对协议
+		nonkvbase base = nonkvProto_->Resove(bufTcp_.get() + lenPre);
+		if (base.unique()) {
+			if      (peer == PEER_MOUNT)       process_nonkv_mount      (base, client);
+			else if (peer == PEER_MOUNT_ANNEX) process_nonkv_mount_annex(base, client);
 		}
-		else {// 键值对协议
-			if      (peer == PEER_CLIENT)       resolve_kv_client      (client);
-			else if (peer == PEER_MOUNT)        resolve_kv_mount       (client);
-			else if (peer == PEER_CAMERA)       resolve_kv_camera      (client);
-			else if (peer == PEER_MOUNT_ANNEX)  resolve_kv_mount_annex (client);
-			else if (peer == PEER_CAMERA_ANNEX) resolve_kv_camera_annex(client);
+		else {
+			_gLog.Write(LOG_FAULT, "unknown protocol from %s: %s",
+					peer == PEER_MOUNT ? "mount" : "mount-annex",
+					bufTcp_.get());
+			client->Close();
 		}
+	}
+	else {// 键值对协议
+		if      (peer == PEER_CLIENT)       resolve_kv_client      (client);
+		else if (peer == PEER_MOUNT)        resolve_kv_mount       (client);
+		else if (peer == PEER_CAMERA)       resolve_kv_camera      (client);
+		else if (peer == PEER_MOUNT_ANNEX)  resolve_kv_mount_annex (client);
+		else if (peer == PEER_CAMERA_ANNEX) resolve_kv_camera_annex(client);
 	}
 }
 
@@ -265,18 +225,6 @@ void GeneralControl::resolve_kv_client(const TcpCPtr client) {
 			client->Write(s, n);
 		} // if (iequals(type, KVTYPE_CHKPLAN))
 		/////////////////////////////////////////////////////////////////////////
-		/*>!!!!!! 开关天窗 !!!!!!<*/
-		else if (iequals(type, KVTYPE_SLIT)) {
-			const OBSSParam* param = param_.GetParamOBSS(gid);
-			if (param) {
-
-			}
-			else {
-				_gLog.Write(LOG_FAULT, "not found any setting for ObservationSsytem[%s:%s]",
-						gid.c_str());
-			}
-		}
-		/////////////////////////////////////////////////////////////////////////
 		/*>!!!!!! 投递到观测系统 !!!!!!<*/
 		else {
 			MtxLck lck(mtx_obss_);
@@ -289,7 +237,7 @@ void GeneralControl::resolve_kv_client(const TcpCPtr client) {
 } // void GeneralControl::process_kv_client(kvbase proto, const TcpCPtr client)
 
 void GeneralControl::resolve_kv_mount(const TcpCPtr client) {
-	kvbase base = kvProto_->ResolveClient(bufTcp_.get());
+	kvbase base = kvProto_->ResolveMount(bufTcp_.get());
 	if (!base.unique()) {
 		_gLog.Write(LOG_FAULT, "unknown protocol from mount: %s", bufTcp_.get());
 		client->Close();
@@ -304,17 +252,20 @@ void GeneralControl::resolve_kv_mount(const TcpCPtr client) {
 			client->Close();
 		}
 		else {
-			int mode;
 			ObsSysPtr obss = find_obss(gid, uid);
-			if ((mode = obss->CoupleMount(client))) {// P2P或P2H模式
-				obss->NotifyKVProtocol(base);
-				if (mode == 1) {// 释放由GeneralControl维持的资源
-					MtxLck lck(mtx_tcpC_mount_);
-					erase_coupled_tcp(tcpC_mount_, client);
+			if (obss.use_count()) {
+				int mode;
+				if ((mode = obss->CoupleMount(client))) {// P2P或P2H模式
+					obss->NotifyKVProtocol(base);
+					if (mode == 1) erase_coupled_tcp(client);
+				}
+				else {
+					_gLog.Write(LOG_FAULT, "failed to couple mount with OBSS[%s:%s]", gid.c_str(), uid.c_str());
+					client->Close();
 				}
 			}
 			else {
-				_gLog.Write(LOG_FAULT, "failed to couple mount with OBSS[%s:%s]", gid.c_str(), uid.c_str());
+				_gLog.Write(LOG_FAULT, "not found OBSS[%s:%s]", gid.c_str(), uid.c_str());
 				client->Close();
 			}
 		}
@@ -338,18 +289,22 @@ void GeneralControl::resolve_kv_camera(const TcpCPtr client) {
 			client->Close();
 		}
 		else {
-			int mode;
 			ObsSysPtr obss = find_obss(gid, uid);
-			if ((mode = obss->CoupleCamera(client, cid))) {// P2P或P2H模式
-				obss->NotifyKVProtocol(base);
-				if (mode == 1) {
-					MtxLck lck(mtx_tcpC_camera_);
-					erase_coupled_tcp(tcpC_camera_, client);
+
+			if (obss.use_count()) {
+				int mode;
+				if ((mode = obss->CoupleCamera(client, cid))) {// P2P或P2H模式
+					obss->NotifyKVProtocol(base);
+					if (mode == 1) erase_coupled_tcp(client);
+				}
+				else {
+					_gLog.Write(LOG_FAULT, "failed to couple camera[%s] with OBSS[%s:%s]",
+							cid.c_str(), gid.c_str(), uid.c_str());
+					client->Close();
 				}
 			}
 			else {
-				_gLog.Write(LOG_FAULT, "failed to couple camera[%s] with OBSS[%s:%s]",
-						cid.c_str(), gid.c_str(), uid.c_str());
+				_gLog.Write(LOG_FAULT, "not found OBSS[%s:%s]", gid.c_str(), uid.c_str());
 				client->Close();
 			}
 		}
@@ -363,7 +318,32 @@ void GeneralControl::resolve_kv_mount_annex(const TcpCPtr client) {
 		client->Close();
 	}
 	else {
-
+		// kv协议的转台连接耦合到观测系统
+		string gid = base->gid;
+		string uid = base->uid;
+		if (gid.empty() || uid.empty()) {
+			_gLog.Write(LOG_FAULT, "requires non-empty mount-annex IDs[%s:%s]",
+					gid.c_str(), uid.c_str());
+			client->Close();
+		}
+		else {
+			ObsSysPtr obss = find_obss(gid, uid);
+			if (obss.use_count()) {
+				int mode;
+				if ((mode = obss->CoupleMountAnnex(client))) {// P2P或P2H模式
+					obss->NotifyKVProtocol(base);
+					if (mode == 1) erase_coupled_tcp(client);
+				}
+				else {
+					_gLog.Write(LOG_FAULT, "failed to couple mount-annex with OBSS[%s:%s]", gid.c_str(), uid.c_str());
+					client->Close();
+				}
+			}
+			else {
+				_gLog.Write(LOG_FAULT, "not found OBSS[%s:%s]", gid.c_str(), uid.c_str());
+				client->Close();
+			}
+		}
 	}
 }
 
@@ -374,7 +354,34 @@ void GeneralControl::resolve_kv_camera_annex(const TcpCPtr client) {
 		client->Close();
 	}
 	else {
-
+		// kv协议的相机连接耦合到观测系统
+		string gid  = base->gid;
+		string uid  = base->uid;
+		string cid  = base->cid;
+		if (gid.empty() || uid.empty() || cid.empty()) {
+			_gLog.Write(LOG_FAULT, "requires non-empty camera-annex IDs[%s:%s:%s]",
+					gid.c_str(), uid.c_str(), cid.c_str());
+			client->Close();
+		}
+		else {
+			ObsSysPtr obss = find_obss(gid, uid);
+			if (obss.use_count()) {
+				int mode;
+				if ((mode = obss->CoupleCameraAnnex(client, cid))) {// P2P或P2H模式
+					obss->NotifyKVProtocol(base);
+					if (mode == 1) erase_coupled_tcp(client);
+				}
+				else {
+					_gLog.Write(LOG_FAULT, "failed to couple camera-annex[%s] with OBSS[%s:%s]",
+							cid.c_str(), gid.c_str(), uid.c_str());
+					client->Close();
+				}
+			}
+			else {
+				_gLog.Write(LOG_FAULT, "not found OBSS[%s:%s]", gid.c_str(), uid.c_str());
+				client->Close();
+			}
+		}
 	}
 }
 
@@ -478,17 +485,17 @@ ObsSysPtr GeneralControl::find_obss(const string& gid, const string& uid) {
 	if (it != end) obss = *it;
 	else {
 		/* 新建观测系统 */
-		_gLog.Write("try to create ObservationSystem[%s:%s]",
-				gid.c_str(), uid.c_str());
-		obss = ObservationSystem::Create(gid, uid);
 		const OBSSParam* param = param_.GetParamOBSS(gid);
 		if (param) {
+			_gLog.Write("try to create ObservationSystem[%s:%s]",
+					gid.c_str(), uid.c_str());
+
 			const ObservationSystem::CBSlot& slot = boost::bind(&GeneralControl::acquire_new_plan, this, _1);
+			obss = ObservationSystem::Create(gid, uid);
 			obss->RegisterAcquirePlan(slot);
 			obss->SetParameter(param);
 			obss->SetDBPtr(dbPtr_);
 			if (obss->Start()) obss_.push_back(obss);
-
 			create_info_env(param);	// 检查并创建新的环境信息
 		}
 		else {
@@ -499,27 +506,15 @@ ObsSysPtr GeneralControl::find_obss(const string& gid, const string& uid) {
 	return obss;
 }
 
-void GeneralControl::command_slit(const string& gid, const string& uid, const OBSSParam* param, int cmd) {
-	// 检查 天窗状态是否符合操作要求...
-
-	_gLog.Write("try to %s SLIT[%s:%s]", CommandSlit::ToString(cmd), gid.c_str(),
-			uid.empty() ? "all" : uid.c_str());
-
-	if (param->opDome == ObservationOperator::OPOBS_MOUNT) {// 执行对象: 转台
-		if (param->p2hMount) {// 找到操作对象
-
-		}
-		else {// 投递到观测系统
-
-		}
-	}
-	else if (param->opDome == ObservationOperator::OPOBS_MOUNTANNEX) {// 执行对象: 转台附属
-		if (param->p2hMountAnnex) {// 找到操作对象
-
-		}
-		else {// 投递到观测系统
-
-		}
+void GeneralControl::command_slit(const string& gid, const string& uid, int cmd) {
+	MtxLck lck(mtx_obss_);
+	int matched(0);
+	kvslit proto = boost::make_shared<kv_proto_slit>();
+	kvbase base;
+	proto->command = cmd;
+	base = to_kvbase(proto);
+	for (OBSSVec::iterator it = obss_.begin(); it != obss_.end() && matched != 1; ++it) {
+		if ((matched = (*it)->IsMatched(gid, uid))) (*it)->NotifyKVProtocol(base);
 	}
 }
 
@@ -554,69 +549,7 @@ void GeneralControl::create_info_env(const OBSSParam* param) {
 
 //////////////////////////////////////////////////////////////////////////////
 /*----------------- 多线程 -----------------*/
-void GeneralControl::interrupt_thread(ThreadPtr& thrd) {
-	if (thrd.unique()) {
-		thrd->interrupt();
-		thrd->join();
-		thrd.reset();
-	}
-}
-
 /* 处理网络事件 */
-void GeneralControl::thread_tcp_receive() {
-	boost::mutex mtx;
-	MtxLck lck(mtx);
-	TcpRcvPtr rcvd;
-	int peer;
-
-	while (1) {
-		cv_tcpRcv_.wait(lck);
-
-		while (que_tcpRcv_.size()) {
-			{// 取队首网络事件
-				MtxLck lck_net(mtx_tcpRcv_);
-				rcvd = que_tcpRcv_.front();
-				peer = rcvd->peer;
-				que_tcpRcv_.pop_front();
-			}
-			resolve_from_peer(rcvd->client, peer);
-		}
-	}
-}
-
-void GeneralControl::thread_clean_tcp() {
-	boost::chrono::seconds period(30);
-
-	while (1) {
-		boost::this_thread::sleep_for(period);
-
-		{// 客户端
-			MtxLck lck(mtx_tcpC_client_);
-			erase_closed_tcp(tcpC_client_);
-		}
-
-		{// 转台
-			MtxLck lck(mtx_tcpC_mount_);
-			erase_closed_tcp(tcpC_mount_);
-		}
-
-		{// 相机
-			MtxLck lck(mtx_tcpC_camera_);
-			erase_closed_tcp(tcpC_camera_);
-		}
-
-		{// 转台附属
-			MtxLck lck(mtx_tcpC_mountAnnex_);
-			erase_closed_tcp(tcpC_mountAnnex_);
-		}
-
-		{// 相机附属
-			MtxLck lck(mtx_tcpC_cameraAnnex_);
-			erase_closed_tcp(tcpC_cameraAnnex_);
-		}
-	}
-}
-
 void GeneralControl::thread_nfenv_changed() {
 	boost::mutex mtx;
 	MtxLck lck(mtx);
@@ -645,7 +578,7 @@ void GeneralControl::thread_nfenv_changed() {
 				if (safe != nfEnv->safe) {
 					_gLog.Write("Environment[%s] shows %s", safe ? "safe" : "!!! DANGER !!!");
 					nfEnv->safe = safe;
-					if (!safe && param->useDomeSlit) command_slit(gid, "", param, CommandSlit::SLITC_CLOSE);
+					if (!safe && param->useDomeSlit) command_slit(gid, "", CommandSlit::SLITC_CLOSE);
 				}
 			}
 		}
@@ -691,9 +624,9 @@ void GeneralControl::thread_odt() {
 				(*it)->odt = odt;
 				if (param->useDomeSlit) {
 					if (odt == TypeObservationDuration::ODT_DAYTIME) // 白天: 关闭天窗
-						command_slit(param->gid, "", param, CommandSlit::SLITC_CLOSE);
+						command_slit(param->gid, "", CommandSlit::SLITC_CLOSE);
 					else if ((*it)->safe) // 当气象条件满足时, 打开天窗
-						command_slit(param->gid, "", param, CommandSlit::SLITC_OPEN);
+						command_slit(param->gid, "", CommandSlit::SLITC_OPEN);
 				}
 			}
 		}

@@ -54,7 +54,8 @@
 #include "GeneralControl.h"
 #include "Parameter.h"
 
-GLog _gLog(gLogDir, gLogPrefix);		/// 工作日志
+//GLog _gLog(gLogDir, gLogPrefix);		/// 工作日志
+GLog _gLog(stdout);
 
 int main(int argc, char **argv) {
 	if (argc >= 2) {// 处理命令行参数
@@ -69,11 +70,11 @@ int main(int argc, char **argv) {
 		boost::asio::signal_set signals(ios, SIGINT, SIGTERM);  // interrupt signal
 		signals.async_wait(boost::bind(&boost::asio::io_service::stop, &ios));
 
-		if (!MakeItDaemon(ios)) return 1;
-		if (!isProcSingleton(gPIDPath)) {
-			_gLog.Write("%s is already running or failed to access PID file", DAEMON_NAME);
-			return 2;
-		}
+//		if (!MakeItDaemon(ios)) return 1;
+//		if (!isProcSingleton(gPIDPath)) {
+//			_gLog.Write("%s is already running or failed to access PID file", DAEMON_NAME);
+//			return 2;
+//		}
 		_gLog.Write("Try to launch %s %s %s as daemon", DAEMON_NAME, DAEMON_VERSION, DAEMON_AUTHORITY);
 		// 主程序入口
 		GeneralControl gc;

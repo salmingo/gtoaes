@@ -29,6 +29,7 @@ ObservationSystem::~ObservationSystem() {
 
 void ObservationSystem::SetParameter(const OBSSParam* param) {
 	_gLog.Write("OBSS[%s:%s] locates at: %.4f, %.4f, altitude: %.1f, timezone: %d. AltLimit = %.1f",
+			gid_.c_str(), uid_.c_str(),
 			param->siteLon, param->siteLat, param->siteAlt, param->timeZone,
 			param->altLimit);
 	ats_.SetSite(param->siteLon, param->siteLat, param->siteAlt, param->timeZone);
@@ -73,18 +74,14 @@ bool ObservationSystem::IsSafePoint(ObsPlanItemPtr plan, const ptime& now) {
 
 bool ObservationSystem::Start() {
 	//...
-	bufrcv_.reset(new char[TCP_PACK_SIZE]);
-	kvProto_ = KvProtocol::Create();
-	nonkvProto_ = NonkvProtocol::Create();
 
 	_gLog.Write("OBSS[%s:%s] starts running", gid_.c_str(), uid_.c_str());
-	return false;
+	return true;
 }
 
 void ObservationSystem::Stop() {
 	//...
-	interrupt_thread(thrd_acqPlan_);
-	interrupt_thread(thrd_queKv_);
+//	interrupt_thread(thrd_acqPlan_);
 	_gLog.Write("OBSS[%s:%s] stopped", gid_.c_str(), uid_.c_str());
 }
 
@@ -121,12 +118,14 @@ int ObservationSystem::CoupleMount(const TcpCPtr client) {
 	if (!tcpc_mount_.client.use_count()) {
 		_gLog.Write("Mount[%s:%s] was on-line", gid_.c_str(), uid_.c_str());
 		tcpc_mount_.client = client;
-//		tcpc_mount_.type   = type;
+
+		if (!param_->p2hMount) {// P2P模式, 由OBSS接管网络信息接收/解析
+
+		}
 	}
 	else if (tcpc_mount_() != client) {
-		_gLog.Write(LOG_FAULT, "OBSS[%s:%s] had related mount. Connection will be closed",
+		_gLog.Write(LOG_FAULT, "OBSS[%s:%s] had related mount",
 				gid_.c_str(), uid_.c_str());
-		client->Close();
 		return 0;
 	}
 	return param_->p2hMount ? 2 : 1;
@@ -140,7 +139,7 @@ int ObservationSystem::CoupleMountAnnex(const TcpCPtr client) {
 	return param_->p2hMountAnnex ? 2 : 1;
 }
 
-int ObservationSystem::CoupleCameraAnnex(const TcpCPtr client) {
+int ObservationSystem::CoupleCameraAnnex(const TcpCPtr client, const string& cid) {
 	return param_->p2hCameraAnnex ? 2 : 1;
 }
 
@@ -167,7 +166,10 @@ void ObservationSystem::DecoupleCameraAnnex(const TcpCPtr client) {
 void ObservationSystem::NotifyKVProtocol(kvbase proto) {
 	MtxLck lck(mtx_queKv_);
 	queKv_.push_back(proto);
-	cv_queKv_.notify_one();
+}
+
+void ObservationSystem::NotifyNonkvProtocol(nonkvbase proto) {
+
 }
 
 void ObservationSystem::NotifyPlan(ObsPlanItemPtr plan) {
@@ -206,33 +208,6 @@ void ObservationSystem::abort_plan() {
 }
 
 //////////////////////////////////////////////////////////////////////////////
-void ObservationSystem::interrupt_thread(ThreadPtr& thrd) {
-	if (thrd.unique()) {
-		thrd->interrupt();
-		thrd->join();
-		thrd.reset();
-	}
-}
-
-void ObservationSystem::monitor_kv_queue() {
-	boost::mutex mtx;
-	MtxLck lck(mtx);
-	kvbase proto;
-
-	while (1) {
-		cv_queKv_.wait(lck);
-
-		while (queKv_.size()) {
-			{// 取队首协议
-				MtxLck lck1(mtx_queKv_);
-				proto = queKv_.front();
-				queKv_.pop_front();
-			}
-			process_kv_client(proto);
-		}
-	}
-}
-
 void ObservationSystem::thread_acquire_plan() {
 	boost::chrono::minutes period(2);
 	boost::mutex mtx;
