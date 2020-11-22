@@ -22,6 +22,11 @@
 #include "AsioUDP.h"
 #include "ObservationSystem.h"
 #include "DatabaseCurl.h"
+#include "DomeSlit.h"
+#include "KvProtocol.h"
+#include "NonkvProtocol.h"
+#include "ObservationPlan.h"
+#include "TcpReceived.h"
 
 //////////////////////////////////////////////////////////////////////////////
 class GeneralControl : public MessageQueue {
@@ -32,6 +37,12 @@ public:
 
 /* 成员变量 */
 protected:
+	//////////////////////////////////////////////////////////////////////////////
+	enum {
+		MSG_TCP_RECEIVE = MSG_USER,///< 收到TCP消息
+		MSG_ENV_CHANGED	///< 气象信息改变的响应
+	};
+
 	//////////////////////////////////////////////////////////////////////////////
 	Parameter param_;
 	NTPPtr ntp_;
@@ -46,10 +57,29 @@ protected:
 	UdpPtr  udpS_env_;			///< 网络服务: 气象环境, UDP
 	boost::shared_array<char> bufUdp_;	///< 网络信息存储区: 消息队列中调用
 
+	TcpCVec tcpC_buff_;			///< 网络连接
+	boost::mutex mtx_tcpC_buff_;///< 互斥锁: 网络连接
+	ThreadPtr thrd_tcpClean_;	///< 线程: 释放已关闭的网络连接
+
+	TcpRcvQue que_tcpRcv_;		///< 网络事件队列
+	boost::mutex mtx_tcpRcv_;	///< 互斥锁: 网络事件
+
+	boost::shared_array<char> bufTcp_;	///< 网络信息存储区: 消息队列中调用
+	KvProtoPtr kvProto_;		///< 键值对格式协议访问接口
+	NonkvProtoPtr nonkvProto_;	///< 非键值对格式协议访问接口
+
+	/* 观测计划 */
+	ObsPlanPtr obsPlans_;		///< 观测计划集合
+	boost::mutex mtx_obsPlans_;	///< 互斥锁: 观测计划集合
+
 	/* 观测系统 */
 	using OBSSVec = std::vector<ObsSysPtr>;	///< 观测系统集合
 	OBSSVec obss_;		///< 观测系统集合
 	boost::mutex mtx_obss_;	///< 互斥锁: 观测系统
+
+	/* 天窗 */
+	SlitMulVec slit_;		///< 复用的天窗
+	boost::mutex mtx_slit_;	///< 互斥锁：天窗
 
 	/* 环境信息 */
 	/*!
@@ -89,20 +119,18 @@ protected:
 	using NfEnvVec = std::vector<NfEnvPtr>;
 	using NfEnvQue = std::deque<NfEnvPtr>;
 
-	NfEnvVec nfEnv_;			///< 环境信息: 在线信息集合
-	NfEnvQue que_nfEnv_;		///< 环境信息队列: 信息改变
+	NfEnvVec nfEnv_;	///< 环境信息: 在线信息集合
+	NfEnvQue que_nfEnv_;	///< 环境信息队列: 信息改变
 	boost::mutex mtx_nfEnv_;	///< 互斥锁: 环境信息
-	boost::condition_variable cv_nfEnvChanged_;	///< 条件触发: 信息改变
-	ThreadPtr thrd_nfEnvChanged_;	///< 线程: 环境信息变化
 
 	/* 数据库 */
 	DBCurlPtr dbPtr_;	///< 数据库访问接口
 
 	/* 观测时间类型 */
-	ThreadPtr thrd_odt_;///< 线程: 计算观测系统所处的观测时间类型
+	ThreadPtr thrd_odt_;	///< 线程: 计算观测系统所处的观测时间类型
+	ThreadPtr thrd_noon_;	///< 线程: 每天中午清理无效的资源
 
 	//////////////////////////////////////////////////////////////////////////////
-
 /* 接口 */
 public:
 	/*!
@@ -118,6 +146,32 @@ public:
 
 /* 功能 */
 protected:
+	/*----------------- 消息响应 -----------------*/
+	/*!
+	 * @brief 注册消息响应函数
+	 */
+	void register_messages();
+	/*!
+	 * @brief 消息: 收到TCP信息
+	 * @param par1  参数1, 保留
+	 * @param par2  参数2, 保留
+	 */
+	void on_tcp_receive(const long par1, const long par2);
+	/*!
+	 * @brief 响应气象信息改变
+	 * @param par1  保留
+	 * @param par2  保留
+	 */
+	void on_env_changed(const long par1, const long par2);
+	/*!
+	 * @brief 处理客户端信息
+	 * @param client 网络连接
+	 * @param ec     错误代码. 0: 正确
+	 * @param peer   远程主机类型
+	 */
+	void receive_from_peer(const TcpCPtr client, const error_code& ec, int peer);
+
+protected:
 	/*----------------- 网络服务 -----------------*/
 	/*!
 	 * @brief 创建网络服务
@@ -125,16 +179,23 @@ protected:
 	 * @param port   监听端口
 	 * @return
 	 * 创建结果
-	 * 0 -- 成功
-	 * 其它 -- 错误代码
 	 */
-	int create_server(TcpSPtr *server, const uint16_t port);
+	bool create_server(TcpSPtr *server, const uint16_t port);
 	/*!
 	 * @brief 依据配置文件, 创建所有网络服务
 	 * @return
 	 * 创建结果
 	 */
 	bool create_all_server();
+	/*!
+	 * @brief 关闭网络服务
+	 * @param server  网络服务
+	 */
+	void close_server(TcpSPtr& server);
+	/*!
+	 * @brief 关闭所有网络服务
+	 */
+	void close_all_server();
 	/*!
 	 * @brief 处理网络连接请求
 	 * @param client 为连接请求分配额网络资源
@@ -150,6 +211,12 @@ protected:
 	 * @param client  网络连接
 	 */
 	void erase_coupled_tcp(const TcpCPtr client);
+	/*!
+	 * @brief 关闭套接口
+	 * @param client  网络连接
+	 * @param peer    远程主机类型
+	 */
+	void close_socket(const TcpCPtr client, int peer);
 
 protected:
 	/*----------------- 解析/执行通信协议 -----------------*/
@@ -159,7 +226,6 @@ protected:
 	 * @param peer   远程主机类型
 	 */
 	void resolve_from_peer(const TcpCPtr client, int peer);
-
 	/*!
 	 * @fn resolve_kv_client
 	 * @brief  解析处理客户端的键值对协议
@@ -188,8 +254,8 @@ protected:
 	 * @param proto   通信协议
 	 * @param client  网络连接
 	 */
-	void process_nonkv_mount(nonkvbase base, const TcpCPtr client);
-	void process_nonkv_mount_annex(nonkvbase base, const TcpCPtr client);
+	void process_nonkv_mount(const TcpCPtr client, nonkvbase base);
+	void process_nonkv_mount_annex(const TcpCPtr client, nonkvbase base);
 
 protected:
 	/*----------------- 观测计划 -----------------*/
@@ -239,6 +305,12 @@ protected:
 	 * - 由天窗控制程序, 判断执行策略
 	 */
 	void command_slit(const string& gid, const string& uid, int cmd);
+	/*!
+	 * @brief 控制多模天窗
+	 * @param slit  多模天窗
+	 * @param cmd   控制指令
+	 */
+	void command_slit(const SlitMulPtr slit, int cmd);
 
 protected:
 	/*----------------- 环境信息 -----------------*/
@@ -258,9 +330,9 @@ protected:
 protected:
 	/*----------------- 多线程 -----------------*/
 	/*!
-	 * @brief 处理变化的环境信息
+	 * @brief 集中清理已断开的网络连接
 	 */
-	void thread_nfenv_changed();
+	void thread_clean_tcp();
 	/*!
 	 * @brief 计算观测时间类型
 	 * @note
@@ -269,6 +341,10 @@ protected:
 	 * - odt执行不同类型的观测计划
 	 */
 	void thread_odt();
+	/*!
+	 * @brief 线程: 中午清理无效资源
+	 */
+	void thread_noon();
 };
 
 #endif /* SRC_GENERALCONTROL_H_ */

@@ -10,6 +10,10 @@
 
 using std::string;
 
+#define MODE_ERROR	0
+#define MODE_P2P	1
+#define MODE_P2H	2
+
 /**
  * @struct OBSSParam 观测系统参数
  */
@@ -21,6 +25,7 @@ struct OBSSParam {
 	double		siteAlt;	///< 海拔高度, 量纲: 米
 	int			timeZone;	///< 时区, 量纲: 小时
 	double		altLimit;	///< 水平限位, 最低仰角, 量纲: 角度
+	bool		robotic;	///< 自动观测系统标志, 决定是否依据条件自动开始观测
 
 	/*!
 	 * (altDay, altNight)之间是平场时间
@@ -37,8 +42,8 @@ struct OBSSParam {
 
 	/*!
 	 * 网络连接与设备对象的对应关系, 分为两类:
-	 * - p2p, 索引0, 一条网络连接对应一个设备
-	 * - p2h, 索引1, 一条网络连接对应多个设备
+	 * - p2p, 一条网络连接对应一个设备
+	 * - p2h, 一条网络连接对应多个设备
 	 */
 	bool		p2hMount;	///< 与转台是否Peer-Hub关系
 	bool		p2hCamera;	///< 与相机是否Peer-Hub关系

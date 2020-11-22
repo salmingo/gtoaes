@@ -16,43 +16,6 @@
 #include <boost/smart_ptr.hpp>
 #include <boost/signals2.hpp>
 #include <string>
-#include "AsioTCP.h"
-#include "KvProtocol.h"
-#include "NonkvProtocol.h"
-#include "ObservationPlan.h"
-
-/*!
- * @struct TcpReceived
- * @brief 网络事件
- */
-struct TcpReceived {
-	using Pointer = boost::shared_ptr<TcpReceived>;
-
-	TcpCPtr client;	///< 网络连接
-	int peer;	///< 主机类型
-
-public:
-	TcpReceived(TcpCPtr _client, int _peer) {
-		client = _client;
-		peer   = _peer;
-	}
-
-	static Pointer Create(TcpCPtr _client, int _peer) {
-		return Pointer(new TcpReceived(_client, _peer));
-	}
-};
-using TcpRcvPtr = TcpReceived::Pointer;
-using TcpRcvQue = std::deque<TcpRcvPtr>;
-using TcpCVec = std::vector<TcpCPtr> ; ///< 网络连接存储区
-
-enum {// 对应主机类型
-	PEER_CLIENT,		///< 客户端
-	PEER_MOUNT,			///< GWAC望远镜
-	PEER_CAMERA,		///< 相机
-	PEER_MOUNT_ANNEX,	///< 镜盖+调焦+天窗(GWAC)
-	PEER_CAMERA_ANNEX,	///< 温控+真空(GWAC-GY)
-	PEER_LAST		///< 占位, 不使用
-};
 
 class MessageQueue {
 protected:
@@ -87,7 +50,6 @@ protected:
 	//////////////////////////////////////////////////////////////////////////////
 	enum {
 		MSG_QUIT = 0,	///< 结束消息队列
-		MSG_TCP_RECEIVE,///< 收到TCP消息
 		MSG_USER		///< 用户自定义消息起始编号
 	};
 
@@ -97,24 +59,9 @@ protected:
 	MQPtr mqptr_;		///< 消息队列
 	CBArray funcs_;		///< 回调函数数组
 	std::string errmsg_;///< 错误原因
-	/* 网络通信 */
-	TcpCVec tcpC_buff_;			///< 网络连接
-	boost::mutex mtx_tcpC_buff_;///< 互斥锁: 网络连接
-
-	TcpRcvQue que_tcpRcv_;		///< 网络事件队列
-	boost::mutex mtx_tcpRcv_;	///< 互斥锁: 网络事件
-
-	boost::shared_array<char> bufTcp_;	///< 网络信息存储区: 消息队列中调用
-	KvProtoPtr kvProto_;		///< 键值对格式协议访问接口
-	NonkvProtoPtr nonkvProto_;	///< 非键值对格式协议访问接口
 
 	/* 多线程 */
 	ThreadPtr thrd_msg_;		///< 消息响应线程
-	ThreadPtr thrd_tcpClean_;	///< 线程: 释放已关闭的网络连接
-
-	/* 观测计划 */
-	ObsPlanPtr obsPlans_;		///< 观测计划集合
-	boost::mutex mtx_obsPlans_;	///< 互斥锁: 观测计划集合
 
 public:
 	MessageQueue();
@@ -162,27 +109,9 @@ public:
 protected:
 	/* 消息响应函数 */
 	/*!
-	 * @brief 消息: 收到TCP信息
-	 * @param par1  参数1, 保留
-	 * @param par2  参数2, 保留
+	 * @brief 注册消息响应函数
 	 */
-	void on_tcp_receive(const long par1 = 0, const long par2 = 0);
-
-protected:
-	/* TCP接收回调函数 */
-	/*!
-	 * @brief 处理客户端信息
-	 * @param client 网络资源
-	 * @param ec     错误代码. 0: 正确
-	 * @param peer   远程主机类型
-	 */
-	void receive_from_peer(const TcpCPtr client, const error_code& ec, int peer);
-	/*!
-	 * @brief 解析与用户/数据库、通用望远镜、相机、制冷(GWAC)、真空(GWAC)相关网络信息
-	 * @param client 网络资源
-	 * @param peer   远程主机类型
-	 */
-	virtual void resolve_from_peer(const TcpCPtr client, int peer) = 0;
+	virtual void register_messages() = 0;
 
 protected:
 	/*!
@@ -194,10 +123,6 @@ protected:
 	 * @brief 线程, 监测/响应消息
 	 */
 	void thread_message();
-	/*!
-	 * @brief 集中清理已断开的网络连接
-	 */
-	void thread_clean_tcp();
 };
 
 #endif /* SRC_MESSAGEQUEUE_H_ */

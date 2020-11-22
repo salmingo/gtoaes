@@ -423,6 +423,16 @@ const char *KvProtocol::CompactSlit(kvslit proto, int& n) {
 	return output_compacted(output, n);
 }
 
+const char *KvProtocol::CompactSlit(const string& gid, const string& uid, int cmd, int& n) {
+	string output = KVTYPE_SLIT;
+	output += " ";
+
+	join_kv(output, "gid", gid);
+	if (uid.size()) join_kv(output, "uid", uid);
+	join_kv(output, "command", cmd);
+	return output_compacted(output, n);
+}
+
 const char *KvProtocol::CompactMirrorCover(kvmcover proto, int &n) {
 	if (!proto.use_count()) return NULL;
 
@@ -619,10 +629,10 @@ kvbase KvProtocol::Resolve(const char *rcvd) {
 	ch = type[0];
 	// 按照协议类型解析键值对
 	if (ch == 'a' || ch == 'A') {
-		if      (iequals(type, KVTYPE_ABTSLEW))  proto = resolve_abortslew  (kvs);
-		else if (iequals(type, KVTYPE_ABTIMG))   proto = resolve_abortimg   (kvs);
-		else if (iequals(type, KVTYPE_APPPLAN))  proto = resolve_append_plan(kvs);
+		if      (iequals(type, KVTYPE_APPPLAN))  proto = resolve_append_plan(kvs);
 		else if (iequals(type, KVTYPE_ABTPLAN))  proto = resolve_abort_plan (kvs);
+		else if (iequals(type, KVTYPE_ABTSLEW))  proto = resolve_abortslew  (kvs);
+		else if (iequals(type, KVTYPE_ABTIMG))   proto = resolve_abortimg   (kvs);
 	}
 	else if (ch == 'c' || ch == 'C') {
 		if      (iequals(type, KVTYPE_CAMERA))   proto = resolve_camera    (kvs);
@@ -639,10 +649,10 @@ kvbase KvProtocol::Resolve(const char *rcvd) {
 		else if (iequals(type, KVTYPE_ENABLE))   proto = resolve_enable(kvs);
 	}
 	else if (ch == 'f' || ch == 'F') {
-		if      (iequals(type, KVTYPE_FILEINFO)) proto = resolve_fileinfo(kvs);
-		else if (iequals(type, KVTYPE_FILESTAT)) proto = resolve_filestat(kvs);
-		else if (iequals(type, KVTYPE_FWHM))     proto = resolve_fwhm    (kvs);
+		if      (iequals(type, KVTYPE_FWHM))     proto = resolve_fwhm    (kvs);
 		else if (iequals(type, KVTYPE_FOCUS))    proto = resolve_focus   (kvs);
+		else if (iequals(type, KVTYPE_FILEINFO)) proto = resolve_fileinfo(kvs);
+		else if (iequals(type, KVTYPE_FILESTAT)) proto = resolve_filestat(kvs);
 		else if (iequals(type, KVTYPE_FINDHOME)) proto = resolve_findhome(kvs);
 	}
 	else if (ch == 'o' || ch == 'O') {
@@ -659,22 +669,22 @@ kvbase KvProtocol::Resolve(const char *rcvd) {
 		else if (iequals(type, KVTYPE_REG))      proto = resolve_register(kvs);
 	}
 	else if (ch == 's' || ch == 'S') {
-		if      (iequals(type, KVTYPE_SLEWTO))   proto = resolve_slewto(kvs);
+		if      (iequals(type, KVTYPE_SLIT))     proto = resolve_slit  (kvs);
+		else if (iequals(type, KVTYPE_SLEWTO))   proto = resolve_slewto(kvs);
 		else if (iequals(type, KVTYPE_START))    proto = resolve_start (kvs);
 		else if (iequals(type, KVTYPE_STOP))     proto = resolve_stop  (kvs);
-		else if (iequals(type, KVTYPE_SLIT))     proto = resolve_slit  (kvs);
 	}
 	else if (ch == 'm' || ch == 'M') {
 		if      (iequals(type, KVTYPE_MOUNT))    proto = resolve_mount (kvs);
 		else if (iequals(type, KVTYPE_MCOVER))   proto = resolve_mcover(kvs);
 	}
-	else if (iequals(type, KVTYPE_WIND))     proto = resolve_wind          (kvs);
-	else if (iequals(type, KVTYPE_VACUUM))   proto = resolve_vacuum        (kvs);
-	else if (iequals(type, KVTYPE_GUIDE))    proto = resolve_guide         (kvs);
-	else if (iequals(type, KVTYPE_HOMESYNC)) proto = resolve_homesync      (kvs);
-	else if (iequals(type, KVTYPE_IMPPLAN))  proto = resolve_implement_plan(kvs);
-	else if (iequals(type, KVTYPE_TAKIMG))   proto = resolve_takeimg       (kvs);
-	else if (iequals(type, KVTYPE_UNREG))    proto = resolve_unregister    (kvs);
+	else if (iequals(type, KVTYPE_IMPPLAN))      proto = resolve_implement_plan(kvs);
+	else if (iequals(type, KVTYPE_WIND))         proto = resolve_wind          (kvs);
+	else if (iequals(type, KVTYPE_VACUUM))       proto = resolve_vacuum        (kvs);
+	else if (iequals(type, KVTYPE_GUIDE))        proto = resolve_guide         (kvs);
+	else if (iequals(type, KVTYPE_HOMESYNC))     proto = resolve_homesync      (kvs);
+	else if (iequals(type, KVTYPE_TAKIMG))       proto = resolve_takeimg       (kvs);
+	else if (iequals(type, KVTYPE_UNREG))        proto = resolve_unregister    (kvs);
 
 	if (proto.unique()) *proto = basis;
 	return proto;
@@ -692,33 +702,33 @@ kvbase KvProtocol::ResolveClient(const char* rcvd) {
 	ch = type[0];
 	/*---------------- 分项解析 ----------------*/
 	if (ch == 'a' || ch == 'A') {
-		if      (iequals(type, KVTYPE_ABTSLEW))  proto = resolve_abortslew  (kvs);
+		if      (iequals(type, KVTYPE_APPPLAN))  proto = resolve_append_plan(kvs);
+		else if (iequals(type, KVTYPE_ABTSLEW))  proto = resolve_abortslew  (kvs);
 		else if (iequals(type, KVTYPE_ABTIMG))   proto = resolve_abortimg   (kvs);
-		else if (iequals(type, KVTYPE_APPPLAN))  proto = resolve_append_plan(kvs);
 		else if (iequals(type, KVTYPE_ABTPLAN))  proto = resolve_abort_plan (kvs);
 	}
 	else if (ch == 'f' || ch == 'F') {
-		if (iequals(type, KVTYPE_FWHM))          proto = resolve_fwhm    (kvs);
+		if      (iequals(type, KVTYPE_FWHM))     proto = resolve_fwhm    (kvs);
 		else if (iequals(type, KVTYPE_FOCUS))    proto = resolve_focus   (kvs);
 		else if (iequals(type, KVTYPE_FINDHOME)) proto = resolve_findhome(kvs);
 	}
 	else if (ch == 's' || ch == 'S') {
-		if      (iequals(type, KVTYPE_SLEWTO))   proto = resolve_slewto(kvs);
-		else if (iequals(type, KVTYPE_START))    proto = resolve_start (kvs);
+		if      (iequals(type, KVTYPE_START))    proto = resolve_start (kvs);
 		else if (iequals(type, KVTYPE_STOP))     proto = resolve_stop  (kvs);
 		else if (iequals(type, KVTYPE_SLIT))     proto = resolve_slit  (kvs);
+		else if (iequals(type, KVTYPE_SLEWTO))   proto = resolve_slewto(kvs);
 	}
-	else if (iequals(type, KVTYPE_CHKPLAN))  proto = resolve_check_plan    (kvs);
-	else if (iequals(type, KVTYPE_DISABLE))  proto = resolve_disable       (kvs);
-	else if (iequals(type, KVTYPE_ENABLE))   proto = resolve_enable        (kvs);
-	else if (iequals(type, KVTYPE_GUIDE))    proto = resolve_guide         (kvs);
-	else if (iequals(type, KVTYPE_HOMESYNC)) proto = resolve_homesync      (kvs);
-	else if (iequals(type, KVTYPE_IMPPLAN))  proto = resolve_implement_plan(kvs);
-	else if (iequals(type, KVTYPE_MCOVER))   proto = resolve_mcover        (kvs);
-	else if (iequals(type, KVTYPE_PARK))     proto = resolve_park          (kvs);
-	else if (iequals(type, KVTYPE_REG))      proto = resolve_register      (kvs);
-	else if (iequals(type, KVTYPE_TAKIMG))   proto = resolve_takeimg       (kvs);
-	else if (iequals(type, KVTYPE_UNREG))    proto = resolve_unregister    (kvs);
+	else if (iequals(type, KVTYPE_IMPPLAN))      proto = resolve_implement_plan(kvs);
+	else if (iequals(type, KVTYPE_CHKPLAN))      proto = resolve_check_plan    (kvs);
+	else if (iequals(type, KVTYPE_GUIDE))        proto = resolve_guide         (kvs);
+	else if (iequals(type, KVTYPE_HOMESYNC))     proto = resolve_homesync      (kvs);
+	else if (iequals(type, KVTYPE_MCOVER))       proto = resolve_mcover        (kvs);
+	else if (iequals(type, KVTYPE_PARK))         proto = resolve_park          (kvs);
+	else if (iequals(type, KVTYPE_TAKIMG))       proto = resolve_takeimg       (kvs);
+	else if (iequals(type, KVTYPE_REG))          proto = resolve_register      (kvs);
+	else if (iequals(type, KVTYPE_UNREG))        proto = resolve_unregister    (kvs);
+	else if (iequals(type, KVTYPE_DISABLE))      proto = resolve_disable       (kvs);
+	else if (iequals(type, KVTYPE_ENABLE))       proto = resolve_enable        (kvs);
 
 	/*---------------- 分项解析 ----------------*/
 	if (proto.unique()) *proto = basis;
@@ -736,26 +746,38 @@ kvbase KvProtocol::ResolveMount(const char* rcvd) {
 	type = basis.type;
 	ch = type[0];
 	/*---------------- 分项解析 ----------------*/
-	if (ch == 'f' || ch == 'F') {
-		if      (iequals(type, KVTYPE_FWHM))     proto = resolve_fwhm    (kvs);
-		else if (iequals(type, KVTYPE_FOCUS))    proto = resolve_focus   (kvs);
-		else if (iequals(type, KVTYPE_FINDHOME)) proto = resolve_findhome(kvs);
-	}
-	else if (ch == 's' || ch == 'S') {
-		if      (iequals(type, KVTYPE_SLEWTO))   proto = resolve_slewto(kvs);
-		else if (iequals(type, KVTYPE_SLIT))     proto = resolve_slit  (kvs);
-	}
-	else if (ch == 'm' || ch == 'M') {
-		if      (iequals(type, KVTYPE_MOUNT))    proto = resolve_mount (kvs);
-		else if (iequals(type, KVTYPE_MCOVER))   proto = resolve_mcover(kvs);
-	}
-	else if (iequals(type, KVTYPE_ABTSLEW))  proto = resolve_abortslew (kvs);
-	else if (iequals(type, KVTYPE_DOME))     proto = resolve_dome      (kvs);
+	if      (iequals(type, KVTYPE_MOUNT))    proto = resolve_mount     (kvs);
 	else if (iequals(type, KVTYPE_GUIDE))    proto = resolve_guide     (kvs);
-	else if (iequals(type, KVTYPE_HOMESYNC)) proto = resolve_homesync  (kvs);
+	else if (iequals(type, KVTYPE_SLEWTO))   proto = resolve_slewto    (kvs);
 	else if (iequals(type, KVTYPE_PARK))     proto = resolve_park      (kvs);
+	else if (iequals(type, KVTYPE_ABTSLEW))  proto = resolve_abortslew (kvs);
+	else if (iequals(type, KVTYPE_HOMESYNC)) proto = resolve_homesync  (kvs);
+	else if (iequals(type, KVTYPE_FINDHOME)) proto = resolve_findhome  (kvs);
 	else if (iequals(type, KVTYPE_REG))      proto = resolve_register  (kvs);
 	else if (iequals(type, KVTYPE_UNREG))    proto = resolve_unregister(kvs);
+	/*---------------- 分项解析 ----------------*/
+	if (proto.unique()) *proto = basis;
+	return proto;
+}
+
+kvbase KvProtocol::ResolveMountAnnex(const char* rcvd) {
+	kvbase proto;
+	kv_proto_base basis;
+	likv kvs;
+	string type;
+	char ch;
+
+	resolve_rcvd(rcvd, basis, kvs);
+	type = basis.type;
+	ch = type[0];
+	/*---------------- 分项解析 ----------------*/
+	if (ch == 'f' || ch == 'F') {
+		if (iequals(type, KVTYPE_FOCUS))     proto = resolve_focus(kvs);
+		else if (iequals(type, KVTYPE_FWHM)) proto = resolve_fwhm (kvs);
+	}
+	else if (iequals(type, KVTYPE_SLIT))     proto = resolve_slit  (kvs);
+	else if (iequals(type, KVTYPE_DOME))     proto = resolve_dome  (kvs);
+	else if (iequals(type, KVTYPE_MCOVER))   proto = resolve_mcover(kvs);
 	/*---------------- 分项解析 ----------------*/
 	if (proto.unique()) *proto = basis;
 	return proto;
@@ -772,23 +794,40 @@ kvbase KvProtocol::ResolveCamera(const char* rcvd) {
 	type = basis.type;
 	ch = type[0];
 	/*---------------- 分项解析 ----------------*/
-	if (ch == 'f' || ch == 'F') {
-		if      (iequals(type, KVTYPE_FILEINFO)) proto = resolve_fileinfo(kvs);
-		else if (iequals(type, KVTYPE_FILESTAT)) proto = resolve_filestat(kvs);
-		else if (iequals(type, KVTYPE_FOCUS))    proto = resolve_focus   (kvs);
-	}
+	if      (iequals(type, KVTYPE_CAMERA))     proto = resolve_camera    (kvs);
 	else if (ch == 'o' || ch == 'O') {
-		if      (iequals(type, KVTYPE_OBJECT))   proto = resolve_object(kvs);
-		else if (iequals(type, KVTYPE_OBSITE))   proto = resolve_obsite(kvs);
+		if      (iequals(type, KVTYPE_OBJECT)) proto = resolve_object    (kvs);
+		else if (iequals(type, KVTYPE_OBSITE)) proto = resolve_obsite    (kvs);
 	}
-	else if (iequals(type, KVTYPE_ABTIMG))   proto = resolve_abortimg  (kvs);
-	else if (iequals(type, KVTYPE_CAMERA))   proto = resolve_camera    (kvs);
-	else if (iequals(type, KVTYPE_EXPOSE))   proto = resolve_expose    (kvs);
-	else if (iequals(type, KVTYPE_MCOVER))   proto = resolve_mcover    (kvs);
-	else if (iequals(type, KVTYPE_REG))      proto = resolve_register  (kvs);
-	else if (iequals(type, KVTYPE_SLEWTO))   proto = resolve_slewto    (kvs);
-	else if (iequals(type, KVTYPE_TAKIMG))   proto = resolve_takeimg   (kvs);
-	else if (iequals(type, KVTYPE_UNREG))    proto = resolve_unregister(kvs);
+	else if (iequals(type, KVTYPE_EXPOSE))     proto = resolve_expose    (kvs);
+	else if (iequals(type, KVTYPE_SLEWTO))     proto = resolve_slewto    (kvs);
+	else if (iequals(type, KVTYPE_TAKIMG))     proto = resolve_takeimg   (kvs);
+	else if (iequals(type, KVTYPE_ABTIMG))     proto = resolve_abortimg  (kvs);
+	else if (iequals(type, KVTYPE_REG))        proto = resolve_register  (kvs);
+	else if (iequals(type, KVTYPE_UNREG))      proto = resolve_unregister(kvs);
+	/*---------------- 分项解析 ----------------*/
+	if (proto.unique()) *proto = basis;
+	return proto;
+}
+
+kvbase KvProtocol::ResolveCameraAnnex(const char* rcvd) {
+	kvbase proto;
+	kv_proto_base basis;
+	likv kvs;
+	string type;
+	char ch;
+
+	resolve_rcvd(rcvd, basis, kvs);
+	type = basis.type;
+	ch = type[0];
+	/*---------------- 分项解析 ----------------*/
+	if (ch == 'f' || ch == 'F') {
+		if      (iequals(type, KVTYPE_FOCUS))    proto = resolve_focus   (kvs);
+		else if (iequals(type, KVTYPE_FWHM))     proto = resolve_fwhm    (kvs);
+		else if (iequals(type, KVTYPE_FILEINFO)) proto = resolve_fileinfo(kvs);
+		else if (iequals(type, KVTYPE_FILESTAT)) proto = resolve_filestat(kvs);
+	}
+	else if (iequals(type, KVTYPE_MCOVER))       proto = resolve_mcover  (kvs);
 	/*---------------- 分项解析 ----------------*/
 	if (proto.unique()) *proto = basis;
 	return proto;
@@ -871,7 +910,7 @@ kvbase KvProtocol::resolve_obss(likv &kvs) {
 		else if (iequals(keyword, "plan_sn")) proto->plan_sn = it->value;
 		else if (iequals(keyword, "op_time")) proto->op_time = it->value;
 		else if (iequals(keyword, "mount"))   proto->mount   = stoi(it->value);
-		else if (keyword.find(precid) == 0) {// 相机工作状态. 关键字 cam#xxx
+		else if (keyword.find(precid) == 0) {// 相机工作状态
 			kv_proto_obss::camera_state cs;
 			cs.cid   = keyword.substr(nprecid);
 			cs.state = stoi(it->value);
@@ -891,41 +930,41 @@ void KvProtocol::resolve_plan(likv& kvs, ObsPlanItemPtr plan) {
 		ch = keyword[0];
 
 		if (ch == 'd') {
-			if      (iequals(keyword, "dec"))      plan->lat   = stod(it->value);
-			else if (iequals(keyword, "delay"))    plan->delay = stod(it->value);
+			if      (iequals(keyword, "dec"))   plan->lat   = stod(it->value);
+			else if (iequals(keyword, "delay")) plan->delay = stod(it->value);
 		}
 		else if (ch == 'e') {
-			if      (iequals(keyword, "epoch"))   plan->epoch  = stod(it->value);
-			else if (iequals(keyword, "expdur"))  plan->expdur = stoi(it->value);
-			else if (iequals(keyword, "etime"))   plan->SetTimeEnd(it->value);
+			if      (iequals(keyword, "epoch"))  plan->epoch  = stod(it->value);
+			else if (iequals(keyword, "expdur")) plan->expdur = stoi(it->value);
+			else if (iequals(keyword, "etime"))  plan->SetTimeEnd(it->value);
 		}
 		else if (ch == 'f') {
-			if      (iequals(keyword, "filter"))    plan->AppendFilter(it->value);
-			else if (iequals(keyword, "frmcnt"))    plan->frmcnt   = stoi(it->value);
-			else if (iequals(keyword, "field_id"))  plan->field_id = it->value;
+			if      (iequals(keyword, "filter"))   plan->AppendFilter(it->value);
+			else if (iequals(keyword, "frmcnt"))   plan->frmcnt   = stoi(it->value);
+			else if (iequals(keyword, "field_id")) plan->field_id = it->value;
 		}
 		else if (ch == 'g') {
-			if      (iequals(keyword, "gid"))       plan->gid = it->value;
-			else if (iequals(keyword, "grid_id"))   plan->grid_id  = it->value;
+			if      (iequals(keyword, "gid"))     plan->gid = it->value;
+			else if (iequals(keyword, "grid_id")) plan->grid_id  = it->value;
 		}
 		else if (ch == 'i') {
 			if      (iequals(keyword, "imgtype")) plan->imgtype = it->value;
 			else if (iequals(keyword, "iloop"))   plan->iloop   = stoi(it->value);
 		}
 		else if (ch == 'l') {
-			if      (iequals(keyword, "lon"))     plan->lon   = stod(it->value);
-			else if (iequals(keyword, "lat"))     plan->lat   = stod(it->value);
-			else if (iequals(keyword, "line1"))   plan->line1 = it->value;
-			else if (iequals(keyword, "line2"))   plan->line2 = it->value;
+			if      (iequals(keyword, "lon"))   plan->lon   = stod(it->value);
+			else if (iequals(keyword, "lat"))   plan->lat   = stod(it->value);
+			else if (iequals(keyword, "line1")) plan->line1 = it->value;
+			else if (iequals(keyword, "line2")) plan->line2 = it->value;
 		}
 		else if (ch == 'o') {
-			if      (iequals(keyword, "objname"))   plan->objname  = it->value;
-			else if (iequals(keyword, "observer"))  plan->observer = it->value;
-			else if (iequals(keyword, "obstype"))   plan->obstype  = it->value;
-			else if (iequals(keyword, "objra"))     plan->objra    = stod(it->value);
-			else if (iequals(keyword, "objdec"))    plan->objdec   = stod(it->value);
-			else if (iequals(keyword, "objepoch"))  plan->objepoch = stod(it->value);
-			else if (iequals(keyword, "objerror"))  plan->objerror = it->value;
+			if      (iequals(keyword, "objname"))  plan->objname  = it->value;
+			else if (iequals(keyword, "observer")) plan->observer = it->value;
+			else if (iequals(keyword, "obstype"))  plan->obstype  = it->value;
+			else if (iequals(keyword, "objra"))    plan->objra    = stod(it->value);
+			else if (iequals(keyword, "objdec"))   plan->objdec   = stod(it->value);
+			else if (iequals(keyword, "objepoch")) plan->objepoch = stod(it->value);
+			else if (iequals(keyword, "objerror")) plan->objerror = it->value;
 		}
 		else if (ch == 'p') {
 			if      (iequals(keyword, "priority"))  plan->priority  = stoi(it->value);
@@ -935,12 +974,12 @@ void KvProtocol::resolve_plan(likv& kvs, ObsPlanItemPtr plan) {
 			else if (iequals(keyword, "pair_id"))   plan->pair_id   = stoi(it->value);
 		}
 		else if (ch == 'r') {
-			if      (iequals(keyword, "ra"))       plan->lon     = stod(it->value);
-			else if (iequals(keyword, "runname"))  plan->runname = it->value;
+			if      (iequals(keyword, "ra"))      plan->lon     = stod(it->value);
+			else if (iequals(keyword, "runname")) plan->runname = it->value;
 		}
-		else if (iequals(keyword, "btime"))    plan->SetTimeBegin(it->value);
-		else if (iequals(keyword, "coorsys"))  plan->coorsys  = stoi(it->value);
-		else if (iequals(keyword, "uid"))      plan->uid      = it->value;
+		else if (iequals(keyword, "btime"))   plan->SetTimeBegin(it->value);
+		else if (iequals(keyword, "coorsys")) plan->coorsys  = stoi(it->value);
+		else if (iequals(keyword, "uid"))     plan->uid      = it->value;
 		else {
 			ObservationPlanItem::KVPair kv(it->keyword, it->value);
 			plan_kvs.push_back(kv);
@@ -1197,13 +1236,13 @@ kvbase KvProtocol::resolve_object(likv &kvs) {
 			else if (iequals(keyword, "line2")) proto->line2 = it->value;
 		}
 		else if ((ch = keyword[0]) == 'o') {
-			if      (iequals(keyword, "objname"))   proto->objname   = it->value;
-			else if (iequals(keyword, "observer"))  proto->observer  = it->value;
-			else if (iequals(keyword, "obstype"))   proto->obstype   = it->value;
-			else if (iequals(keyword, "objra"))     proto->objra     = stod(it->value);
-			else if (iequals(keyword, "objdec"))    proto->objdec    = stod(it->value);
-			else if (iequals(keyword, "objepoch"))  proto->objepoch  = stod(it->value);
-			else if (iequals(keyword, "objerror"))  proto->objerror  = it->value;
+			if      (iequals(keyword, "objname"))  proto->objname   = it->value;
+			else if (iequals(keyword, "observer")) proto->observer  = it->value;
+			else if (iequals(keyword, "obstype"))  proto->obstype   = it->value;
+			else if (iequals(keyword, "objra"))    proto->objra     = stod(it->value);
+			else if (iequals(keyword, "objdec"))   proto->objdec    = stod(it->value);
+			else if (iequals(keyword, "objepoch")) proto->objepoch  = stod(it->value);
+			else if (iequals(keyword, "objerror")) proto->objerror  = it->value;
 		}
 		else if (ch == 'p') {
 			if      (iequals(keyword, "priority"))  proto->priority  = stoi(it->value);
@@ -1217,10 +1256,10 @@ kvbase KvProtocol::resolve_object(likv &kvs) {
 			if      (iequals(keyword, "frmcnt"))    proto->frmcnt   = stoi(it->value);
 			else if (iequals(keyword, "field_id"))  proto->field_id = it->value;
 		}
-		else if (iequals(keyword, "coorsys"))   proto->coorsys  = stoi(it->value);
-		else if (iequals(keyword, "delay"))     proto->delay    = stod(it->value);
-		else if (iequals(keyword, "grid_id"))   proto->grid_id  = it->value;
-		else if (iequals(keyword, "runname"))   proto->runname  = it->value;
+		else if (iequals(keyword, "coorsys")) proto->coorsys  = stoi(it->value);
+		else if (iequals(keyword, "delay"))   proto->delay    = stod(it->value);
+		else if (iequals(keyword, "grid_id")) proto->grid_id  = it->value;
+		else if (iequals(keyword, "runname")) proto->runname  = it->value;
 		else if (iequals(keyword, "btime")) {
 			try {
 				proto->tmbegin = from_iso_extended_string(it->value);
@@ -1258,10 +1297,10 @@ kvbase KvProtocol::resolve_camera(likv &kvs) {
 	for (likv::iterator it = kvs.begin(); it != kvs.end(); ++it) {// 遍历键值对
 		keyword = (*it).keyword;
 
-		if      (iequals(keyword, "state"))    proto->state   = stoi(it->value);
-		else if (iequals(keyword, "errcode"))  proto->errcode = stoi(it->value);
-		else if (iequals(keyword, "coolget"))  proto->coolget = stoi(it->value);
-		else if (iequals(keyword, "filter"))   proto->filter  = it->value;
+		if      (iequals(keyword, "state"))   proto->state   = stoi(it->value);
+		else if (iequals(keyword, "errcode")) proto->errcode = stoi(it->value);
+		else if (iequals(keyword, "coolget")) proto->coolget = stoi(it->value);
+		else if (iequals(keyword, "filter"))  proto->filter  = it->value;
 	}
 	return to_kvbase(proto);
 }
@@ -1273,11 +1312,11 @@ kvbase KvProtocol::resolve_cooler(likv &kvs) {
 	for (likv::iterator it = kvs.begin(); it != kvs.end(); ++it) {// 遍历键值对
 		keyword = (*it).keyword;
 
-		if      (iequals(keyword, "voltage"))  proto->voltage = stod(it->value);
-		else if (iequals(keyword, "current"))  proto->current = stod(it->value);
-		else if (iequals(keyword, "hotend"))   proto->hotend  = stod(it->value);
-		else if (iequals(keyword, "coolget"))  proto->coolget = stod(it->value);
-		else if (iequals(keyword, "coolset"))  proto->coolset = stod(it->value);
+		if      (iequals(keyword, "voltage")) proto->voltage = stod(it->value);
+		else if (iequals(keyword, "current")) proto->current = stod(it->value);
+		else if (iequals(keyword, "hotend"))  proto->hotend  = stod(it->value);
+		else if (iequals(keyword, "coolget")) proto->coolget = stod(it->value);
+		else if (iequals(keyword, "coolset")) proto->coolset = stod(it->value);
 	}
 	return to_kvbase(proto);
 }
@@ -1332,7 +1371,7 @@ kvbase KvProtocol::resolve_rainfall(likv &kvs) {
 	for (likv::iterator it = kvs.begin(); it != kvs.end(); ++it) {// 遍历键值对
 		keyword = (*it).keyword;
 
-		if (iequals(keyword, "value"))  proto->value  = stoi(it->value);
+		if (iequals(keyword, "value")) proto->value  = stoi(it->value);
 	}
 	return to_kvbase(proto);
 }
@@ -1357,7 +1396,7 @@ kvbase KvProtocol::resolve_cloud(likv &kvs) {
 	for (likv::iterator it = kvs.begin(); it != kvs.end(); ++it) {// 遍历键值对
 		keyword = (*it).keyword;
 
-		if (iequals(keyword, "value"))  proto->value = stoi(it->value);
+		if (iequals(keyword, "value")) proto->value = stoi(it->value);
 	}
 	return to_kvbase(proto);
 }

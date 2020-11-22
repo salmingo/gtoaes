@@ -27,6 +27,7 @@
 #include <boost/enable_shared_from_this.hpp>
 #include <string.h>
 #include <string>
+#include <vector>
 #include "AsioIOServiceKeep.h"
 
 using namespace boost::system;
@@ -93,19 +94,15 @@ public:
 	 * @brief 关闭在套接口上的操作
 	 * @param how 操作类型. 0: 读; 1: 写; 2: 读写
 	 * @return
-	 * 操作结果.
-	 * 0 -- 成功
-	 * 其它 -- 错误
+	 * 套接字关闭结果.
 	 */
-	int ShutDown(int how);
+	bool ShutDown(int how);
 	/*!
 	 * @brief 关闭套接字
 	 * @return
 	 * 套接字关闭结果.
-	 * 0 -- 成功
-	 * 其它 -- 错误标识
 	 */
-	int Close();
+	bool Close();
 	/*!
 	 * @brief 检查套接字状态
 	 * @return
@@ -194,6 +191,7 @@ protected:
 	void handle_write(const boost::system::error_code& ec, int n);
 };
 using TcpCPtr = TcpClient::Pointer;
+using TcpCVec = std::vector<TcpCPtr> ; ///< 网络连接存储区
 
 /////////////////////////////////////////////////////////////////////
 /*--------------------- 服务器 ---------------------*/
@@ -240,10 +238,8 @@ public:
 	 * @param v6   服务类型. true: V6, false: V4
 	 * @return
 	 * TCP网络服务创建结果
-	 * 0 -- 成功
-	 * 其它 -- 错误代码
 	 */
-	int CreateServer(uint16_t port, bool v6 = false);
+	bool CreateServer(uint16_t port, bool v6 = false);
 
 protected:
 	/*!

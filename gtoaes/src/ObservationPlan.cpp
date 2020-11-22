@@ -12,13 +12,16 @@
 
 ObservationPlan::ObservationPlan() {
 	itnow_ = itend_ = plans_.end();
+	thrd_cycle_.reset(new boost::thread(boost::bind(&ObservationPlan::thread_cycle, this)));
 }
 
 ObservationPlan::~ObservationPlan() {
 	thrd_cycle_->interrupt();
 	for (ObsPlanVec::iterator it = plans_.begin(); it != plans_.end(); ++it) {
-		_gLog.Write("plan[%s] : %s", (*it)->plan_sn.c_str(),
-				StateObservationPlan::ToString(StateObservationPlan::OBSPLAN_ABANDONED));
+		if ((*it)->state < StateObservationPlan::OBSPLAN_OVER) {
+			_gLog.Write("plan[%s] : %s", (*it)->plan_sn.c_str(),
+					StateObservationPlan::ToString(StateObservationPlan::OBSPLAN_ABANDONED));
+		}
 	}
 	thrd_cycle_->join();
 }
@@ -69,9 +72,11 @@ void ObservationPlan::thread_cycle() {
 			ptime now = second_clock::universal_time();
 			ObsPlanVec::iterator it;
 			for (it = plans_.begin(); it != plans_.end();) {
+				// 改变计划状态
 				if (((*it)->tmend - now).total_seconds() < (*it)->period				// 时间限制
 						&& (*it)->state <= StateObservationPlan::OBSPLAN_INTERRUPTED)	// 状态限制
 					(*it)->state = StateObservationPlan::OBSPLAN_ABANDONED;
+				// 清理已结束的计划
 				if ((*it)->state >= StateObservationPlan::OBSPLAN_OVER) {
 					_gLog.Write("plan[%s] : %s", (*it)->plan_sn.c_str(), StateObservationPlan::ToString((*it)->state));
 					//...上传到数据库

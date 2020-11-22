@@ -34,45 +34,46 @@ TcpClient::TCP::socket& TcpClient::Socket() {
 }
 
 bool TcpClient::Connect(const std::string& host, const uint16_t port) {
-	TCP::resolver resolver(keep_.GetIOService());
-	TCP::resolver::query query(host, boost::lexical_cast<string>(port));
-	TCP::resolver::iterator itertor = resolver.resolve(query);
+	try {
+		TCP::resolver resolver(keep_.GetIOService());
+		TCP::resolver::query query(host, boost::lexical_cast<string>(port));
+		TCP::resolver::iterator itertor = resolver.resolve(query);
 
-	if (mode_async_) {
-		sock_.async_connect(*itertor,
-				boost::bind(&TcpClient::handle_connect, shared_from_this(),
-					placeholders::error));
-		return true;
-	}
-	else {
-		error_code ec;
-		sock_.connect(*itertor, ec);
-		if (!ec) {
+		if (mode_async_) {
+			sock_.async_connect(*itertor,
+					boost::bind(&TcpClient::handle_connect, shared_from_this(),
+						placeholders::error));
+		}
+		else {
+			sock_.connect(*itertor);
 			sock_.set_option(socket_base::keep_alive(true));
 			start_read();
 		}
-		return !ec;
+		return true;
+	}
+	catch(std::exception& ex) {
+		return false;
 	}
 }
 
-int TcpClient::ShutDown(int how) {
+bool TcpClient::ShutDown(int how) {
 	try {
 		sock_.shutdown(how == 0 ? TCP::socket::shutdown_receive
 				: (how == 1 ? TCP::socket::shutdown_send : TCP::socket::shutdown_both));
+		return true;
 	}
-	catch(system_error& ex) {
-		return ex.code().value();
+	catch(std::exception& ex) {
+		return false;
 	}
-	return 0;
 }
 
-int TcpClient::Close() {
+bool TcpClient::Close() {
 	try {
 		sock_.close();
-		return 0;
+		return true;
 	}
-	catch(system_error& ex) {
-		return ex.code().value();
+	catch(std::exception& ex) {
+		return false;
 	}
 }
 
@@ -240,20 +241,18 @@ void TcpServer::RegisterAccept(const CBSlot &slot) {
 	cbfunc_.connect(slot);
 }
 
-int TcpServer::CreateServer(uint16_t port, bool v6) {
-	int code(0);
-
+bool TcpServer::CreateServer(uint16_t port, bool v6) {
 	try {
 		TCP::endpoint endpt(v6 ? TCP::v6() : TCP::v4(), port);
 		accept_.open(endpt.protocol());
 		accept_.bind(endpt);
-		accept_.listen();
+		accept_.listen(TCP::socket::max_listen_connections);
 		start_accept();
+		return true;
 	}
-	catch(error_code &ec) {
-		code = ec.value();
+	catch (std::exception& ex) {
+		return false;
 	}
-	return code;
 }
 
 void TcpServer::start_accept() {
@@ -268,7 +267,6 @@ void TcpServer::handle_accept(const TcpCPtr client, const error_code& ec) {
 		cbfunc_(client, shared_from_this());
 		client->Start();
 	}
-
 	start_accept();
 }
 

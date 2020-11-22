@@ -647,7 +647,7 @@ public:
 	/* 数据类型 */
 	typedef boost::shared_ptr<KvProtocol> Pointer;
 	typedef boost::unique_lock<boost::mutex> MtxLck;	///< 互斥锁
-	typedef boost::shared_array<char> ChBuff;	///< 字符数组
+	typedef boost::shared_ptr<char> ChBuff;	///< 字符数组
 
 protected:
 	/* 成员变量 */
@@ -818,6 +818,10 @@ public:
 	 * @brief 封装天窗指令和状态
 	 */
 	const char *CompactSlit(kvslit proto, int& n);
+	/*!
+	 * @brief 封装天窗指令
+	 */
+	const char *CompactSlit(const string& gid, const string& uid, int cmd, int& n);
 	/**
 	 * @brief 封装镜盖指令和状态
 	 */
@@ -900,12 +904,26 @@ public:
 	 */
 	kvbase ResolveMount(const char* rcvd);
 	/*!
+	 * @brief 解析与转台的通信内容并生成结构化通信协议
+	 * @param rcvd  待解析字符串
+	 * @return
+	 * kvbase类型实例指针
+	 */
+	kvbase ResolveMountAnnex(const char* rcvd);
+	/*!
 	 * @brief 解析与相机的通信内容并生成结构化通信协议
 	 * @param rcvd  待解析字符串
 	 * @return
 	 * kvbase类型实例指针
 	 */
 	kvbase ResolveCamera(const char* rcvd);
+	/*!
+	 * @brief 解析与相机的通信内容并生成结构化通信协议
+	 * @param rcvd  待解析字符串
+	 * @return
+	 * kvbase类型实例指针
+	 */
+	kvbase ResolveCameraAnnex(const char* rcvd);
 	/*!
 	 * @brief 解析环境信息并生成结构化通信协议
 	 * @param rcvd  待解析字符串

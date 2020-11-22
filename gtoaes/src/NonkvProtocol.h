@@ -71,7 +71,7 @@ template <class T> nonkvbase to_nonkvbase(T proto) {
  * @return
  * nonkvbase继承类指针
  */
-template <class T> boost::shared_ptr<T> from_nonbase(nonkvbase proto) {
+template <class T> boost::shared_ptr<T> from_nonkvbase(nonkvbase proto) {
 	return boost::static_pointer_cast<T>(proto);
 }
 //////////////////////////////////////////////////////////////////////////////
