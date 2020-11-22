@@ -316,11 +316,12 @@ protected:
 	/*----------------- 环境信息 -----------------*/
 	/*!
 	 * @brief 查找与gid对应的环境信息记录. 若记录不存在, 则创建记录
-	 * @param gid  组标志
+	 * @param gid        组标志
+	 * @param to_create  若不存在则创建
 	 * @return
 	 * 记录实例指针
 	 */
-	NfEnvPtr find_info_env(const string& gid);
+	NfEnvPtr find_info_env(const string& gid, bool to_create = true);
 	/*!
 	 * @brief 创建ODT对象
 	 * @param param  观测系统参数

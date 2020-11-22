@@ -197,38 +197,41 @@ void GeneralControl::receive_from_env(const UdpPtr client, const error_code& ec)
 		bufUdp_[n - 1] = 0;
 		/* 解析气象信息 */
 		kvbase base = kvProto_->ResolveEnv(bufUdp_.get());
-		string type = base->type;
 		string gid  = base->gid;
 		NfEnvPtr nfEnv = find_info_env(gid);
-		bool changed(false);
 
-		if (iequals(type, KVTYPE_RAINFALL)) {
-			kvrain proto = from_kvbase<kv_proto_rainfall>(base);
-			if (nfEnv->rain != proto->value) {
-				nfEnv->rain = proto->value;
-				changed = true;
-			}
-		}
-		else if (iequals(type, KVTYPE_WIND)) {
-			kvwind proto = from_kvbase<kv_proto_wind>(base);
-			nfEnv->orient = proto->orient;
-			if (nfEnv->speed != proto->speed) {
-				nfEnv->speed = proto->speed;
-				changed = true;
-			}
-		}
-		else if (iequals(type, KVTYPE_CLOUD)) {
-			kvcloud proto = from_kvbase<kv_proto_cloud>(base);
-			if (nfEnv->cloud != proto->value) {
-				nfEnv->cloud = proto->value;
-				changed = true;
-			}
-		}
+		if (nfEnv.use_count()) {
+			string type = base->type;
+			bool changed(false);
 
-		if (changed) {
-			MtxLck lck(mtx_nfEnv_);
-			que_nfEnv_.push_back(nfEnv);
-			PostMessage(MSG_ENV_CHANGED);
+			if (iequals(type, KVTYPE_RAINFALL)) {
+				kvrain proto = from_kvbase<kv_proto_rainfall>(base);
+				if (nfEnv->rain != proto->value) {
+					nfEnv->rain = proto->value;
+					changed = true;
+				}
+			}
+			else if (iequals(type, KVTYPE_WIND)) {
+				kvwind proto = from_kvbase<kv_proto_wind>(base);
+				nfEnv->orient = proto->orient;
+				if (nfEnv->speed != proto->speed) {
+					nfEnv->speed = proto->speed;
+					changed = true;
+				}
+			}
+			else if (iequals(type, KVTYPE_CLOUD)) {
+				kvcloud proto = from_kvbase<kv_proto_cloud>(base);
+				if (nfEnv->cloud != proto->value) {
+					nfEnv->cloud = proto->value;
+					changed = true;
+				}
+			}
+
+			if (changed) {
+				MtxLck lck(mtx_nfEnv_);
+				que_nfEnv_.push_back(nfEnv);
+				PostMessage(MSG_ENV_CHANGED);
+			}
 		}
 	}
 }
@@ -514,7 +517,7 @@ void GeneralControl::resolve_kv_camera_annex(const TcpCPtr client) {
 	if (!success) client->Close();
 }
 
-void GeneralControl::process_nonkv_mount(const TcpCPtr client, nonkvbase base){
+void GeneralControl::process_nonkv_mount(const TcpCPtr client, nonkvbase base) {
 	string gid = base->gid;
 	string uid = base->uid;
 	bool success(false);
@@ -542,7 +545,7 @@ void GeneralControl::process_nonkv_mount(const TcpCPtr client, nonkvbase base){
 	if (!success) client->Close();
 }
 
-void GeneralControl::process_nonkv_mount_annex(const TcpCPtr client, nonkvbase base){
+void GeneralControl::process_nonkv_mount_annex(const TcpCPtr client, nonkvbase base) {
 	string type = base->type;
 	string gid = base->gid;
 	string uid = base->uid;
@@ -581,15 +584,17 @@ void GeneralControl::process_nonkv_mount_annex(const TcpCPtr client, nonkvbase b
 		}
 		else if (iequals(type, NONKVTYPE_RAIN)) {
 			NfEnvPtr nfEnv = find_info_env(gid);
-			int rain = from_nonkvbase<nonkv_proto_rain>(base)->state;
-			if (nfEnv->rain != rain) {
-				nfEnv->rain = rain;
+			if (nfEnv.use_count()) {
+				int rain = from_nonkvbase<nonkv_proto_rain>(base)->state;
+				if (nfEnv->rain != rain) {
+					nfEnv->rain = rain;
 
-				MtxLck lck(mtx_nfEnv_);
-				que_nfEnv_.push_back(nfEnv);
-				PostMessage(MSG_ENV_CHANGED);
+					MtxLck lck(mtx_nfEnv_);
+					que_nfEnv_.push_back(nfEnv);
+					PostMessage(MSG_ENV_CHANGED);
+				}
+				success = true;
 			}
-			success = true;
 		}
 	}
 	else {// 投递到观测系统
@@ -763,17 +768,21 @@ void GeneralControl::command_slit(const SlitMulPtr slit, int cmd) {
 }
 
 /*----------------- 环境信息 -----------------*/
-GeneralControl::NfEnvPtr GeneralControl::find_info_env(const string& gid) {
+GeneralControl::NfEnvPtr GeneralControl::find_info_env(const string& gid, bool to_create) {
 	MtxLck lck(mtx_nfEnv_);
 	NfEnvPtr env;
 	NfEnvVec::iterator it, end = nfEnv_.end();
 	for (it = nfEnv_.begin(); it != end && (*it)->gid != gid; ++it);
 	if (it != end) env = *it;
-	else {
-		/* 新建环境气象 */
-		_gLog.Write("creating Environment Information[%s]", gid.c_str());
-		env = EnvInfo::Create(gid);
-		nfEnv_.push_back(env);
+	else if (to_create) {
+		const OBSSParam* param = param_.GetParamOBSS(gid);
+		if (param) {
+			/* 新建环境气象 */
+			_gLog.Write("creating Environment Information[%s]", gid.c_str());
+			env = EnvInfo::Create(gid);
+			env->param = param;
+			nfEnv_.push_back(env);
+		}
 	}
 
 	return env;
@@ -782,9 +791,9 @@ GeneralControl::NfEnvPtr GeneralControl::find_info_env(const string& gid) {
 void GeneralControl::create_info_env(const OBSSParam* param) {
 	MtxLck lck(mtx_nfEnv_);
 	string gid = param->gid;
-	NfEnvVec::iterator it, end = nfEnv_.end();
-	for (it = nfEnv_.begin(); it != end && (*it)->gid != gid; ++it);
-	if (it == end) {
+	NfEnvVec::iterator it, itend = nfEnv_.end();
+	for (it = nfEnv_.begin(); it != itend && (*it)->gid != gid; ++it);
+	if (it == itend) {
 		NfEnvPtr env = EnvInfo::Create(gid);
 		env->param = param;
 		nfEnv_.push_back(env);

@@ -178,9 +178,9 @@ public:
 			if (tmend.is_special())   tmend   = tmbegin + hours(24);
 			if ((tmend - tmbegin).total_seconds() > 259200)
 				tmend = tmbegin + ptime::date_duration_type(3);
-			if ((t = expdur + delay) < 2.0) t = 2.0;
+			if ((t = expdur + delay) < 0.001) t = 0.001;
 			if (filters.size()) t *= filters.size();
-			period = int(t * frmcnt * loopcnt + 30);
+			period = int(t * frmcnt * loopcnt);
 			rslt = (tmend - now).total_seconds() > period;
 		}
 		if (rslt)
