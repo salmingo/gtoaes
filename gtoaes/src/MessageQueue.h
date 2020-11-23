@@ -13,8 +13,9 @@
 
 #include <boost/interprocess/ipc/message_queue.hpp>
 #include <boost/thread/thread.hpp>
-#include <boost/smart_ptr.hpp>
-#include <boost/signals2.hpp>
+#include <boost/smart_ptr/shared_ptr.hpp>
+#include <boost/smart_ptr/shared_array.hpp>
+#include <boost/signals2/signal.hpp>
 #include <string>
 
 class MessageQueue {

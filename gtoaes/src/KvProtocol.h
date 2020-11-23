@@ -507,7 +507,7 @@ public:
 		coolget = 0;
 	}
 };
-typedef boost::shared_ptr<kv_proto_camera> kvcam;
+typedef boost::shared_ptr<kv_proto_camera> kvcamera;
 
 //////////////////////////////////////////////////////////////////////////////
 struct kv_proto_fwhm : public kv_proto_base {///< 半高全宽
@@ -846,7 +846,7 @@ public:
 	/**
 	 * @brief 封装相机实时信息
 	 */
-	const char *CompactCamera(kvcam proto, int &n);
+	const char *CompactCamera(kvcamera proto, int &n);
 	/* GWAC相机辅助程序通信协议: 温度和真空度 */
 	/*!
 	 * @brief 封装温控信息

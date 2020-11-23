@@ -35,6 +35,45 @@ public:
 	GeneralControl();
 	virtual ~GeneralControl();
 
+/* 数据结构 */
+protected:
+	/*!
+	 * @struct EnvInfo
+	 * @brief 环境信息
+	 */
+	struct EnvInfo {
+		using Pointer = boost::shared_ptr<EnvInfo>;
+
+		const OBSSParam* param;	///< 观测系统参数
+		string gid;	///< 组标志
+		/* 气象 */
+		bool safe;	///< 安全判定: 气象条件
+		int rain;	///< 雨量标志
+		int orient;	///< 风向
+		int speed;	///< 风速
+		int cloud;	///< 云量
+		/* 时间 */
+		int odt;	///< 观测时间类型
+
+	public:
+		EnvInfo(const string& gid) {
+			param = NULL;
+			this->gid = gid;
+			safe   = false;
+			rain   = -1;
+			orient = speed = -1;
+			cloud  = -1;
+			odt    = -1;
+		}
+
+		static Pointer Create(const string& gid) {
+			return Pointer(new EnvInfo(gid));
+		}
+	};
+	using NfEnvPtr = EnvInfo::Pointer;
+	using NfEnvVec = std::vector<NfEnvPtr>;
+	using NfEnvQue = std::deque<NfEnvPtr>;
+
 /* 成员变量 */
 protected:
 	//////////////////////////////////////////////////////////////////////////////
@@ -82,43 +121,6 @@ protected:
 	boost::mutex mtx_slit_;	///< 互斥锁：天窗
 
 	/* 环境信息 */
-	/*!
-	 * @struct EnvInfo
-	 * @brief 环境信息
-	 */
-	struct EnvInfo {
-		using Pointer = boost::shared_ptr<EnvInfo>;
-
-		const OBSSParam* param;	///< 观测系统参数
-		string gid;	///< 组标志
-		/* 气象 */
-		bool safe;	///< 安全判定: 气象条件
-		int rain;	///< 雨量标志
-		int orient;	///< 风向
-		int speed;	///< 风速
-		int cloud;	///< 云量
-		/* 时间 */
-		int odt;	///< 观测时间类型
-
-	public:
-		EnvInfo(const string& gid) {
-			param = NULL;
-			this->gid = gid;
-			safe   = false;
-			rain   = -1;
-			orient = speed = -1;
-			cloud  = -1;
-			odt    = -1;
-		}
-
-		static Pointer Create(const string& gid) {
-			return Pointer(new EnvInfo(gid));
-		}
-	};
-	using NfEnvPtr = EnvInfo::Pointer;
-	using NfEnvVec = std::vector<NfEnvPtr>;
-	using NfEnvQue = std::deque<NfEnvPtr>;
-
 	NfEnvVec nfEnv_;	///< 环境信息: 在线信息集合
 	NfEnvQue que_nfEnv_;	///< 环境信息队列: 信息改变
 	boost::mutex mtx_nfEnv_;	///< 互斥锁: 环境信息
@@ -296,6 +298,15 @@ protected:
 	 */
 	ObsSysPtr find_obss(const string& gid, const string& uid);
 	/*!
+	 * @brief 查找与gid对应的多模天窗. 若数据结构不存在, 则创建
+	 * @param gid     组标志
+	 * @param client  网络连接
+	 * @param kvtype  键值对类型
+	 * @return
+	 * 多模天窗接口
+	 */
+	SlitMulPtr find_slit(const string& gid, const TcpCPtr client, bool kvtype = true);
+	/*!
 	 * @brief 天窗控制指令
 	 * @param gid    组标志
 	 * @param uid    单元标志
@@ -317,16 +328,17 @@ protected:
 	/*!
 	 * @brief 查找与gid对应的环境信息记录. 若记录不存在, 则创建记录
 	 * @param gid        组标志
-	 * @param to_create  若不存在则创建
 	 * @return
 	 * 记录实例指针
 	 */
-	NfEnvPtr find_info_env(const string& gid, bool to_create = true);
+	NfEnvPtr find_info_env(const string& gid);
 	/*!
 	 * @brief 创建ODT对象
 	 * @param param  观测系统参数
+	 * @return
+	 * 记录实例指针
 	 */
-	void create_info_env(const OBSSParam* param);
+	NfEnvPtr find_info_env(const OBSSParam* param);
 
 protected:
 	/*----------------- 多线程 -----------------*/

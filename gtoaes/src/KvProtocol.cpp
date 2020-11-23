@@ -524,7 +524,7 @@ const char *KvProtocol::CompactExpose(int cmd, int &n) {
 	return output_compacted(output, n);
 }
 
-const char *KvProtocol::CompactCamera(kvcam proto, int &n) {
+const char *KvProtocol::CompactCamera(kvcamera proto, int &n) {
 	if (!proto.use_count()) return NULL;
 
 	string output;
@@ -1291,7 +1291,7 @@ kvbase KvProtocol::resolve_expose(likv &kvs) {
 }
 
 kvbase KvProtocol::resolve_camera(likv &kvs) {
-	kvcam proto = boost::make_shared<kv_proto_camera>();
+	kvcamera proto = boost::make_shared<kv_proto_camera>();
 	string keyword;
 
 	for (likv::iterator it = kvs.begin(); it != kvs.end(); ++it) {// 遍历键值对

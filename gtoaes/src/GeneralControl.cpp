@@ -332,7 +332,25 @@ void GeneralControl::resolve_kv_client(const TcpCPtr client) {
 			else proto->state = StateObservationPlan::OBSPLAN_ERROR;
 			s = kvProto_->CompactPlan(proto, n);
 			client->Write(s, n);
-		} // if (iequals(type, KVTYPE_CHKPLAN))
+		}
+		/////////////////////////////////////////////////////////////////////////
+		/*>!!!!!! 关联观测系统 !!!!!!<*/
+		else if (iequals(type, KVTYPE_REG)) {
+			MtxLck lck(mtx_obss_);
+			int matched(0);
+			for (OBSSVec::iterator it = obss_.begin(); it != obss_.end() && matched != 1; ++it) {
+				if ((matched = (*it)->IsMatched(gid, uid))) (*it)->CoupleClient(client);
+			}
+		}
+		/////////////////////////////////////////////////////////////////////////
+		/*>!!!!!! 解除与观测系统的关联 !!!!!!<*/
+		else if (iequals(type, KVTYPE_UNREG)) {
+			MtxLck lck(mtx_obss_);
+			int matched(0);
+			for (OBSSVec::iterator it = obss_.begin(); it != obss_.end() && matched != 1; ++it) {
+				if ((matched = (*it)->IsMatched(gid, uid))) (*it)->DecoupleClient(client);
+			}
+		}
 		/////////////////////////////////////////////////////////////////////////
 		/*>!!!!!! 开关天窗 !!!!!!<*/
 		else if (iequals(type, KVTYPE_SLIT)) {
@@ -344,11 +362,11 @@ void GeneralControl::resolve_kv_client(const TcpCPtr client) {
 			MtxLck lck(mtx_obss_);
 			int matched(0);
 			for (OBSSVec::iterator it = obss_.begin(); it != obss_.end() && matched != 1; ++it) {
-				if ((matched = (*it)->IsMatched(gid, uid))) (*it)->NotifyKVClient(client, base);
+				if ((matched = (*it)->IsMatched(gid, uid))) (*it)->NotifyKVClient(base);
 			}
 		}
 	}
-} // void GeneralControl::process_kv_client(kvbase proto, const TcpCPtr client)
+} // process_kv_client(kvbase proto, const TcpCPtr client)
 
 void GeneralControl::resolve_kv_mount(const TcpCPtr client) {
 	kvbase base = kvProto_->ResolveMount(bufTcp_.get());
@@ -434,32 +452,25 @@ void GeneralControl::resolve_kv_mount_annex(const TcpCPtr client) {
 		if (gid.empty() || (uid.empty() && !iequals(base->type, KVTYPE_SLIT))) {
 			_gLog.Write(LOG_FAULT, "illegal protocol from mount-annex: [%s]", bufTcp_.get());
 		}
-		else if (uid.empty()) {// 只有天窗允许uid为空
+		else if (uid.empty()) {
 			int state = from_kvbase<kv_proto_slit>(base)->state;
-			SlitMulPtr slit;
-			{// 关联多模天窗
-				MtxLck lck(mtx_slit_);
-				SlitMulVec::iterator it, itend = slit_.end();
-				for (slit_.begin(); it != itend && !(*it)->IsMatched(gid); ++it);
-				if (it != itend) slit = *it;
-				else {
-					slit = SlitMultiplex::Create(gid);
-					slit->client = client;
-					slit->kvtype = true;
-					slit_.push_back(slit);
-				}
-			}
-			if (state != slit->state) {// 通知相关观测系统天窗状态
-				_gLog.Write("Slit[%s] is %s", StateSlit::ToString(state));
-				slit->state = state;
+			SlitMulPtr slit = find_slit(gid, client, true);
+			if (slit.use_count()) {
+				if (state != slit->state) {// 通知相关观测系统天窗状态
+					_gLog.Write("Slit[%s] is %s", StateSlit::ToString(state));
+					slit->state = state;
 
-				MtxLck lck(mtx_obss_);
-				OBSSVec::iterator itend = obss_.end();
-				for (OBSSVec::iterator it = obss_.begin(); it != itend; ++it) {
-					if ((*it)->IsMatched(gid, uid)) (*it)->NotifySlitState(state);
+					MtxLck lck(mtx_obss_);
+					OBSSVec::iterator itend = obss_.end();
+					for (OBSSVec::iterator it = obss_.begin(); it != itend; ++it) {
+						if ((*it)->IsMatched(gid, uid)) (*it)->NotifySlitState(state);
+					}
 				}
+				success = true;
 			}
-			success = true;
+			else {
+				_gLog.Write(LOG_FAULT, "no settings found for slit[%s]", gid.c_str());
+			}
 		}
 		else {// 当(gid, uid)都不为空时, 投递到观测系统
 			ObsSysPtr obss = find_obss(gid, uid);
@@ -557,30 +568,23 @@ void GeneralControl::process_nonkv_mount_annex(const TcpCPtr client, nonkvbase b
 	else if (uid.empty()) {
 		if (iequals(type, NONKVTYPE_SLIT)) {
 			int state = from_nonkvbase<nonkv_proto_slit>(base)->state;
-			SlitMulPtr slit;
-			{// 关联多模天窗
-				MtxLck lck(mtx_slit_);
-				SlitMulVec::iterator it, itend = slit_.end();
-				for (slit_.begin(); it != itend && !(*it)->IsMatched(gid); ++it);
-				if (it != itend) slit = *it;
-				else {
-					slit = SlitMultiplex::Create(gid);
-					slit->client = client;
-					slit->kvtype = false;
-					slit_.push_back(slit);
-				}
-			}
-			if (state != slit->state) {// 通知相关观测系统天窗状态
-				_gLog.Write("Slit[%s] is %s", StateSlit::ToString(state));
-				slit->state = state;
+			SlitMulPtr slit = find_slit(gid, client, false);
+			if (slit.use_count()) {
+				if (state != slit->state) {// 通知相关观测系统天窗状态
+					_gLog.Write("Slit[%s] is %s", StateSlit::ToString(state));
+					slit->state = state;
 
-				MtxLck lck(mtx_obss_);
-				OBSSVec::iterator itend = obss_.end();
-				for (OBSSVec::iterator it = obss_.begin(); it != itend; ++it) {
-					if ((*it)->IsMatched(gid, uid)) (*it)->NotifySlitState(state);
+					MtxLck lck(mtx_obss_);
+					OBSSVec::iterator itend = obss_.end();
+					for (OBSSVec::iterator it = obss_.begin(); it != itend; ++it) {
+						if ((*it)->IsMatched(gid, uid)) (*it)->NotifySlitState(state);
+					}
 				}
+				success = true;
 			}
-			success = true;
+			else {
+				_gLog.Write(LOG_FAULT, "no settings found for slit[%s]", gid.c_str());
+			}
 		}
 		else if (iequals(type, NONKVTYPE_RAIN)) {
 			NfEnvPtr nfEnv = find_info_env(gid);
@@ -594,6 +598,9 @@ void GeneralControl::process_nonkv_mount_annex(const TcpCPtr client, nonkvbase b
 					PostMessage(MSG_ENV_CHANGED);
 				}
 				success = true;
+			}
+			else {
+				_gLog.Write(LOG_FAULT, "no settings found for rainfall[%s]", gid.c_str());
 			}
 		}
 	}
@@ -720,7 +727,8 @@ ObsSysPtr GeneralControl::find_obss(const string& gid, const string& uid) {
 				obss->SetDBPtr(dbPtr_);
 				obss_.push_back(obss);
 
-				create_info_env(param);	// 检查并创建新的环境信息
+				NfEnvPtr nfEnv = find_info_env(param);	// 检查并创建新的环境信息
+				obss->NotifyODT(nfEnv->odt);
 			}
 			else obss.reset();
 		}
@@ -730,6 +738,22 @@ ObsSysPtr GeneralControl::find_obss(const string& gid, const string& uid) {
 		}
 	}
 	return obss;
+}
+
+SlitMulPtr GeneralControl::find_slit(const string& gid, const TcpCPtr client, bool kvtype) {
+	MtxLck lck(mtx_slit_);
+	SlitMulPtr slit;
+	SlitMulVec::iterator it, itend = slit_.end();
+	for (slit_.begin(); it != itend && !(*it)->IsMatched(gid); ++it);
+	if (it != itend) slit = *it;
+	else if (param_.GetParamOBSS(gid)) {
+		slit = SlitMultiplex::Create(gid);
+		slit->client = client;
+		slit->kvtype = kvtype;
+		slit_.push_back(slit);
+	}
+
+	return slit;
 }
 
 void GeneralControl::command_slit(const string& gid, const string& uid, int cmd) {
@@ -768,36 +792,27 @@ void GeneralControl::command_slit(const SlitMulPtr slit, int cmd) {
 }
 
 /*----------------- 环境信息 -----------------*/
-GeneralControl::NfEnvPtr GeneralControl::find_info_env(const string& gid, bool to_create) {
-	MtxLck lck(mtx_nfEnv_);
+GeneralControl::NfEnvPtr GeneralControl::find_info_env(const string& gid) {
 	NfEnvPtr env;
-	NfEnvVec::iterator it, end = nfEnv_.end();
-	for (it = nfEnv_.begin(); it != end && (*it)->gid != gid; ++it);
-	if (it != end) env = *it;
-	else if (to_create) {
-		const OBSSParam* param = param_.GetParamOBSS(gid);
-		if (param) {
-			/* 新建环境气象 */
-			_gLog.Write("creating Environment Information[%s]", gid.c_str());
-			env = EnvInfo::Create(gid);
-			env->param = param;
-			nfEnv_.push_back(env);
-		}
-	}
-
+	const OBSSParam* param = param_.GetParamOBSS(gid);
+	if (param) env = find_info_env(param);
 	return env;
 }
 
-void GeneralControl::create_info_env(const OBSSParam* param) {
+GeneralControl::NfEnvPtr GeneralControl::find_info_env(const OBSSParam* param) {
 	MtxLck lck(mtx_nfEnv_);
 	string gid = param->gid;
+	NfEnvPtr env;
 	NfEnvVec::iterator it, itend = nfEnv_.end();
 	for (it = nfEnv_.begin(); it != itend && (*it)->gid != gid; ++it);
-	if (it == itend) {
-		NfEnvPtr env = EnvInfo::Create(gid);
+	if (it != itend) env = *it;
+	else {
+		_gLog.Write("creating Environment Information[%s]", gid.c_str());
+		env = EnvInfo::Create(gid);
 		env->param = param;
 		nfEnv_.push_back(env);
 	}
+	return env;
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -808,10 +823,17 @@ void GeneralControl::thread_clean_tcp() {
 
 	while (1) {
 		boost::this_thread::sleep_for(period);
-		MtxLck lck(mtx_tcpC_buff_);
+		// 清理已关闭的网络连接
+		MtxLck lck1(mtx_tcpC_buff_);
 		for (TcpCVec::iterator it = tcpC_buff_.begin(); it != tcpC_buff_.end(); ) {
 			if ((*it)->IsOpen()) ++it;
 			else it = tcpC_buff_.erase(it);
+		}
+		// 清理已关闭的多模天窗
+		MtxLck lck2(mtx_slit_);
+		for (SlitMulVec::iterator it = slit_.begin(); it != slit_.end(); ) {
+			if ((*it)->IsOpen()) ++it;
+			else it = slit_.erase(it);
 		}
 	}
 }
@@ -860,6 +882,15 @@ void GeneralControl::thread_odt() {
 					else if (param->robotic && (*it)->safe) // 当气象条件满足时, 打开天窗
 						command_slit(param->gid, "", CommandSlit::SLITC_OPEN);
 				}
+
+				// 通知观测系统时间改变
+				string gid = param->gid.c_str();
+				string uid = "";
+				MtxLck lck1(mtx_obss_);
+
+				for (OBSSVec::iterator it = obss_.begin(); it != obss_.end(); ++it) {
+					if ((*it)->IsMatched(gid, uid)) (*it)->NotifyODT(odt);
+				}
 			}
 		}
 	}
@@ -874,20 +905,10 @@ void GeneralControl::thread_noon() {
 		if ((t = (noon - now).total_seconds()) < 10) t += 86400;
 		boost::this_thread::sleep_for(boost::chrono::seconds(t));
 
-		{// 清理观测系统
-			MtxLck lck(mtx_obss_);
-			for (OBSSVec::iterator it = obss_.begin(); it != obss_.end(); ) {
-				if ((*it)->IsActive()) ++it;
-				else it = obss_.erase(it);
-			}
-		}
-
-		{// 清理多模天窗
-			MtxLck lck(mtx_slit_);
-			for (SlitMulVec::iterator it = slit_.begin(); it != slit_.end(); ) {
-				if ((*it)->IsOpen()) ++it;
-				else it = slit_.erase(it);
-			}
+		MtxLck lck(mtx_obss_);
+		for (OBSSVec::iterator it = obss_.begin(); it != obss_.end(); ) {
+			if ((*it)->IsActive()) ++it;
+			else it = obss_.erase(it);
 		}
 	}
 }
