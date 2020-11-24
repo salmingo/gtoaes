@@ -244,13 +244,21 @@ void GeneralControl::erase_coupled_tcp(const TcpCPtr client) {
 }
 
 void GeneralControl::close_socket(const TcpCPtr client, int peer) {
-	if (client.use_count() >= 3 && peer == PEER_MOUNT_ANNEX) {// 至少有3个引用才需要解耦合
-		/* 解除与天窗的耦合 */
-		MtxLck lck(mtx_slit_);
-		for (SlitMulVec::iterator it = slit_.begin(); it != slit_.end();) {
-			if ((*it)->client == client) it = slit_.erase(it);
-			else ++it;
-		}
+	// 解除与观测系统的耦合
+	MtxLck lck1(mtx_obss_);
+	for (OBSSVec::iterator it = obss_.begin(); client.use_count() > 2 && it != obss_.end(); ++it) {
+		if      (peer == PEER_CLIENT)      (*it)->DecoupleClient     (client);
+		else if (peer == PEER_MOUNT)       (*it)->DecoupleMount      (client);
+		else if (peer == PEER_CAMERA)      (*it)->DecoupleCamera     (client);
+		else if (peer == PEER_MOUNT_ANNEX) (*it)->DecoupleMountAnnex (client);
+		else                               (*it)->DecoupleCameraAnnex(client);
+	}
+	// 解除与多模天窗的耦合
+	if (peer == PEER_MOUNT_ANNEX && client.use_count() > 2) {
+		MtxLck lck2(mtx_slit_);
+		SlitMulVec::iterator it, itend = slit_.end();
+		for (it = slit_.begin(); it != itend && (*it)->client != client; ++it);
+		if (it != itend) slit_.erase(it);
 	}
 }
 
@@ -542,7 +550,6 @@ void GeneralControl::process_nonkv_mount(const TcpCPtr client, nonkvbase base) {
 		if (obss.use_count()) {
 			int mode;
 			if ((mode = obss->CoupleMount(client, base))) {// P2P或P2H模式
-				if (mode == MODE_P2P) erase_coupled_tcp(client);
 				success = true;
 			}
 			else {
@@ -609,7 +616,6 @@ void GeneralControl::process_nonkv_mount_annex(const TcpCPtr client, nonkvbase b
 		if (obss.use_count()) {
 			int mode;
 			if ((mode = obss->CoupleMountAnnex(client, base))) {// P2P或P2H模式
-				if (mode == MODE_P2P) erase_coupled_tcp(client);
 				success = true;
 			}
 			else {

@@ -500,10 +500,8 @@ static const char* camctl_desc[] = {
 	"Idle",
 	"Exposing",
 	"Image Ready",
-	"Aborted",
 	"Paused",
 	"Waiting until Time",
-	"Waiting for sync",
 	"Waiting during FLAT"
 };
 
@@ -519,10 +517,8 @@ public:
 		CAMCTL_IDLE,			///< 空闲
 		CAMCTL_EXPOSING,		///< 曝光过程中
 		CAMCTL_IMAGEREADY,		///< 已完成曝光
-		CAMCTL_ABORTED,			///< 已中止曝光
 		CAMCTL_PAUSEED,			///< 已暂停曝光
 		CAMCTL_WAITING_TIME,	///< 等待曝光流传起始时间到达
-		CAMCTL_WAITING_SYNC,	///< 完成曝光, 等待其它相机完成曝光
 		CAMCTL_WAITING_FLAT,	///< 平场间等待--等待转台重新指向
 		CAMCTL_MAX
 	};

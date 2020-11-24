@@ -154,7 +154,7 @@ public:
 			tmend = from_iso_extended_string(str);
 		}
 		catch(std::out_of_range& ex) {
-			tmend = second_clock::universal_time() + hours(24);
+			tmend = second_clock::universal_time() + hours(23);
 		}
 	}
 
@@ -175,7 +175,7 @@ public:
 			double t;
 
 			if (tmbegin.is_special()) tmbegin = now;
-			if (tmend.is_special())   tmend   = tmbegin + hours(24);
+			if (tmend.is_special())   tmend   = tmbegin + hours(23);
 			if ((tmend - tmbegin).total_seconds() > 259200)
 				tmend = tmbegin + ptime::date_duration_type(3);
 			if ((t = expdur + delay) < 0.001) t = 0.001;

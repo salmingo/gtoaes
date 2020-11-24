@@ -271,7 +271,7 @@ protected:
 	bool is_valid_plantime(const ObsPlanItemPtr plan, const ptime& now);
 	/*!
 	 * @brief 回调函数, 为通用系统申请新的观测计划
-	 * @param 观测系统指针
+	 * @param obss  观测系统指针
 	 * @return
 	 * 获取到的观测计划
 	 */
