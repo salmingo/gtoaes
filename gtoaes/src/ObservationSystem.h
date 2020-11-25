@@ -575,6 +575,14 @@ protected:
 	 * @param ec     错误代码. 0: 正确
 	 */
 	void receive_mount(const TcpCPtr client, const int ec);
+	/*!
+	 * @brief 执行指向操作
+	 * @param type   坐标系类型
+	 * @param lon    经度, 角度
+	 * @param lat    纬度, 角度
+	 * @param epoch  历元, 适用于赤道系
+	 */
+	void process_slewto(int type, double lon, double lat, double epoch);
 
 protected:
 	//////////////////////////////////////////////////////////////////////////////
@@ -623,6 +631,12 @@ protected:
 	 * @param utcNow 当前UTC时间
 	 */
 	void generate_plan_flat(const ptime& utcNow);
+
+	/*!
+	 * @brief 平场, 采集图像前重新指向
+	 * @param first  初始执行平场计划
+	 */
+	void flat_reslew(bool first = false);
 
 protected:
 	//////////////////////////////////////////////////////////////////////////////

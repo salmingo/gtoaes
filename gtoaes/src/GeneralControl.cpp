@@ -854,6 +854,8 @@ void GeneralControl::thread_odt() {
 	double ra, dec;		// 太阳赤道坐标
 	double azi, alt;	// 太阳地平坐标
 	int odt;
+	string gid;
+	string uid = "";
 
 	while (1) {
 		boost::this_thread::sleep_for(period);
@@ -869,6 +871,7 @@ void GeneralControl::thread_odt() {
 
 		for (NfEnvVec::iterator it = nfEnv_.begin(); it != nfEnv_.end(); ++it) {
 			param = (*it)->param;
+			gid = param->gid;
 			/* 依据太阳高度角判定可观测时间类型 */
 			ats.SetSite(param->siteLon, param->siteLat, param->siteAlt, param->timeZone);
 			lmst = ats.LocalMeanSiderealTime(mjd, param->siteLon * D2R);
@@ -890,10 +893,7 @@ void GeneralControl::thread_odt() {
 				}
 
 				// 通知观测系统时间改变
-				string gid = param->gid.c_str();
-				string uid = "";
 				MtxLck lck1(mtx_obss_);
-
 				for (OBSSVec::iterator it = obss_.begin(); it != obss_.end(); ++it) {
 					if ((*it)->IsMatched(gid, uid)) (*it)->NotifyODT(odt);
 				}

@@ -6,6 +6,7 @@
  * @author 卢晓猛
  */
 
+#include <stdlib.h>
 #include <boost/bind/bind.hpp>
 #include <boost/date_time/posix_time/posix_time.hpp>
 #include <boost/algorithm/string.hpp>
@@ -106,15 +107,9 @@ bool ObservationSystem::IsSafePoint(ObsPlanItemPtr plan, const ptime& now) {
 }
 
 int ObservationSystem::IsActive() {
-	int n(0);
+	int n = net_camera_.size();
 	if (net_mount_.IsOpen()) ++n;
-	{
-		MtxLck lck(mtx_camera_);
-		for (NetCamVec::iterator it = net_camera_.begin(); it != net_camera_.end(); ++it) {
-			if ((*it)->IsOpen()) ++n;
-		}
-	}
-	//...
+
 	return n;
 }
 
@@ -145,7 +140,8 @@ int ObservationSystem::GetPriority() {
 }
 
 void ObservationSystem::CoupleClient(const TcpCPtr client) {
-
+	MtxLck lck(mtx_client_);
+	tcpc_client_.push_back(client);
 }
 
 int ObservationSystem::CoupleMount(const TcpCPtr client, kvbase proto) {
@@ -234,8 +230,7 @@ int ObservationSystem::CoupleCameraAnnex(const TcpCPtr client, kvbase proto) {
 
 void ObservationSystem::DecoupleClient(const TcpCPtr client) {
 	MtxLck lck(mtx_client_);
-	TcpCVec::iterator it;
-	TcpCVec::iterator itend = tcpc_client_.end();
+	TcpCVec::iterator it, itend = tcpc_client_.end();
 	for (it = tcpc_client_.begin(); it != itend && (*it) != client; ++it);
 	if (it != itend) tcpc_client_.erase(it);
 }
@@ -247,7 +242,7 @@ void ObservationSystem::DecoupleMount(const TcpCPtr client) {
 void ObservationSystem::DecoupleCamera(const TcpCPtr client) {
 	MtxLck lck(mtx_camera_);
 	NetCamVec::iterator it, itend = net_camera_.end();
-	for (it = net_camera_.begin(); it != itend && client != (*it)(); ++it);
+	for (it = net_camera_.begin(); it != itend && client != (**it)(); ++it);
 	if (it != itend) {
 		_gLog.Write("Camera[%s:%s:%s] is off-line", gid_.c_str(), uid_.c_str(),
 				(*it)->cid.c_str());
@@ -514,6 +509,31 @@ void ObservationSystem::generate_plan_flat(const ptime& utcNow) {
 	plan->plan_sn = to_iso_string(utcNow.date()) + "_flat";
 	plan->filters.push_back("All");
 	if (plan->CompleteCheck()) obsPlans_->AddPlan(plan);
+}
+
+void ObservationSystem::flat_reslew(bool first) {
+	/* 生成随机位置 */
+	ptime utc = second_clock::universal_time();
+	int hour = utc.time_of_day().hours() + param_->timeZone;
+	double azi0, azi, alt;
+	double mjd, lmst, ha, ra, dec;
+
+	if (first) srand(utc.time_of_day().total_seconds());
+	mjd = utc.date().modjulian_day() + utc.time_of_day().total_seconds() / DAYSEC;
+	lmst = ats_.LocalMeanSiderealTime(mjd, param_->siteLon * D2R);
+	// 方位角(南零点): (0, 90] 上午; [270, 360) 下午
+	if (hour < 0) hour += 24;
+	else if (hour >= 24) hour -= 24;
+	azi0 = hour < 12 ? 0.0 : 270.0;
+	// 生成方位和高度
+	alt = rand() * 5.0 / RAND_MAX + 80.0;
+	azi = rand() * 90.0 / RAND_MAX + azi0;
+	ats_.Horizon2Eq(azi * D2R, alt * D2R, ha, dec);
+	ra  = cycmod(lmst - ha, A2PI) * R2D;
+	dec*= R2D;
+
+	/* 通知转台指向 */
+	net_mount_.BeginSlew(TypeCoorSys::COORSYS_EQUA, ra, dec);
 }
 
 //////////////////////////////////////////////////////////////////////////////

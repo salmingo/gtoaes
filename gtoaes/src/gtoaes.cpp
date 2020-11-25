@@ -54,6 +54,10 @@
 #include "GeneralControl.h"
 #include "Parameter.h"
 
+#include "ADefine.h"
+#include "ATimeSpace.h"
+using namespace AstroUtil;
+
 #ifdef NDEBUG
 GLog _gLog(stdout);
 #else
