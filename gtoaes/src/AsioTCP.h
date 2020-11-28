@@ -24,6 +24,7 @@
 #include <boost/signals2/signal.hpp>
 #include <boost/circular_buffer.hpp>
 #include <boost/smart_ptr/shared_array.hpp>
+#include <boost/smart_ptr/shared_ptr.hpp>
 #include <boost/enable_shared_from_this.hpp>
 #include <string.h>
 #include <string>

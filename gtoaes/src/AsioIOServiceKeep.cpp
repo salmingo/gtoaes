@@ -10,20 +10,20 @@
 
 using namespace boost::placeholders;
 
-AsioIOServiceKeep::AsioIOServiceKeep() {
-	work_.reset(new Work(io_service_));
-	thrd_keep_.reset(new boost::thread(boost::bind(&AsioIOServiceKeep::thread_keep, this)));
+AsioIOServiceKeep::AsioIOServiceKeep()
+	: work_(ios_) {
+	thrd_keep_ = boost::thread(boost::bind(&AsioIOServiceKeep::thread_keep, this));
 }
 
 AsioIOServiceKeep::~AsioIOServiceKeep() {
-	io_service_.stop();
-	thrd_keep_->join();
+	ios_.stop();
+	thrd_keep_.join();
 }
 
 AsioIOServiceKeep::IOService& AsioIOServiceKeep::GetIOService() {
-	return io_service_;
+	return ios_;
 }
 
 void AsioIOServiceKeep::thread_keep() {
-	io_service_.run();
+	ios_.run();
 }

@@ -42,31 +42,23 @@ int ATimeSpace::SetUTC(int iy, int im, int id, double fd) {
 
 	invalid_values();
 	values_[ATS_MJD] = ModifiedJulianDay(iy, im, id, fd);
-	values_[ATS_DAT] = DeltaAT(iy, im, id, fd);
 
 	return 0;
 }
 
 void ATimeSpace::SetEpoch(double t) {
-	int iy, im, id;
-	double fd, mjd;
-	mjd = (t - 2000.0) * 365.25 + MJD2K;
-	Mjd2Cal(mjd, iy, im, id, fd);
-	SetUTC(iy, im, id, fd);
+	invalid_values();
+	values_[ATS_MJD] = (t - 2000.0) * 365.25 + MJD2K;
 }
 
 void ATimeSpace::SetJD(double jd) {
-	int iy, im, id;
-	double fd;
-	Mjd2Cal(jd - MJD0, iy, im, id, fd);
-	SetUTC(iy, im, id, fd);
+	invalid_values();
+	values_[ATS_MJD] = jd - MJD0;
 }
 
 void ATimeSpace::SetMJD(double mjd) {
-	int iy, im, id;
-	double fd;
-	Mjd2Cal(mjd, iy, im, id, fd);
-	SetUTC(iy, im, id, fd);
+	invalid_values();
+	values_[ATS_MJD] = mjd;
 }
 
 void ATimeSpace::Mjd2Cal(double mjd, int& iy, int& im, int& id, double& fd) {
@@ -404,6 +396,13 @@ double ATimeSpace::ModifiedJulianDay() {
  * 计算闰秒偏差: DAT = TAI-UTC. 算法来源: sofa/iauDat
  */
 double ATimeSpace::DeltaAT() {
+	if (!valid_[ATS_DAT]) {
+		int iy, im, id;
+		double fd;
+		Mjd2Cal(values_[ATS_MJD], iy, im, id, fd);
+		values_[ATS_DAT] = DeltaAT(iy, im, id, fd);
+		valid_[ATS_DAT]  = true;
+	}
 	return values_[ATS_DAT];
 }
 

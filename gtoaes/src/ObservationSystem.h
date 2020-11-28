@@ -9,6 +9,7 @@
 #ifndef OBSERVATIONSYSTEM_H_
 #define OBSERVATIONSYSTEM_H_
 
+#include <math.h>
 #include <deque>
 #include <boost/enable_shared_from_this.hpp>
 #include "MessageQueue.h"
@@ -17,6 +18,7 @@
 #include "NonkvProtocol.h"
 #include "ObservationPlan.h"
 #include "Parameter.h"
+#include "ADefine.h"
 #include "ATimeSpace.h"
 #include "DatabaseCurl.h"
 #include "DomeSlit.h"
@@ -69,6 +71,8 @@ protected:
 		double azi, alt;	///< 方位/高度, 角度
 		double objra, objdec;	///< 目标赤经/赤纬, 角度
 		double objazi, objalt;	///< 目标方位/高度, 角度
+		// 导星量: 导星仅在恒星跟踪模式下生效
+		double d_ra, d_dec;	///< 累积导星偏差量, 角度
 
 	protected:
 		int to_slew;		///< 准备指向目标
@@ -85,6 +89,7 @@ protected:
 			objazi = objalt = 1E30;
 			to_slew = 0;
 			stable_track = 0;
+			d_ra = d_dec = 0.0;
 		}
 
 		/*!
@@ -126,17 +131,45 @@ protected:
 				objra  = lon;
 				objdec = lat;
 			}
+			d_ra = d_dec = 0.0;
+		}
+
+		/*!
+		 * @brief 设置导星监视条件
+		 * @param ra   赤经导星量, 角度
+		 * @param dec  赤纬导星量, 角度
+		 * @note
+		 * - 通用 :  ra: 赤经偏差, ra = object - sky
+		 * - GWAC:  ra: 时角偏差, ra = sky - object
+		 */
+		void BeginGuide(double ra, double dec) {
+			MtxLck lck(mtx);
+			to_slew = 5;
+			stable_track = 5;
+			state = StateMount::MOUNT_SLEWING;
+			d_ra  += ra;
+			d_dec += dec;
+		}
+
+		/*!
+		 * @brief 设置复位监视条件
+		 */
+		void BeginPark() {
+			MtxLck lck(mtx);
+			state = StateMount::MOUNT_PARKING;
 		}
 
 		NetworkMount& operator=(kvmount proto) {
 			MtxLck lck(mtx);
-			if (proto->state == StateMount::MOUNT_SLEWING) {
-				if (to_slew) to_slew = 0;
-				state = proto->state;
-			}
-			else if (proto->state != StateMount::MOUNT_TRACKING
-					|| ((!to_slew || --to_slew == 0) && (!stable_track || --stable_track == 0))) {
-				state = proto->state;
+			if (state != proto->state) {
+				if (proto->state == StateMount::MOUNT_SLEWING) {
+					if (to_slew) to_slew = 0;
+					state = proto->state;
+				}
+				else if (proto->state != StateMount::MOUNT_TRACKING
+						|| ((!to_slew || --to_slew == 0) && (!stable_track || --stable_track == 0))) {
+					state = proto->state;
+				}
 			}
 			errcode  = proto->errcode;
 			ra  = proto->ra;
@@ -148,12 +181,40 @@ protected:
 		}
 
 		/*!
-		 * @brief 计算指向偏差
-		 * @param d_lon  经度偏差, 量纲: 角度
-		 * @param d_lat  纬度偏差, 量纲: 角度
-		 * @param lat    纬度均值, 量纲: 角度
+		 * @brief 重定义操作符=. 用于GWAC转台
 		 */
-		void ArriveError(double& d_lon, double& d_lat, double& lat) {
+		NetworkMount& operator=(nonkvmount proto) {
+			MtxLck lck(mtx);
+			double tslew(0.008);	// 指向阈值. 0.008°==28.8″
+			double e_lon, e_lat;	// 位置偏差
+
+			if (state == StateMount::MOUNT_SLEWING) {// 判定指向或导星是否到位
+				e_lon = fabs(proto->ra - ra);
+				e_lat = fabs(proto->dec - dec);
+				if (e_lon <= tslew && e_lat <= tslew && (stable_track && --stable_track == 0))
+					state = StateMount::MOUNT_TRACKING;
+			}
+			else if (state == StateMount::MOUNT_PARKING) {// 判定复位是否到位
+				e_lon = fabs(proto->azi - azi);
+				e_lat = fabs(proto->alt - alt);
+				if (e_lon <= tslew && e_lat <= tslew)
+					state = StateMount::MOUNT_PARKED;
+			}
+			ra  = proto->ra;
+			dec = proto->dec;
+			azi = proto->azi;
+			alt = proto->alt;
+
+			return *this;
+		}
+
+		/*!
+		 * @brief 计算指向偏差
+		 * @return
+		 * 指向偏差, 角度
+		 */
+		double ArriveError() {
+			double d_lon, d_lat, lat;
 			d_lon = d_lat = lat = 0.0;
 			if (coorsys == TypeCoorSys::COORSYS_ALTAZ) {
 				d_lon = fabs(azi - objazi);
@@ -161,11 +222,17 @@ protected:
 				lat   = (alt + objalt) * 0.5;
 			}
 			else if (coorsys == TypeCoorSys::COORSYS_EQUA) {
-				d_lon = fabs(ra - objra);
-				d_lat = fabs(dec - objdec);
 				lat   = (dec + objdec) * 0.5;
+				// 通用
+				d_lon = fabs(ra - objra - d_ra);	// d_ra: 在赤经上的累积量
+				d_lat = fabs(dec - objdec - d_dec);
+				// GWAC
+//				d_lon = fabs(ra - objra + d_ra);	// d_ra: 在时角上的累积量
+//				d_lat = fabs(dec - objdec - d_dec);
 			}
 			if (d_lon > 180.0) d_lon = 360.0 - d_lon;
+			d_lon *= cos(lat * D2R);
+			return sqrt(d_lon * d_lon + d_lat * d_lat);
 		}
 	};
 
@@ -249,6 +316,7 @@ protected:
 	double altLimit_;	///< 高度限位, 弧度
 	const OBSSParam* param_;	///< 观测系统工作参数
 	AstroUtil::ATimeSpace ats_;	///< 时空坐标转换接口
+	boost::mutex mtx_ats_;		///< ats_互斥锁
 
 	int odt_;	///< 可观测时间类型
 
@@ -376,53 +444,53 @@ public:
 	/*!
 	 * @brief 关联观测系统与转台
 	 * @param client  网络连接
-	 * @param proto   键值对通信协议
+	 * @param base    键值对通信协议
 	 * @return
 	 * 0: 失败
 	 * 1: 成功; 连接类型是P2P
 	 * 2: 成功: 连接类型是P2H
 	 */
-	int CoupleMount(const TcpCPtr client, kvbase proto);
+	int CoupleMount(const TcpCPtr client, kvbase base);
 	/*!
 	 * @brief 关联观测系统与转台
 	 * @param client  网络连接
-	 * @param proto   非键值对通信协议
+	 * @param base    非键值对通信协议
 	 * @return
 	 * 0: 失败
 	 * 1: 成功; 连接类型是P2P
 	 * 2: 成功: 连接类型是P2H
 	 */
-	int CoupleMount(const TcpCPtr client, nonkvbase proto);
+	int CoupleMount(const TcpCPtr client, nonkvbase base);
 	/*!
 	 * @brief 关联观测系统与相机
 	 * @param client  网络连接
-	 * @param proto   键值对通信协议
+	 * @param base    键值对通信协议
 	 * @return
 	 * 0: 失败
 	 * 1: 成功; 连接类型是P2P
 	 * 2: 成功: 连接类型是P2H
 	 */
-	int CoupleCamera(const TcpCPtr client, kvbase proto);
+	int CoupleCamera(const TcpCPtr client, kvbase base);
 	/*!
 	 * @brief 关联观测系统与转台附属设备
 	 * @param client  网络连接
-	 * @param proto   键值对通信协议
+	 * @param base    键值对通信协议
 	 * @return
 	 * 0: 失败
 	 * 1: 成功; 连接类型是P2P
 	 * 2: 成功: 连接类型是P2H
 	 */
-	int CoupleMountAnnex(const TcpCPtr client, kvbase proto);
+	int CoupleMountAnnex(const TcpCPtr client, kvbase base);
 	/*!
 	 * @brief 关联观测系统与转台附属设备
 	 * @param client  网络连接
-	 * @param proto   非键值对通信协议
+	 * @param base    非键值对通信协议
 	 * @return
 	 * 0: 失败
 	 * 1: 成功; 连接类型是P2P
 	 * 2: 成功: 连接类型是P2H
 	 */
-	int CoupleMountAnnex(const TcpCPtr client, nonkvbase proto);
+	int CoupleMountAnnex(const TcpCPtr client, nonkvbase base);
 	/*!
 	 * @brief 关联观测系统与相机附属设备
 	 * @param client  网络连接
@@ -431,7 +499,7 @@ public:
 	 * 1: 成功; 连接类型是P2P
 	 * 2: 成功: 连接类型是P2H
 	 */
-	int CoupleCameraAnnex(const TcpCPtr client, kvbase proto);
+	int CoupleCameraAnnex(const TcpCPtr client, kvbase base);
 
 	/*!
 	 * @brief 解除客户端与观测系统的关联
@@ -461,9 +529,9 @@ public:
 
 	/*!
 	 * @brief 将客户端接收信息投递到观测系统
-	 * @param proto  键值对通信协议
+	 * @param base  键值对通信协议
 	 */
-	void NotifyKVClient(kvbase proto);
+	void NotifyKVClient(kvbase base);
 	/*!
 	 * @brief 投递观测计划
 	 * @param plan  观测计划
@@ -566,23 +634,15 @@ protected:
 	void resolve_from_peer(const TcpCPtr client, int peer);
 	/*!
 	 * @brief 处理由上层程序投递到观测系统的键值对协议
-	 * @param proto  通信协议
+	 * @param base  通信协议
 	 */
-	void process_kv_client(kvbase proto);
+	void process_kv_client(kvbase base);
 	/*!
 	 * @brief 处理转台信息
 	 * @param client 网络资源
 	 * @param ec     错误代码. 0: 正确
 	 */
 	void receive_mount(const TcpCPtr client, const int ec);
-	/*!
-	 * @brief 执行指向操作
-	 * @param type   坐标系类型
-	 * @param lon    经度, 角度
-	 * @param lat    纬度, 角度
-	 * @param epoch  历元, 适用于赤道系
-	 */
-	void process_slewto(int type, double lon, double lat, double epoch);
 
 protected:
 	//////////////////////////////////////////////////////////////////////////////
@@ -596,6 +656,28 @@ protected:
 	 */
 	NetCamPtr find_camera(const string& cid);
 	NetCamPtr find_camera(const TcpCPtr client);
+
+	/*!
+	 * @brief 平场, 采集图像前重新指向
+	 * @param first  初始执行平场计划
+	 */
+	void flat_reslew(bool first = false);
+	/*!
+	 * @brief 执行指向操作
+	 * @param type   坐标系类型
+	 * @param lon    经度, 角度
+	 * @param lat    纬度, 角度
+	 * @param epoch  历元, 适用于赤道系
+	 * @note
+	 * - 历元: 0.0 = 当前历元
+	 */
+	void process_slewto(int type, double lon, double lat, double epoch = 0.0);
+	/*!
+	 * @brief 执行曝光操作
+	 * @param cmd         曝光指令
+	 * @param just_guide  是否仅控制导星相机
+	 */
+	void process_expose(int cmd, bool just_guide = false);
 
 protected:
 	//////////////////////////////////////////////////////////////////////////////
@@ -631,12 +713,6 @@ protected:
 	 * @param utcNow 当前UTC时间
 	 */
 	void generate_plan_flat(const ptime& utcNow);
-
-	/*!
-	 * @brief 平场, 采集图像前重新指向
-	 * @param first  初始执行平场计划
-	 */
-	void flat_reslew(bool first = false);
 
 protected:
 	//////////////////////////////////////////////////////////////////////////////

@@ -6,7 +6,6 @@
  * @note
  * @li boost::asio::io_service::run()在响应所注册的异步调用后自动退出. 为了避免退出run()函数,
  * 建立ioservice_keep维护其长期有效性
- * @li 使用shared_ptr管理指针
  */
 
 #ifndef SRC_ASIOIOSERVICEKEEP_H_
@@ -14,7 +13,6 @@
 
 #include <boost/asio/io_service.hpp>
 #include <boost/thread/thread.hpp>
-#include <boost/smart_ptr/shared_ptr.hpp>
 
 class AsioIOServiceKeep {
 public:
@@ -22,12 +20,10 @@ public:
 
 protected:
 	using Work = IOService::work;
-	using WorkPtr = boost::shared_ptr<Work>;
-	using ThreadPtr = boost::shared_ptr<boost::thread>;
 	/* 成员变量 */
-	IOService io_service_;
-	WorkPtr work_;
-	ThreadPtr thrd_keep_;
+	IOService ios_;
+	Work work_;
+	boost::thread thrd_keep_;
 
 public:
 	AsioIOServiceKeep();

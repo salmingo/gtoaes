@@ -110,11 +110,13 @@ typedef boost::shared_ptr<nonkv_proto_utc> nonkvutc;
 
 struct nonkv_proto_mount : public nonkv_proto_base {
 	double ra, dec;
+	double azi, alt;	/// 方位/高度角, 角度. 非通信协议内容, 由OBSS补齐
 
 public:
 	nonkv_proto_mount() {
 		type = NONKVTYPE_MOUNT;
 		ra = dec = 0.0;
+		azi = alt = 0.0;
 	}
 };
 typedef boost::shared_ptr<nonkv_proto_mount> nonkvmount;

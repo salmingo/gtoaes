@@ -11,7 +11,6 @@
 #include <boost/date_time/posix_time/posix_time.hpp>
 #include <boost/algorithm/string.hpp>
 #include "globaldef.h"
-#include "ADefine.h"
 #include "ObservationSystem.h"
 #include "GLog.h"
 
@@ -93,13 +92,11 @@ bool ObservationSystem::IsSafePoint(ObsPlanItemPtr plan, const ptime& now) {
 		double lat = plan->lat * D2R;
 		if (plan->coorsys == TypeCoorSys::COORSYS_ALTAZ) safe = lat >= altLimit_;
 		else {
-			ptime::date_type today = now.date();
-			double lmst, azi, alt;
+			MtxLck lck(mtx_ats_);
+			double azi, alt;
 
-			ats_.SetUTC(today.year(), today.month(), today.day(),
-					now.time_of_day().total_seconds() / DAYSEC);
-			lmst = ats_.LocalMeanSiderealTime();
-			ats_.Eq2Horizon(lmst - lon, lat, azi, alt);
+			ats_.SetMJD(now.date().modjulian_day() + now.time_of_day().total_seconds() / DAYSEC);
+			ats_.Eq2Horizon(ats_.LocalMeanSiderealTime() - lon, lat, azi, alt);
 			safe = lat >= altLimit_;
 		}
 	}
@@ -144,7 +141,7 @@ void ObservationSystem::CoupleClient(const TcpCPtr client) {
 	tcpc_client_.push_back(client);
 }
 
-int ObservationSystem::CoupleMount(const TcpCPtr client, kvbase proto) {
+int ObservationSystem::CoupleMount(const TcpCPtr client, kvbase base) {
 	// 尝试关联转台和观测系统
 	if (!net_mount_.IsOpen()) {
 		net_mount_.client = client;
@@ -161,9 +158,9 @@ int ObservationSystem::CoupleMount(const TcpCPtr client, kvbase proto) {
 				gid_.c_str(), uid_.c_str());
 		return MODE_ERROR;
 	}
-	if (iequals(proto->type, KVTYPE_MOUNT)) {// 处理通信协议
+	if (iequals(base->type, KVTYPE_MOUNT)) {// 处理通信协议
 		int old_state(net_mount_.state);
-		net_mount_ = from_kvbase<kv_proto_mount>(proto);
+		net_mount_ = from_kvbase<kv_proto_mount>(base);
 		if (old_state != net_mount_.state) PostMessage(MSG_MOUNT_CHANGED, old_state);
 	}
 
@@ -171,7 +168,7 @@ int ObservationSystem::CoupleMount(const TcpCPtr client, kvbase proto) {
 	return param_->p2hMount ? MODE_P2H : MODE_P2P;
 }
 
-int ObservationSystem::CoupleMount(const TcpCPtr client, nonkvbase proto) {
+int ObservationSystem::CoupleMount(const TcpCPtr client, nonkvbase base) {
 	// 尝试关联转台和观测系统
 	if (!net_mount_.IsOpen()) {
 		net_mount_.client = client;
@@ -183,11 +180,26 @@ int ObservationSystem::CoupleMount(const TcpCPtr client, nonkvbase proto) {
 				gid_.c_str(), uid_.c_str());
 		return MODE_ERROR;
 	}
+	if (iequals(base->type, NONKVTYPE_MOUNT)) {
+		MtxLck lck(mtx_ats_);
+		// 补充地平坐标
+		nonkvmount proto = from_nonkvbase<nonkv_proto_mount>(base);
+		ptime now = microsec_clock::universal_time();
+		int old_state(net_mount_.state);
+		double azi, alt;
+
+		ats_.SetMJD(now.date().modjulian_day() + now.time_of_day().total_microseconds() * 1E-6 / DAYSEC);
+		ats_.Eq2Horizon(ats_.LocalMeanSiderealTime() - proto->ra * D2R, proto->dec * D2R, azi, alt);
+		proto->azi = azi * R2D;
+		proto->alt = alt * R2D;
+		net_mount_ = proto;
+		if (old_state != net_mount_.state) PostMessage(MSG_MOUNT_CHANGED, old_state);
+	}
 	return param_->p2hMount ? MODE_P2H : MODE_P2P;
 }
 
-int ObservationSystem::CoupleCamera(const TcpCPtr client, kvbase proto) {
-	string cid = proto->cid;
+int ObservationSystem::CoupleCamera(const TcpCPtr client, kvbase base) {
+	string cid = base->cid;
 	NetCamPtr cam = find_camera(cid);
 	if (!cam->IsOpen()) {
 		_gLog.Write("Camera[%s:%s:%s] is on-line", gid_.c_str(), uid_.c_str(), cid.c_str());
@@ -208,23 +220,23 @@ int ObservationSystem::CoupleCamera(const TcpCPtr client, kvbase proto) {
 		return MODE_ERROR;
 	}
 
-	if (iequals(proto->type, KVTYPE_CAMERA)) {
+	if (iequals(base->type, KVTYPE_CAMERA)) {
 		int old_state(cam->state);
-		*cam = from_kvbase<kv_proto_camera>(proto);
+		*cam = from_kvbase<kv_proto_camera>(base);
 		if (old_state != cam->state) PostMessage(MSG_CAMERA_CHANGED);
 	}
 	return param_->p2hCamera ? MODE_P2H : MODE_P2P;
 }
 
-int ObservationSystem::CoupleMountAnnex(const TcpCPtr client, kvbase proto) {
+int ObservationSystem::CoupleMountAnnex(const TcpCPtr client, kvbase base) {
 	return param_->p2hMountAnnex ? MODE_P2H : MODE_P2P;
 }
 
-int ObservationSystem::CoupleMountAnnex(const TcpCPtr client, nonkvbase proto) {
+int ObservationSystem::CoupleMountAnnex(const TcpCPtr client, nonkvbase base) {
 	return param_->p2hMountAnnex ? MODE_P2H : MODE_P2P;
 }
 
-int ObservationSystem::CoupleCameraAnnex(const TcpCPtr client, kvbase proto) {
+int ObservationSystem::CoupleCameraAnnex(const TcpCPtr client, kvbase base) {
 	return param_->p2hCameraAnnex ? MODE_P2H : MODE_P2P;
 }
 
@@ -263,9 +275,9 @@ void ObservationSystem::DecoupleCameraAnnex(const TcpCPtr client) {
 
 }
 
-void ObservationSystem::NotifyKVClient(kvbase proto) {
+void ObservationSystem::NotifyKVClient(kvbase base) {
 	MtxLck lck(mtx_queKv_);
-	queKv_.push_back(proto);
+	queKv_.push_back(base);
 	PostMessage(MSG_RECEIVE_KV);
 }
 
@@ -375,20 +387,22 @@ void ObservationSystem::on_mount_linked(const long linked, const long par2) {
 }
 
 void ObservationSystem::on_mount_changed(const long old_state, const long par2) {
+	_gLog.Write("mount<%s:%s> goes into <%s>", gid_.c_str(), uid_.c_str(),
+			StateMount::ToString(net_mount_.state));
+
 	if (plan_now_.use_count() && net_mount_.state == StateMount::MOUNT_TRACKING) {
-		bool success(true);
-		if (plan_now_->iimgtype > TypeImage::IMGTYP_FLAT) {// 检查指向位置偏差
-			double d_lon, d_lat, lat, ea;
-			net_mount_.ArriveError(d_lon, d_lat, lat);
-			d_lon = d_lon * cos(lat * D2R);
-			ea = sqrt(d_lon * d_lon + d_lat * d_lat) * 60.0;
-			success = ea <= param_->tArrive;
-		}
-		if (!success) {// 打印错误并中止计划
+		double ea(0.0);
+		if (plan_now_->iimgtype <= TypeImage::IMGTYP_FLAT	// 定标: 不检查指向偏差
+				|| (ea = net_mount_.ArriveError() * 60.0) <= param_->tArrive) {// 非定标: 检查指向偏差
+			/* 通知相机开始曝光 */
+			// 通用: 通知所有相机开始曝光
 
+			// GWAC: 通知导星相机开始曝光
 		}
-		else {// 通知相机开始曝光
-
+		else {// 打印错误并中止计划
+			_gLog.Write(LOG_WARN, "PE<%.1f>[arcmin] of Mount[%s:%s] is beyond the threshold",
+					ea, gid_.c_str(), uid_.c_str());
+			abort_plan();
 		}
 	}
 }
@@ -434,7 +448,7 @@ void ObservationSystem::resolve_from_peer(const TcpCPtr client, int peer) {
 
 }
 
-void ObservationSystem::process_kv_client(kvbase proto) {
+void ObservationSystem::process_kv_client(kvbase base) {
 
 }
 
@@ -531,9 +545,18 @@ void ObservationSystem::flat_reslew(bool first) {
 	ats_.Horizon2Eq(azi * D2R, alt * D2R, ha, dec);
 	ra  = cycmod(lmst - ha, A2PI) * R2D;
 	dec*= R2D;
+	// 执行指向操作
+	process_slewto(TypeCoorSys::COORSYS_EQUA, ra, dec);
+}
 
+void ObservationSystem::process_slewto(int type, double lon, double lat, double epoch) {
 	/* 通知转台指向 */
-	net_mount_.BeginSlew(TypeCoorSys::COORSYS_EQUA, ra, dec);
+	net_mount_.BeginSlew(type, lon, lat);
+}
+
+void ObservationSystem::process_expose(int cmd, bool just_guide = false) {
+	int n;
+	const int* to_write = kvProto_->CompactExpose(cmd, n);
 }
 
 //////////////////////////////////////////////////////////////////////////////

@@ -10,8 +10,6 @@
 #define ADEFINE_H_
 
 #include <math.h>
-
-namespace AstroUtil {
 /*--------------------------------------------------------------------------*/
 // 平面角转换系数
 #define API		3.141592653589793238462643		///< 圆周率
@@ -55,8 +53,6 @@ namespace AstroUtil {
 #define frac(x)		(x - floor(x))
 // 调整到[0, T)周期内
 #define cycmod(x, T)	((x) - floor((x) / (T)) * (T))
-// 调整到[0, A2PI)周期内
-#define crcmod(x)		cycmod(x, A2PI)
-}
+/*--------------------------------------------------------------------------*/
 
 #endif /* ADEFINE_H_ */
