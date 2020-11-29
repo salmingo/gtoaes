@@ -69,7 +69,8 @@ bool TcpClient::ShutDown(int how) {
 
 bool TcpClient::Close() {
 	try {
-		sock_.close();
+		if (sock_.is_open())
+			sock_.close();
 		return true;
 	}
 	catch(std::exception& ex) {

@@ -7,6 +7,7 @@
  */
 
 #include <stdlib.h>
+#include <boost/smart_ptr/make_shared.hpp>
 #include <boost/bind/bind.hpp>
 #include <boost/date_time/posix_time/posix_time.hpp>
 #include <boost/algorithm/string.hpp>
@@ -223,7 +224,7 @@ int ObservationSystem::CoupleCamera(const TcpCPtr client, kvbase base) {
 	if (iequals(base->type, KVTYPE_CAMERA)) {
 		int old_state(cam->state);
 		*cam = from_kvbase<kv_proto_camera>(base);
-		if (old_state != cam->state) PostMessage(MSG_CAMERA_CHANGED);
+		if (old_state != cam->state && plan_now_.use_count()) PostMessage(MSG_CAMERA_CHANGED);
 	}
 	return param_->p2hCamera ? MODE_P2H : MODE_P2P;
 }
@@ -307,14 +308,17 @@ void ObservationSystem::NotifyODT(int type) {
 	// 改变可观测时间类型
 	if (type != odt_) {
 		odt_ = type;
-		switch_acquire_plan();
+		PostMessage(MSG_SWITCH_OBSFLOW);
 	}
 }
 
 void ObservationSystem::NotifySlitState(int state) {
-
+	//...
+	PostMessage(MSG_SWITCH_OBSFLOW);
 }
 
+//////////////////////////////////////////////////////////////////////////////
+/*----------------- 消息响应 -----------------*/
 void ObservationSystem::register_messages() {
 	const CBSlot& slot1 = boost::bind(&ObservationSystem::on_tcp_receive,     this, _1, _2);
 	const CBSlot& slot2 = boost::bind(&ObservationSystem::on_receive_kv,      this, _1, _2);
@@ -323,7 +327,7 @@ void ObservationSystem::register_messages() {
 	const CBSlot& slot5 = boost::bind(&ObservationSystem::on_mount_changed,   this, _1, _2);
 	const CBSlot& slot6 = boost::bind(&ObservationSystem::on_camera_linked,   this, _1, _2);
 	const CBSlot& slot7 = boost::bind(&ObservationSystem::on_camera_changed,  this, _1, _2);
-	const CBSlot& slot8 = boost::bind(&ObservationSystem::on_runmode_changed, this, _1, _2);
+	const CBSlot& slot8 = boost::bind(&ObservationSystem::on_switch_obsflow,  this, _1, _2);
 
 	RegisterMessage(MSG_TCP_RECEIVE,     slot1);
 	RegisterMessage(MSG_RECEIVE_KV,      slot2);
@@ -332,7 +336,7 @@ void ObservationSystem::register_messages() {
 	RegisterMessage(MSG_MOUNT_CHANGED,   slot5);
 	RegisterMessage(MSG_CAMERA_LINKED,   slot6);
 	RegisterMessage(MSG_CAMERA_CHANGED,  slot7);
-	RegisterMessage(MSG_RUNMODE_CHANGED, slot8);
+	RegisterMessage(MSG_SWITCH_OBSFLOW,  slot8);
 }
 
 void ObservationSystem::on_tcp_receive(const long par1, const long par2) {
@@ -344,6 +348,7 @@ void ObservationSystem::on_tcp_receive(const long par1, const long par2) {
 	}
 
 	TcpCPtr client = rcvd->client;
+	int peer = rcvd->peer;
 	if (rcvd->hadRcvd) {
 		const char term[] = "\n";	// 信息结束符: 换行
 		int lenTerm = strlen(term);	// 结束符长度
@@ -351,17 +356,55 @@ void ObservationSystem::on_tcp_receive(const long par1, const long par2) {
 		while (client->IsOpen() && (pos = client->Lookup(term, lenTerm)) >= 0) {
 			client->Read(bufTcp_.get(), pos + lenTerm);
 			bufTcp_[pos] = 0;
-			resolve_from_peer(client, rcvd->peer);
+			if      (peer == PEER_MOUNT)        resolve_kv_mount       (client);
+			else if (peer == PEER_CAMERA)       resolve_kv_camera      (client);
+			else if (peer == PEER_MOUNT_ANNEX)  resolve_kv_mount_annex (client);
+			else if (peer == PEER_CAMERA_ANNEX) resolve_kv_camera_annex(client);
 		}
 	}
 	else {
 		client->Close();
-		close_socket(client, rcvd->peer);
+		if      (peer == PEER_MOUNT)        PostMessage(MSG_MOUNT_LINKED, 0);
+		else if (peer == PEER_CAMERA)       DecoupleCamera(client);
+		else if (peer == PEER_MOUNT_ANNEX)  DecoupleMountAnnex(client);
+		else if (peer == PEER_CAMERA_ANNEX) DecoupleCameraAnnex(client);
 	}
 }
 
 void ObservationSystem::on_receive_kv(const long par1, const long par2) {
+	// 处理由GeneralControl投递的KV类型协议
+	// 提取队列的头信息
+	kvbase base;
+	{
+		MtxLck lck(mtx_queKv_);
+		base = queKv_.front();
+		queKv_.pop_front();
+	}
+	// 分类处理
+	string type = base->type;
+	char ch = type[0];
 
+	if (ch == 'a' || ch == 'A') {
+		if      (iequals(type, KVTYPE_ABTSLEW))  process_abort_slew();
+		else if (iequals(type, KVTYPE_ABTIMG))   process_abort_image(base->cid);
+	}
+	else if (ch == 'f' || ch == 'F') {
+		if      (iequals(type, KVTYPE_FWHM))     process_fwhm(base->cid, from_kvbase<kv_proto_fwhm>(base)->value);
+		else if (iequals(type, KVTYPE_FOCUS))    process_focus(base->cid, from_kvbase<kv_proto_focus>(base)->position);
+		else if (iequals(type, KVTYPE_FINDHOME)) process_findhome();
+	}
+	else if (ch == 's' || ch == 'S') {
+		if      (iequals(type, KVTYPE_START))    process_start();
+		else if (iequals(type, KVTYPE_STOP))     process_stop();
+		else if (iequals(type, KVTYPE_SLEWTO))   process_slewto(from_kvbase<kv_proto_slewto>(base));
+	}
+	else if (iequals(type, KVTYPE_GUIDE))        process_guide(from_kvbase<kv_proto_guide>(base));
+	else if (iequals(type, KVTYPE_HOMESYNC))     process_homesync(from_kvbase<kv_proto_home_sync>(base));
+	else if (iequals(type, KVTYPE_MCOVER))       process_mcover(base->cid, from_kvbase<kv_proto_mcover>(base)->command);
+	else if (iequals(type, KVTYPE_PARK))         process_park();
+	else if (iequals(type, KVTYPE_TAKIMG))       process_take_image(from_kvbase<kv_proto_take_image>(base));
+	else if (iequals(type, KVTYPE_DISABLE))      process_disable(base->cid);
+	else if (iequals(type, KVTYPE_ENABLE))       process_enable(base->cid);
 }
 
 void ObservationSystem::on_receive_nonkv(const long par1, const long par2) {
@@ -379,7 +422,7 @@ void ObservationSystem::on_mount_linked(const long linked, const long par2) {
 		net_mount_.Reset();
 		mode = net_camera_.empty() ? OBSS_ERROR : OBSS_MANUAL;
 	}
-	if (mode != mode_run_) PostMessage(MSG_RUNMODE_CHANGED, mode);
+	switch_runmode(mode);
 
 	if (dbPtr_.use_count()) {//...通知数据库
 
@@ -390,14 +433,24 @@ void ObservationSystem::on_mount_changed(const long old_state, const long par2) 
 	_gLog.Write("mount<%s:%s> goes into <%s>", gid_.c_str(), uid_.c_str(),
 			StateMount::ToString(net_mount_.state));
 
+	/* 转台工作状态变化时, 开始曝光的判定条件:
+	 * - 在执行观测计划
+	 * - 状态变更为TRACKING
+	 * - 指向偏差小于阈值
+	 * 分支:
+	 * - 对于GWAC系统, 由于指向偏差较大, 为减少重做模板次数, 指向到位后仅启动导星相机开始曝光
+	 * 错误处理:
+	 * - 指向偏差过大, 中止观测计划
+	 */
 	if (plan_now_.use_count() && net_mount_.state == StateMount::MOUNT_TRACKING) {
 		double ea(0.0);
 		if (plan_now_->iimgtype <= TypeImage::IMGTYP_FLAT	// 定标: 不检查指向偏差
 				|| (ea = net_mount_.ArriveError() * 60.0) <= param_->tArrive) {// 非定标: 检查指向偏差
 			/* 通知相机开始曝光 */
 			// 通用: 通知所有相机开始曝光
-
+			process_expose(CommandExpose::EXP_START);
 			// GWAC: 通知导星相机开始曝光
+//			process_expose(CommandExpose::EXP_START, true);
 		}
 		else {// 打印错误并中止计划
 			_gLog.Write(LOG_WARN, "PE<%.1f>[arcmin] of Mount[%s:%s] is beyond the threshold",
@@ -415,21 +468,50 @@ void ObservationSystem::on_camera_linked(const long linked, const long par2) {
 	else {
 		mode = net_camera_.size() ? mode_run_ : (net_mount_.IsOpen() ? OBSS_MANUAL : OBSS_ERROR);
 	}
-	if (mode != mode_run_) PostMessage(MSG_RUNMODE_CHANGED, mode);
+	switch_runmode(mode);
 }
 
 void ObservationSystem::on_camera_changed(const long par1, const long par2) {
-	if (!plan_now_.use_count()) return;
+	int nTot(net_camera_.size()), nIdle(0), nFlat(0);
+	{// 统计相机工作状态
+		MtxLck lck(mtx_camera_);
+		for (NetCamVec::iterator it = net_camera_.begin(); it != net_camera_.end(); ++it) {
+			if      ((*it)->state == StateCameraControl::CAMCTL_IDLE)         ++nIdle;
+			else if ((*it)->state == StateCameraControl::CAMCTL_WAITING_FLAT) ++nFlat;
+		}
+	}
+	if (nIdle == nTot) {// 所有相机曝光结束; 观测计划结束; 申请新的计划或执行等待区计划
+		if (plan_now_->state == StateObservationPlan::OBSPLAN_RUNNING)
+			plan_now_->state = StateObservationPlan::OBSPLAN_OVER;
+		_gLog.Write("plan<%s> on [%s:%s] is %s", plan_now_->plan_sn.c_str(), gid_.c_str(), uid_.c_str(),
+				StateObservationPlan::ToString(plan_now_->state));
+
+		plan_now_.reset();
+		cv_acqPlan_.notify_one();
+	}
+	else if ((nFlat + nIdle) == nTot) {// 平场, 重新指向
+		flat_reslew();
+	}
 }
 
-void ObservationSystem::on_runmode_changed(const long mode_new, const long par2) {
-	_gLog.Write("OBSS[%s:%s] enters %s mode", gid_.c_str(), uid_.c_str(),
-			mode_new == OBSS_ERROR ? "ERROR"
-					: (mode_new == OBSS_MANUAL ? "MANUAL" : "AUTO"));
-	mode_run_ = mode_new;
-	switch_acquire_plan();
+void ObservationSystem::on_switch_obsflow(const long par1, const long par2) {
+	if (odt_ > TypeObservationDuration::ODT_DAYTIME // 时间: 非白天
+			&& mode_run_ == OBSS_AUTO // 模式: 自动
+			) { // 天窗: 没有或已打开
+		if (!thrd_acqPlan_.unique()) {
+			_gLog.Write("OBSS[%s:%s] starts observation", gid_.c_str(), uid_.c_str());
+			thrd_acqPlan_.reset(new boost::thread(boost::bind(&ObservationSystem::thread_acquire_plan, this)));
+		}
+	}
+	else if (thrd_acqPlan_.unique()) {
+		_gLog.Write("OBSS[%s:%s] stops observation", gid_.c_str(), uid_.c_str());
+		interrupt_thread(thrd_acqPlan_);
+	}
 }
 
+/*----------------- 消息响应 -----------------*/
+//////////////////////////////////////////////////////////////////////////////
+/* 网络通信 */
 void ObservationSystem::receive_from_peer(const TcpCPtr client, const error_code& ec, int peer) {
 	MtxLck lck(mtx_tcpRcv_);
 	TcpRcvPtr rcvd = TcpReceived::Create(client, peer, !ec);
@@ -437,26 +519,126 @@ void ObservationSystem::receive_from_peer(const TcpCPtr client, const error_code
 	PostMessage(MSG_TCP_RECEIVE);
 }
 
-void ObservationSystem::close_socket(const TcpCPtr client, int peer) {
-	if      (peer == PEER_MOUNT)        PostMessage(MSG_MOUNT_LINKED, 0);
-	else if (peer == PEER_CAMERA)       DecoupleCamera(client);
-	else if (peer == PEER_MOUNT_ANNEX)  DecoupleMountAnnex(client);
-	else if (peer == PEER_CAMERA_ANNEX) DecoupleCameraAnnex(client);
+void ObservationSystem::resolve_kv_mount(const TcpCPtr client) {
+	kvbase base = kvProto_->ResolveMount(bufTcp_.get());
+	if (iequals(base->type, KVTYPE_MOUNT)) {// 转台状态
+		int old_state(net_mount_.state);
+		net_mount_ = from_kvbase<kv_proto_mount>(base);
+		if (old_state != net_mount_.state)
+			PostMessage(MSG_MOUNT_CHANGED, old_state);
+	}
 }
 
-void ObservationSystem::resolve_from_peer(const TcpCPtr client, int peer) {
+void ObservationSystem::resolve_kv_camera(const TcpCPtr client) {
+	kvbase base = kvProto_->ResolveCamera(bufTcp_.get());
+	if (iequals(base->type, KVTYPE_CAMERA)) {// 相机状态
+		NetCamPtr cam = find_camera(client);
+		int old_state(cam->state);
+		*cam = from_kvbase<kv_proto_camera>(base);
+		if (old_state != cam->state && plan_now_.use_count())
+			PostMessage(MSG_CAMERA_CHANGED);
+	}
+}
+
+void ObservationSystem::resolve_kv_mount_annex (const TcpCPtr client) {
 
 }
 
-void ObservationSystem::process_kv_client(kvbase base) {
-
-}
-
-void ObservationSystem::receive_mount(const TcpCPtr client, const int ec) {
+void ObservationSystem::resolve_kv_camera_annex(const TcpCPtr client) {
 
 }
 
 //////////////////////////////////////////////////////////////////////////////
+/* 处理由上层程序投递到观测系统的键值对协议 */
+void ObservationSystem::process_start() {
+
+}
+
+void ObservationSystem::process_stop() {
+
+}
+
+void ObservationSystem::process_enable(const string& cid) {
+
+}
+
+void ObservationSystem::process_disable(const string& cid) {
+
+}
+
+void ObservationSystem::process_findhome() {
+
+}
+
+void ObservationSystem::process_slewto(int type, double lon, double lat, double epoch) {
+	//...内部调用, 进入判据不同
+	kvslewto proto = boost::make_shared<kv_proto_slewto>();
+	proto->coorsys = type;
+	proto->lon     = lon;
+	proto->lat     = lat;
+	proto->epoch   = epoch;
+	process_slewto(proto);
+}
+
+void ObservationSystem::process_slewto(kvslewto proto) {
+	if (net_mount_.IsOpen()) {//...判据
+		int n;
+		const char* to_write;
+		net_mount_.BeginSlew(proto->coorsys, proto->lon, proto->lat);
+		to_write = kvProto_->CompactSlewto(proto, n);
+		net_mount_()->Write(to_write, n);
+	}
+}
+
+void ObservationSystem::process_abort_slew() {
+
+}
+
+void ObservationSystem::process_guide(kvguide proto) {
+
+}
+
+void ObservationSystem::process_homesync(kvhomesync proto) {
+
+}
+
+void ObservationSystem::process_park() {
+
+}
+
+void ObservationSystem::process_take_image(kvtakeimg proto) {
+
+}
+
+void ObservationSystem::process_abort_image(const string& cid) {
+
+}
+
+void ObservationSystem::process_fwhm(const string& cid, const double fwhm) {
+
+}
+
+void ObservationSystem::process_focus(const string& cid, const int pos) {
+
+}
+
+void ObservationSystem::process_mcover(const string& cid, int cmd) {
+
+}
+/* 处理由上层程序投递到观测系统的键值对协议 */
+//////////////////////////////////////////////////////////////////////////////
+
+//////////////////////////////////////////////////////////////////////////////
+void ObservationSystem::switch_runmode(int mode) {
+	if (mode != mode_run_) {
+		_gLog.Write("OBSS[%s:%s] enters %s mode", gid_.c_str(), uid_.c_str(),
+				mode == OBSS_ERROR ? "ERROR"
+						: (mode == OBSS_MANUAL ? "MANUAL" : "AUTO"));
+		mode_run_ = mode;
+		PostMessage(MSG_SWITCH_OBSFLOW);
+	}
+}
+
 ObservationSystem::NetCamPtr ObservationSystem::find_camera(const string& cid) {
 	NetCamPtr cam;
 	NetCamVec::iterator it, end = net_camera_.end();
@@ -549,28 +731,18 @@ void ObservationSystem::flat_reslew(bool first) {
 	process_slewto(TypeCoorSys::COORSYS_EQUA, ra, dec);
 }
 
-void ObservationSystem::process_slewto(int type, double lon, double lat, double epoch) {
-	/* 通知转台指向 */
-	net_mount_.BeginSlew(type, lon, lat);
-}
-
-void ObservationSystem::process_expose(int cmd, bool just_guide = false) {
+void ObservationSystem::process_expose(int cmd, bool just_guide) {
+	MtxLck lck(mtx_camera_);
 	int n;
-	const int* to_write = kvProto_->CompactExpose(cmd, n);
+	const char* to_write = kvProto_->CompactExpose(cmd, n);
+	bool matched(false);
+	for (NetCamVec::iterator it = net_camera_.begin(); it != net_camera_.end() && !matched; ++it) {
+		if (!just_guide || (matched = (std::stoi((*it)->cid) % 5) == 0))
+			(*it)->client->Write(to_write, n);
+	}
 }
 
 //////////////////////////////////////////////////////////////////////////////
-void ObservationSystem::switch_acquire_plan() {
-	if (odt_ > TypeObservationDuration::ODT_DAYTIME // 时间: 非白天
-			&& mode_run_ == OBSS_AUTO // 模式: 自动
-			) { // 天窗: 没有或已打开
-		if (!thrd_acqPlan_.unique()) {
-			thrd_acqPlan_.reset(new boost::thread(boost::bind(&ObservationSystem::thread_acquire_plan, this)));
-		}
-	}
-	else interrupt_thread(thrd_acqPlan_);
-}
-
 void ObservationSystem::thread_acquire_plan() {
 	boost::chrono::minutes period(2);
 	boost::mutex mtx;

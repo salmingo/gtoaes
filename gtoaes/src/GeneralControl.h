@@ -229,22 +229,29 @@ protected:
 	 */
 	void resolve_from_peer(const TcpCPtr client, int peer);
 	/*!
-	 * @fn resolve_kv_client
 	 * @brief  解析处理客户端的键值对协议
-	 * @fn resolve_kv_mount
+	 * @param client  网络连接
+	 */
+	void resolve_kv_client(const TcpCPtr client);
+	/*!
 	 * @brief  解析处理转台的键值对协议
-	 * @fn resolve_kv_camera
+	 * @param client  网络连接
+	 */
+	void resolve_kv_mount(const TcpCPtr client);
+	/*!
 	 * @brief  解析处理相机的键值对协议
-	 * @fn resolve_kv_mount_annex
+	 * @param client  网络连接
+	 */
+	void resolve_kv_camera(const TcpCPtr client);
+	/*!
 	 * @brief  解析处理转台附属设备的键值对协议
-	 * @fn resolve_kv_camera_annex
+	 * @param client  网络连接
+	 */
+	void resolve_kv_mount_annex (const TcpCPtr client);
+	/*!
 	 * @brief  解析处理相机附属设备的键值对协议
 	 * @param client  网络连接
 	 */
-	void resolve_kv_client      (const TcpCPtr client);
-	void resolve_kv_mount       (const TcpCPtr client);
-	void resolve_kv_camera      (const TcpCPtr client);
-	void resolve_kv_mount_annex (const TcpCPtr client);
 	void resolve_kv_camera_annex(const TcpCPtr client);
 
 	/*!

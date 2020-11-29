@@ -33,7 +33,7 @@ AC_TYPE_UINT32_T
 
 # Checks for library functions.
 AC_FUNC_FORK
-AC_CHECK_FUNCS([ftruncate getcwd gettimeofday memset mkdir pow select socket strerror strstr])
+AC_CHECK_FUNCS([ftruncate getcwd gettimeofday memset mkdir pow select socket sqrt strerror strstr])
 
 AC_CONFIG_FILES([Makefile
                  src/Makefile])

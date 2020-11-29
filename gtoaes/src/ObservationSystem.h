@@ -57,7 +57,7 @@ public:
 		MSG_MOUNT_CHANGED,	///< 转台状态发生变化
 		MSG_CAMERA_LINKED,	///< 相机连接或断开
 		MSG_CAMERA_CHANGED,	///< 相机状态发生变化
-		MSG_RUNMODE_CHANGED	///< 观测系统工作模式发生变化
+		MSG_SWITCH_OBSFLOW	///< 启动/结束观测流
 	};
 
 protected:
@@ -604,11 +604,16 @@ protected:
 	 */
 	void on_camera_changed(const long par1, const long par2);
 	/*!
-	 * @brief 消息: 观测系统工作模式改变
-	 * @param mode_new  新的工作模式
-	 * @param par2      保留
+	 * @brief 消息: 启动/结束观测流程
+	 * @param par1  保留
+	 * @param par2  保留
+	 * @note
+	 * 启动观测流程的判定条件:
+	 * - 工作模式 == Auto
+	 * - 时间类型 == FLAT or NIGHT
+	 * - 天窗    == Open
 	 */
-	void on_runmode_changed(const long mode_new, const long par2);
+	void on_switch_obsflow(const long par1, const long par2);
 
 protected:
 	//////////////////////////////////////////////////////////////////////////////
@@ -621,31 +626,105 @@ protected:
 	 */
 	void receive_from_peer(const TcpCPtr client, const error_code& ec, int peer);
 	/*!
-	 * @brief 关闭套接口
+	 * @brief  解析处理转台的键值对协议
 	 * @param client  网络连接
-	 * @param peer    远程主机类型
 	 */
-	void close_socket(const TcpCPtr client, int peer);
+	void resolve_kv_mount(const TcpCPtr client);
 	/*!
-	 * @brief 解析与用户/数据库、通用望远镜、相机、制冷(GWAC)、真空(GWAC)相关网络信息
-	 * @param client 网络资源
-	 * @param peer   远程主机类型
+	 * @brief  解析处理相机的键值对协议
+	 * @param client  网络连接
 	 */
-	void resolve_from_peer(const TcpCPtr client, int peer);
+	void resolve_kv_camera(const TcpCPtr client);
 	/*!
-	 * @brief 处理由上层程序投递到观测系统的键值对协议
-	 * @param base  通信协议
+	 * @brief  解析处理转台附属设备的键值对协议
+	 * @param client  网络连接
 	 */
-	void process_kv_client(kvbase base);
+	void resolve_kv_mount_annex (const TcpCPtr client);
 	/*!
-	 * @brief 处理转台信息
-	 * @param client 网络资源
-	 * @param ec     错误代码. 0: 正确
+	 * @brief  解析处理相机附属设备的键值对协议
+	 * @param client  网络连接
 	 */
-	void receive_mount(const TcpCPtr client, const int ec);
+	void resolve_kv_camera_annex(const TcpCPtr client);
 
 protected:
 	//////////////////////////////////////////////////////////////////////////////
+	/* 处理由上层程序投递到观测系统的键值对协议 */
+	/*!
+	 * @brief 启动系统自动工作流程
+	 */
+	void process_start();
+	/*!
+	 * @brief 停止系统自动工作流程
+	 */
+	void process_stop();
+	/*!
+	 * @brief 启用被禁用相机
+	 * @param cid  相机编号
+	 */
+	void process_enable(const string& cid);
+	/*!
+	 * @brief 禁用相机
+	 * @param cid  相机编号
+	 */
+	void process_disable(const string& cid);
+	/*!
+	 * @brief 搜索零点
+	 */
+	void process_findhome();
+	/*!
+	 * @brief 指向
+	 */
+	void process_slewto(kvslewto proto);
+	/*!
+	 * @brief 中止指向
+	 */
+	void process_abort_slew();
+	/*!
+	 * @brief 导星
+	 */
+	void process_guide(kvguide proto);
+	/*!
+	 * @brief 同步零点
+	 */
+	void process_homesync(kvhomesync proto);
+	/*!
+	 * @brief 复位
+	 */
+	void process_park();
+
+	/*!
+	 * @brief 开始曝光
+	 */
+	void process_take_image(kvtakeimg proto);
+	/*!
+	 * @brief 中止曝光
+	 */
+	void process_abort_image(const string& cid);
+
+	/*!
+	 * @brief 自动调焦
+	 */
+	void process_fwhm(const string& cid, const double fwhm);
+	/*!
+	 * @brief 调焦
+	 */
+	void process_focus(const string& cid, const int pos);
+
+	/*!
+	 * @brief 开关镜盖
+	 */
+	void process_mcover(const string& cid, int cmd);
+	/* 处理由上层程序投递到观测系统的键值对协议 */
+	//////////////////////////////////////////////////////////////////////////////
+
+protected:
+	//////////////////////////////////////////////////////////////////////////////
+	/* 观测系统 */
+	/*!
+	 * @brief 消息: 观测系统工作模式改变
+	 * @param mode  新的工作模式
+	 */
+	void switch_runmode(int mode);
 	/* 观测设备 */
 	/*!
 	 * @brief 查找对应cid的相机
@@ -717,15 +796,6 @@ protected:
 protected:
 	//////////////////////////////////////////////////////////////////////////////
 	/* 多线程 */
-	/*!
-	 * @brief 启动/结束观测计划执行请求
-	 * @note
-	 * 启动需同时满足以下条件:
-	 * - 运行模式 == OBSS_AUTO
-	 * - 时间类型 > ODT_DAYTIME
-	 * - 无天窗或天窗已打开
-	 */
-	void switch_acquire_plan();
 	/*!
 	 * @brief 线程: 尝试获取新的计划
 	 * @note

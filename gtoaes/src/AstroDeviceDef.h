@@ -447,11 +447,9 @@ public:
 
 /////////////////////////////////////////////////////////////////////////////
 static const char* exp_desc[] = {
-	"init",
 	"start",
 	"stop",
 	"pause",
-	"resume"
 };
 
 /*!
@@ -462,11 +460,9 @@ class CommandExpose {
 public:
 	enum {///< 相机控制指令
 		EXP_MIN = -1,
-		EXP_INIT,	///< 初始化
 		EXP_START,	///< 开始曝光
 		EXP_STOP,	///< 中止曝光
 		EXP_PAUSE,	///< 暂停曝光
-		EXP_RESUME,	///< EXPOSE_START分支: 当处理暂停过程中收到开始曝光指令, 指令记录为RESUME
 		EXP_MAX
 	};
 

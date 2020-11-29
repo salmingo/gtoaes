@@ -2,7 +2,7 @@
  * @file GeneralControl.h 声明文件, 封装总控服务
  */
 
-#include <boost/make_shared.hpp>
+#include <boost/smart_ptr/make_shared.hpp>
 #include <boost/algorithm/string.hpp>
 #include <boost/bind/bind.hpp>
 #include "globaldef.h"
