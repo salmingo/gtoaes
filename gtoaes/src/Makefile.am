@@ -14,6 +14,11 @@ else
   AM_CXXFLAGS = -O3 -Wall
 endif
 
+if GWAC
+  AM_CFLAGS += -DGWAC
+  AM_CXXFLAGS += -DGWAC
+endif
+
 gtoaes_LDFLAGS = -L/usr/local/lib
 BOOST_LIBS = -lboost_system-mt -lboost_thread-mt -lboost_chrono-mt -lboost_date_time-mt -lboost_filesystem-mt
 gtoaes_LDADD = -lm -lcurl ${BOOST_LIBS}

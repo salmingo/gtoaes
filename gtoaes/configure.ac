@@ -54,6 +54,19 @@ esac],
 
 AM_CONDITIONAL(DEBUG, test x"$debug" = x"true")
 
+# Enable GWAC Observation System
+AC_ARG_ENABLE(gwac,
+AS_HELP_STRING([--enable-gwac],
+               [enable GWAC system, default: no]),
+[case "${enableval}" in
+             yes) gwac=true ;;
+             no)  gwac=false ;;
+             *)   AC_MSG_ERROR([bad value ${enableval} for --enable-gwac]) ;;
+esac],
+[gwac=false])
+
+AM_CONDITIONAL(GWAC, test x"$gwac" = x"true")
+
 AC_CHECK_HEADERS([fcntl.h netdb.h stdlib.h string.h syslog.h unistd.h sys/socket.h sys/time.h sys/param.h])
 AC_CHECK_FUNCS([ftruncate gettimeofday memset mkdir select socket strerror strstr pow sqrt getcwd])
 AC_CHECK_HEADER_STDBOOL

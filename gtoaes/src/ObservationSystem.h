@@ -110,6 +110,12 @@ protected:
 			return (client.use_count() && client->IsOpen());
 		}
 
+		bool IsMoving() {
+			return (state == StateMount::MOUNT_HOMING
+					|| state == StateMount::MOUNT_PARKING
+					|| state == StateMount::MOUNT_SLEWING);
+		}
+
 		/*!
 		 * @brief 设置监视条件
 		 * @param type 坐标系类型
@@ -223,12 +229,13 @@ protected:
 			}
 			else if (coorsys == TypeCoorSys::COORSYS_EQUA) {
 				lat   = (dec + objdec) * 0.5;
-				// 通用
+#ifdef GWAC  // GWAC
+				d_lon = fabs(ra - objra + d_ra);	// d_ra: 在时角上的累积量
+				d_lat = fabs(dec - objdec - d_dec);
+#else  // 通用
 				d_lon = fabs(ra - objra - d_ra);	// d_ra: 在赤经上的累积量
 				d_lat = fabs(dec - objdec - d_dec);
-				// GWAC
-//				d_lon = fabs(ra - objra + d_ra);	// d_ra: 在时角上的累积量
-//				d_lat = fabs(dec - objdec - d_dec);
+#endif
 			}
 			if (d_lon > 180.0) d_lon = 360.0 - d_lon;
 			d_lon *= cos(lat * D2R);
@@ -245,11 +252,13 @@ protected:
 		int		state;		///< 工作状态
 		int		errcode;	///< 错误代码
 		int		coolget;	///< 探测器温度, 量纲: 摄氏度
+		bool    enabled;	///< 启用
 
 	public:
 		NetworkCamera() {
 			state = errcode = 0;
 			coolget = 0;
+			enabled = true;
 		}
 
 		static Pointer Create() {
@@ -325,6 +334,7 @@ protected:
 
 	/* 相机 */
 	NetCamVec net_camera_;		///< 网络+相机
+	int usable_camera_;			///< 可用相机数量
 	boost::mutex mtx_camera_;	///< 互斥锁: 相机
 
 	/* 天窗 */
