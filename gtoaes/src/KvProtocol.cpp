@@ -392,6 +392,17 @@ const char *KvProtocol::CompactFWHM(kvfwhm proto, int &n) {
 	return output_compacted(output, n);
 }
 
+const char *KvProtocol::CompactFWHM(const string& gid, const string& uid, const string& cid, double fwhm, int &n) {
+	string output = KVTYPE_FWHM;
+	output += " ";
+
+	join_kv(output, "gid",   gid);
+	join_kv(output, "uid",   uid);
+	join_kv(output, "cid",   cid);
+	join_kv(output, "value", fwhm);
+	return output_compacted(output, n);
+}
+
 const char *KvProtocol::CompactFocus(kvfocus proto, int &n) {
 	if (!proto.use_count()) return NULL;
 
@@ -400,6 +411,17 @@ const char *KvProtocol::CompactFocus(kvfocus proto, int &n) {
 	join_kv(output, "state", proto->state);
 	join_kv(output, "value", proto->position);
 
+	return output_compacted(output, n);
+}
+
+const char *KvProtocol::CompactFocus(const string& gid, const string& uid, const string& cid, int pos, int &n) {
+	string output = KVTYPE_FOCUS;
+	output += " ";
+
+	join_kv(output, "gid",   gid);
+	join_kv(output, "uid",   uid);
+	join_kv(output, "cid",   cid);
+	join_kv(output, "value", pos);
 	return output_compacted(output, n);
 }
 

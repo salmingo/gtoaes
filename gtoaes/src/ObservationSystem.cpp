@@ -387,15 +387,15 @@ void ObservationSystem::on_receive_kv(const long par1, const long par2) {
 	string type = base->type;
 	char ch = type[0];
 
-	if      (iequals(type, KVTYPE_ABTSLEW))  process_abort_slew();
-	else if (iequals(type, KVTYPE_FWHM))     process_fwhm(base->cid, from_kvbase<kv_proto_fwhm>(base)->value);
+	if      (iequals(type, KVTYPE_FWHM))     process_fwhm(base->cid, from_kvbase<kv_proto_fwhm>(base)->value);
 	else if (iequals(type, KVTYPE_FOCUS))    process_focus(base->cid, from_kvbase<kv_proto_focus>(base)->position);
 	else if (iequals(type, KVTYPE_START))    process_start();
 	else if (iequals(type, KVTYPE_STOP))     process_stop();
 	else if (iequals(type, KVTYPE_DISABLE))  process_disable(base->cid);
 	else if (iequals(type, KVTYPE_ENABLE))   process_enable(base->cid);
 	else if (mode_run_ == OBSS_MANUAL) {
-		if      (iequals(type, KVTYPE_ABTIMG))    process_abort_image(base->cid);
+		if      (iequals(type, KVTYPE_ABTSLEW))   process_abort_slew();
+		else if (iequals(type, KVTYPE_ABTIMG))    process_abort_image(base->cid);
 		else if (iequals(type, KVTYPE_FINDHOME))  process_findhome();
 		else if (iequals(type, KVTYPE_SLEWTO))    process_slewto(from_kvbase<kv_proto_slewto>(base));
 		else if (iequals(type, KVTYPE_GUIDE))     process_guide(from_kvbase<kv_proto_guide>(base));
@@ -646,15 +646,48 @@ void ObservationSystem::process_abort_slew() {
 }
 
 void ObservationSystem::process_guide(kvguide proto) {
+	if (net_mount_.IsOpen() && net_mount_.state == StateMount::MOUNT_TRACKING) {
 
+	}
 }
 
 void ObservationSystem::process_homesync(kvhomesync proto) {
-
+	if (net_mount_.IsOpen() && net_mount_.state == StateMount::MOUNT_TRACKING) {
+		_gLog.Write("Home sync mount[%s:%s] using position <%.4f, %.4f>",
+				gid_.c_str(), uid_.c_str(), proto->ra, proto->dec);
+		int n;
+		const char* data;
+#ifdef GWAC
+		data = nonkvProto_->CompactHomeSync(gid_, uid_, proto->ra, proto->dec, n);
+#else
+		data = kvProto_->CompactHomeSync(gid_, uid_, proto->ra, proto->dec, n);
+#endif
+		net_mount_()->Write(data, n);
+	}
+	else {
+		_gLog.Write(LOG_WARN, "Home sync mount[%s:%s] is rejected",
+				gid_.c_str(), uid_.c_str());
+	}
 }
 
 void ObservationSystem::process_park() {
-
+	if (net_mount_.IsOpen()
+			&& !net_mount_.IsMoving()
+			&& net_mount_.state != StateMount::MOUNT_PARKED) {
+		_gLog.Write("Parking mount[%s:%s]", gid_.c_str(), uid_.c_str());
+		int n;
+		const char* data;
+#ifdef GWAC
+		data = nonkvProto_->CompactPark(gid_, uid_, n);
+#else
+		data = kvProto_->CompactPark(gid_, uid_, n);
+#endif
+		net_mount_()->Write(data, n);
+	}
+	else {
+		_gLog.Write(LOG_WARN, "Parking mount[%s:%s] is rejected",
+				gid_.c_str(), uid_.c_str());
+	}
 }
 
 void ObservationSystem::process_take_image(kvtakeimg proto) {
@@ -698,20 +731,40 @@ void ObservationSystem::process_abort_image(const string& cid) {
 
 void ObservationSystem::process_fwhm(const string& cid, const double fwhm) {
 	int n;
-//	const char* data = kvProto_->CompactFWHM(proto, n);
-	const char* data = nonkvProto_->CompactFWHM(gid_, uid_, cid, fwhm, n);
+	const char* data;
+#ifdef GWAC
+	data = nonkvProto_->CompactFWHM(gid_, uid_, cid, fwhm, n);
+#else
+	data = kvProto_->CompactFWHM(gid_, uid_, cid, fwhm, n);
+#endif
 	//...
 }
 
 void ObservationSystem::process_focus(const string& cid, const int pos) {
 	int n;
-//	const char* data = kvProto_->CompactFocus(proto, n);
-	const char* data = nonkvProto_->CompactFocus(gid_, uid_, cid, pos, n);
+	const char* data;
+#ifdef GWAC
+	data = nonkvProto_->CompactFocus(gid_, uid_, cid, pos, n);
+#else
+	data = kvProto_->CompactFocus(gid_, uid_, cid, pos, n);
+#endif
 	//...
 }
 
 void ObservationSystem::process_mcover(const string& cid, int cmd) {
+	int n;
+	const char* data;
 
+#ifdef GWAC
+	data = nonkvProto_->CompactMirrCover(gid_, uid_, cid, cmd, n);
+#else
+	/* 镜盖位置:
+	 * - 主镜
+	 * - 单镜筒
+	 */
+//	data = kvProto_->CompactMirrorCover(proto, n);
+#endif
+	//...
 }
 
 /* 处理由上层程序投递到观测系统的键值对协议 */

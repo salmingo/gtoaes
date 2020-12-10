@@ -313,8 +313,8 @@ void GeneralControl::resolve_kv_client(const TcpCPtr client) {
 			bool opNow = (type[0] == 'a' || type[0] == 'A') ? false : true;
 			plan = opNow ? from_kvbase<kv_proto_implement_plan>(base)->plan
 					: from_kvbase<kv_proto_append_plan>(base)->plan;
-			if (plan->CompleteCheck()) {
-				obsPlans_->AddPlan(plan);	// 计划加入队列
+			if (plan->CompleteCheck()) {// 计划加入队列, 并判定是否立即尝试执行
+				obsPlans_->AddPlan(plan);
 				if (opNow) try_implement_plan(plan);
 			}
 			else {
@@ -328,7 +328,7 @@ void GeneralControl::resolve_kv_client(const TcpCPtr client) {
 		}
 		/////////////////////////////////////////////////////////////////////////
 		/*>!!!!!! 检查观测计划 !!!!!!<*/
-		else if (iequals(type, KVTYPE_CHKPLAN)) {// 查看观测计划状态
+		else if (iequals(type, KVTYPE_CHKPLAN)) {
 			string plan_sn = from_kvbase<kv_proto_check_plan>(base)->plan_sn;
 			ObsPlanItemPtr plan = obsPlans_->Find(plan_sn);
 			kvplan proto = boost::make_shared<kv_proto_plan>();
@@ -382,8 +382,7 @@ void GeneralControl::resolve_kv_mount(const TcpCPtr client) {
 	if (!base.unique()) {
 		_gLog.Write(LOG_FAULT, "unknown protocol from mount: [%s]", bufTcp_.get());
 	}
-	else {
-		// kv协议的转台连接耦合到观测系统
+	else {// kv协议的转台连接耦合到观测系统
 		string gid = base->gid;
 		string uid = base->uid;
 		if (gid.empty() || uid.empty()) {
@@ -416,8 +415,7 @@ void GeneralControl::resolve_kv_camera(const TcpCPtr client) {
 	if (!base.unique()) {
 		_gLog.Write(LOG_FAULT, "unknown protocol from camera: [%s]", bufTcp_.get());
 	}
-	else {
-		// kv协议的相机连接耦合到观测系统
+	else {// kv协议的相机连接耦合到观测系统
 		string gid  = base->gid;
 		string uid  = base->uid;
 		string cid  = base->cid;
@@ -453,8 +451,7 @@ void GeneralControl::resolve_kv_mount_annex(const TcpCPtr client) {
 	if (!base.unique()) {
 		_gLog.Write(LOG_FAULT, "unknown protocol from mount-annex: [%s]", bufTcp_.get());
 	}
-	else {
-		// kv协议的转台连接耦合到观测系统
+	else {// kv协议的转台连接耦合到观测系统
 		string gid = base->gid;
 		string uid = base->uid;
 		if (gid.empty() || (uid.empty() && !iequals(base->type, KVTYPE_SLIT))) {
@@ -463,16 +460,15 @@ void GeneralControl::resolve_kv_mount_annex(const TcpCPtr client) {
 		else if (uid.empty()) {
 			int state = from_kvbase<kv_proto_slit>(base)->state;
 			SlitMulPtr slit = find_slit(gid, client, true);
-			if (slit.use_count()) {
-				if (state != slit->state) {// 通知相关观测系统天窗状态
+			if (slit.use_count()) {// 通知相关观测系统天窗状态
+				if (state != slit->state) {
 					_gLog.Write("Slit[%s] is %s", StateSlit::ToString(state));
 					slit->state = state;
-
-					MtxLck lck(mtx_obss_);
-					OBSSVec::iterator itend = obss_.end();
-					for (OBSSVec::iterator it = obss_.begin(); it != itend; ++it) {
-						if ((*it)->IsMatched(gid, uid)) (*it)->NotifySlitState(state);
-					}
+				}
+				MtxLck lck(mtx_obss_);
+				OBSSVec::iterator itend = obss_.end();
+				for (OBSSVec::iterator it = obss_.begin(); it != itend; ++it) {
+					if ((*it)->IsMatched(gid, uid)) (*it)->NotifySlitState(state);
 				}
 				success = true;
 			}
@@ -580,12 +576,10 @@ void GeneralControl::process_nonkv_mount_annex(const TcpCPtr client, nonkvbase b
 				if (state != slit->state) {// 通知相关观测系统天窗状态
 					_gLog.Write("Slit[%s] is %s", StateSlit::ToString(state));
 					slit->state = state;
-
-					MtxLck lck(mtx_obss_);
-					OBSSVec::iterator itend = obss_.end();
-					for (OBSSVec::iterator it = obss_.begin(); it != itend; ++it) {
-						if ((*it)->IsMatched(gid, uid)) (*it)->NotifySlitState(state);
-					}
+				}
+				MtxLck lck(mtx_obss_);
+				for (OBSSVec::iterator it = obss_.begin(); it != obss_.end(); ++it) {
+					if ((*it)->IsMatched(gid, uid)) (*it)->NotifySlitState(state);
 				}
 				success = true;
 			}
@@ -613,7 +607,7 @@ void GeneralControl::process_nonkv_mount_annex(const TcpCPtr client, nonkvbase b
 	}
 	else {// 投递到观测系统
 		ObsSysPtr obss = find_obss(gid, uid);
-		if (obss.use_count()) {
+		if (obss.use_count()) {// 已定义协议: 调焦
 			int mode;
 			if ((mode = obss->CoupleMountAnnex(client, base))) {// P2P或P2H模式
 				success = true;
@@ -758,6 +752,9 @@ SlitMulPtr GeneralControl::find_slit(const string& gid, const TcpCPtr client, bo
 		slit->kvtype = kvtype;
 		slit_.push_back(slit);
 	}
+	else {
+		_gLog.Write(LOG_FAULT, "not found any setting for Slit[%s]", gid.c_str());
+	}
 
 	return slit;
 }
@@ -769,7 +766,7 @@ void GeneralControl::command_slit(const string& gid, const string& uid, int cmd)
 			MtxLck lck(mtx_slit_);
 			SlitMulVec::iterator itend = slit_.end();
 			for (SlitMulVec::iterator it = slit_.begin(); it != itend && matched != 1; ++it) {
-				if ((matched = (*it)->IsMatched(gid))) command_slit(*it, cmd);
+				if ((matched = (*it)->IsMatched(gid)) && (*it)->IsOpen()) command_slit(*it, cmd);
 			}
 		}
 
@@ -778,6 +775,8 @@ void GeneralControl::command_slit(const string& gid, const string& uid, int cmd)
 			MtxLck lck(mtx_obss_);
 			kvslit proto = boost::make_shared<kv_proto_slit>();
 			kvbase base;
+			proto->gid = gid;
+			proto->uid = uid;
 			proto->command = cmd;
 			base = to_kvbase(proto);
 			for (OBSSVec::iterator it = obss_.begin(); it != obss_.end() && matched != 1; ++it) {
@@ -790,10 +789,8 @@ void GeneralControl::command_slit(const string& gid, const string& uid, int cmd)
 void GeneralControl::command_slit(const SlitMulPtr slit, int cmd) {
 	int n;
 	const char* s;
-	if (slit->kvtype)
-		s = kvProto_->CompactSlit(slit->gid, "", cmd, n);
-	else
-		s = nonkvProto_->CompactSlit(slit->gid, "", cmd, n);
+	if (slit->kvtype) s = kvProto_->CompactSlit(slit->gid, "", cmd, n);
+	else s = nonkvProto_->CompactSlit(slit->gid, "", cmd, n);
 	slit->client->Write(s, n);
 }
 
@@ -903,14 +900,14 @@ void GeneralControl::thread_odt() {
 }
 
 void GeneralControl::thread_noon() {
-	int t;
-
 	while (1) {
 		ptime now = second_clock::local_time();
 		ptime noon(now.date(), hours(12));
-		if ((t = (noon - now).total_seconds()) < 10) t += 86400;
+		int t = (noon - now).total_seconds();
+		if (t < 10) t += 86400;
 		boost::this_thread::sleep_for(boost::chrono::seconds(t));
 
+		// 清理无效的观测系统
 		MtxLck lck(mtx_obss_);
 		for (OBSSVec::iterator it = obss_.begin(); it != obss_.end(); ) {
 			if ((*it)->IsActive()) ++it;

@@ -805,10 +805,12 @@ public:
 	 * @brief 封装半高全宽指令和数据
 	 */
 	const char *CompactFWHM(kvfwhm proto, int &n);
+	const char *CompactFWHM(const string& gid, const string& uid, const string& cid, double fwhm, int &n);
 	/**
 	 * @brief 封装调焦指令和数据
 	 */
 	const char *CompactFocus(kvfocus proto, int &n);
+	const char *CompactFocus(const string& gid, const string& uid, const string& cid, int pos, int &n);
 
 	/*!
 	 * @brief 封装圆顶实时状态

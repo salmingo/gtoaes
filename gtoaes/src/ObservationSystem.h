@@ -322,12 +322,11 @@ protected:
 	 */
 	bool robotic_;
 	int mode_run_;		///< 系统运行模式. 只和转台、相机相关
+	int odt_;			///< 可观测时间类型
 	double altLimit_;	///< 高度限位, 弧度
 	const OBSSParam* param_;	///< 观测系统工作参数
 	AstroUtil::ATimeSpace ats_;	///< 时空坐标转换接口
 	boost::mutex mtx_ats_;		///< ats_互斥锁
-
-	int odt_;	///< 可观测时间类型
 
 	/* 转台 */
 	NetworkMount net_mount_;	///< 网络+转台
@@ -336,6 +335,10 @@ protected:
 	NetCamVec net_camera_;		///< 网络+相机
 	int usable_camera_;			///< 可用相机数量
 	boost::mutex mtx_camera_;	///< 互斥锁: 相机
+
+	/* 转台附属 */
+
+	/* 相机附属 */
 
 	/* 天窗 */
 	SlitSimVec slit_;		///< 单一的天窗
@@ -349,13 +352,13 @@ protected:
 	boost::shared_array<char> bufTcp_;	///< 网络信息存储区: 消息队列中调用
 	KvProtoPtr kvProto_;		///< 键值对格式协议访问接口
 	NonkvProtoPtr nonkvProto_;	///< 非键值对格式协议访问接口
+	boost::mutex mtx_queKv_;	///< 互斥锁: 键值对协议队列
+	boost::mutex mtx_queNonkv_;	///< 互斥锁: 非键值对协议队列
 
 	TcpRcvQue que_tcpRcv_;		///< 网络事件队列
 	KvProtoQue queKv_;			///< 被投递的键值对协议队列
 	NonkvProtoQue queNonkv_;	///< 被投递的非键值对协议队列
 	boost::mutex mtx_tcpRcv_;	///< 互斥锁: 网络事件
-	boost::mutex mtx_queKv_;	///< 互斥锁: 键值对协议队列
-	boost::mutex mtx_queNonkv_;	///< 互斥锁: 非键值对协议队列
 
 	/* 观测计划 */
 	ObsPlanPtr obsPlans_;		///< 观测计划集合, 维护定标用的观测计划
