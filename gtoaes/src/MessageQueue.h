@@ -56,10 +56,10 @@ protected:
 
 	//////////////////////////////////////////////////////////////////////////////
 	/* 消息队列 */
+	std::string name_;	///< 消息队列名称
 	const long szFunc_;	///< 自定义回调函数数组长度
 	MQPtr mqptr_;		///< 消息队列
 	CBArray funcs_;		///< 回调函数数组
-	std::string errmsg_;///< 错误原因
 
 	/* 多线程 */
 	ThreadPtr thrd_msg_;		///< 消息响应线程
@@ -100,12 +100,6 @@ public:
 	 * @param par2 参数2
 	 */
 	void SendMessage(const long id, const long par1 = 0, const long par2 = 0);
-	/*!
-	 * @brief 查看错误提示
-	 * @return
-	 * 错误提示
-	 */
-	const char *GetError();
 
 protected:
 	/* 消息响应函数 */

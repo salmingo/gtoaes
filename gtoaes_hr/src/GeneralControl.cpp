@@ -406,7 +406,25 @@ void GeneralControl::change_skystate(EnvInfo *nfenv) {
 	/*
 	 * - 当停止降水时, 继续观测
 	 */
-	if (rain == RAIN_CLEAR && nfenv->odt >= OD_FLAT && obsplan_.size()) command_slit(nfenv->gid, SC_OPEN);
+//	if (is_clear() && nfenv->odt >= OD_FLAT && obsplan_.size()) command_slit(nfenv->gid, SC_OPEN);
+}
+
+bool GeneralControl::is_rainy() {
+	mutex_lock lck(mtx_tcp_annex_);
+	int rain(0);
+	for (EnvInfoVec::iterator it = nfEnv_.begin(); it != nfEnv_.end(); ++it) {
+		rain |= it->rain;
+	}
+	return ((rain & RAIN_RAINY) == RAIN_RAINY);
+}
+
+bool GeneralControl::is_clear() {
+	mutex_lock lck(mtx_tcp_annex_);
+	int rain(0xFF);
+	for (EnvInfoVec::iterator it = nfEnv_.begin(); it != nfEnv_.end(); ++it) {
+		rain &= it->rain;
+	}
+	return (rain == RAIN_CLEAR);
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -844,7 +862,7 @@ void GeneralControl::thread_odt() {
 				}
 				slitcmd = -1;
 				if (odt == OD_DAY && it->slitState == SS_OPEN) slitcmd = SC_CLOSE;
-				else if (odt > OD_DAY && !it->rain && it->slitState == SS_CLOSED && obsplan_.size()) slitcmd = SC_OPEN;
+//				else if (odt > OD_DAY && is_clear() && it->slitState == SS_CLOSED && obsplan_.size()) slitcmd = SC_OPEN;
 				if (slitcmd != -1) {
 					if (++it->slitTry <= 3) command_slit(it->gid, slitcmd);
 					else if (it->slitTry == 4) {

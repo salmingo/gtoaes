@@ -18,7 +18,6 @@
 
 using namespace std;
 using namespace boost::posix_time;
-using namespace boost::placeholders;
 
 GeneralControl::GeneralControl(boost::asio::io_service& ios_main) {// 构造函数
 	iosmain_ = &ios_main;

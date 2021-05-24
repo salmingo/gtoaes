@@ -12,7 +12,7 @@ using namespace boost::placeholders;
 
 AsioIOServiceKeep::AsioIOServiceKeep()
 	: work_(ios_) {
-	thrd_keep_ = boost::thread(boost::bind(&AsioIOServiceKeep::thread_keep, this));
+	thrd_keep_ = boost::thread(boost::bind(&IOService::run, boost::ref(ios_)));
 }
 
 AsioIOServiceKeep::~AsioIOServiceKeep() {
@@ -22,8 +22,4 @@ AsioIOServiceKeep::~AsioIOServiceKeep() {
 
 AsioIOServiceKeep::IOService& AsioIOServiceKeep::GetIOService() {
 	return ios_;
-}
-
-void AsioIOServiceKeep::thread_keep() {
-	ios_.run();
 }

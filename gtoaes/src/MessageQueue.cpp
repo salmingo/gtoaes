@@ -27,6 +27,7 @@ bool MessageQueue::Start(const char *name) {
 
 	try {
 		// 启动消息队列
+		name_ = name;
 		MQ::remove(name);
 		mqptr_.reset(new MQ(create_only, name, 1024, sizeof(Message)));
 		register_messages();
@@ -35,7 +36,7 @@ bool MessageQueue::Start(const char *name) {
 		return true;
 	}
 	catch(interprocess_exception &ex) {
-		errmsg_ = ex.what();
+		_gLog.Write(LOG_FAULT, "[%s] %d. %s", __FILE__, __LINE__, ex.what());
 		return false;
 	}
 }
@@ -45,6 +46,7 @@ void MessageQueue::Stop() {
 		SendMessage(MSG_QUIT);
 		thrd_msg_->join();
 		thrd_msg_.reset();
+		MQ::remove(name_.c_str());
 	}
 }
 
@@ -67,10 +69,6 @@ void MessageQueue::SendMessage(const long id, const long par1, const long par2) 
 		Message msg(id, par1, par2);
 		mqptr_->send(&msg, sizeof(Message), 10);
 	}
-}
-
-const char *MessageQueue::GetError() {
-	return errmsg_.c_str();
 }
 
 void MessageQueue::interrupt_thread(ThreadPtr& thrd) {

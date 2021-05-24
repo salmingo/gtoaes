@@ -7,6 +7,11 @@
  * @date 2017-05-07
  * @version 0.4
  * - 添加对转台信息处理. 注意事项: 与转台之间的单元和相机标志采用的是全局标志
+ *
+ * @date 2021-05-10
+ * @version 0.5
+ * - 添加圆顶平场观测模式
+ *
  */
 #include <boost/bind/bind.hpp>
 #include <boost/make_shared.hpp>
@@ -121,6 +126,9 @@ void ObservationSystem::DecoupleMount(tcpcptr& client) {
 		gLog.Write("Mount<%s:%s> is off-line", groupid_.c_str(), unitid_.c_str());
 		tcp_mount_.reset();
 		mntnf_.reset();
+
+		// 通知相机停止曝光
+		WriteToCamera(EXPOSE_STOP, EXPMODE_ALL);
 	}
 }
 
@@ -334,7 +342,6 @@ void ObservationSystem::notify_mount_position(boost::shared_ptr<mntproto_positio
 	double edc = fabs(proto->dec - mntnf_->dc00);
 	double azi, alt;
 	bool safe = SafePosition(proto->ra, proto->dec, NULL);
-
 	mntnf_->ra00 = proto->ra;
 	mntnf_->dc00 = proto->dec;
 
@@ -407,6 +414,7 @@ void ObservationSystem::notify_mount_position(boost::shared_ptr<mntproto_positio
 		}
 */
 	}
+	mntnf_->tmflag = tmflag_;
 }
 
 // 焦点位置
@@ -551,6 +559,17 @@ void ObservationSystem::RandomZenith(double &ra, double &dc) {
 	dc *= R2D;
 	systate_.validflat = false;
 	systate_.lastflat = now;	
+}
+
+bool ObservationSystem::SafePositionHD(double ha0, double dc0) {
+	mutex_lock lck(mutex_ats_);
+	/* 近似算法:
+	 * - 直接使用J2000坐标替代真位置, 检测位置安全性. 其偏差带来影响可忽略.
+	 * - 近似算法换取快速处理速度
+	 */
+	double azi, alt;
+	ats_->Eq2Horizon(ha0 * D2R, dc0 * D2R, azi, alt);
+	return (alt >= 20.0 * D2R);
 }
 
 bool ObservationSystem::SafePosition(double ra0, double dc0, ptime *at) {
@@ -751,9 +770,14 @@ void ObservationSystem::OnNewPlan(long param1, long param2) {
 	double ra(obsplan_->ra), dc(obsplan_->dec);
 	int n;
 	if (obsplan_->iimgtype == IMGTYPE_FLAT) {
-		RandomZenith(ra, dc);
-		obsplan_->ra = ra;
-		obsplan_->dec= dc;
+		if (obsplan_->flatmode == 1) {
+			RandomZenith(ra, dc);
+			obsplan_->ra = ra;
+			obsplan_->dec= dc;
+		}
+		else {//...不正确. 也需要指向
+			bpoint = false;
+		}
 	}
 	else if (obsplan_->iimgtype > IMGTYPE_FLAT && mntnf_->state == MOUNT_TRACKING) {// 检查转台是否已指向目标位置
 		double era(obsplan_->ra - mntnf_->ra00);
@@ -774,6 +798,7 @@ void ObservationSystem::OnNewPlan(long param1, long param2) {
 		tcp_mount_->write(compacted, n);
 	}
 	// 通知相机: 目标信息
+	WriteObject(obsplan_, "");
 	WriteObject(obsplan_, "");
 	if (!bpoint) {// 不需要指向, 开始曝光
 		gLog.Write("<%s:%s> start exposure", groupid_.c_str(), unitid_.c_str());
@@ -876,7 +901,11 @@ void ObservationSystem::ProcessCameraProtocol(camnfptr nf, boost::shared_ptr<asc
 	int prev(nf->state), now(proto->state);
 	*nf = *proto;
 
-	if (prev != now) {// 处理相机状态变化
+	if (!obsplan_.unique() && now >= CAMCTL_EXPOSE) {
+		// 通知相机停止曝光
+		WriteToCamera(EXPOSE_STOP, EXPMODE_ALL);
+	}
+	else if (prev != now) {// 处理相机状态变化
 		bool overexposure(false); // 曝光流程结束
 		if      (now >= CAMCTL_EXPOSE && prev <= CAMCTL_IDLE) systate_.enter_expose(nf->imgtype);
 		else if (now <= CAMCTL_IDLE && prev >= CAMCTL_EXPOSE) overexposure = systate_.leave_expose(nf->imgtype);
@@ -922,7 +951,7 @@ void ObservationSystem::ProcessTakeImage(boost::shared_ptr<ascproto_take_image> 
 	int  c2 = IsExposing(cid);
 	bool c3 = (proto->iimgtype == IMGTYPE_FLAT && systate_.lighting && !systate_.flatting) // 平场, 已有非平场感光需求
 			|| (proto->iimgtype > IMGTYPE_FLAT && systate_.flatting);	// 非平场感光, 已有平场
-	bool c4 = proto->iimgtype == IMGTYPE_FLAT && !mntnf_.unique();
+	bool c4 = proto->iimgtype == IMGTYPE_FLAT && proto->flatmode == 1 && !mntnf_.unique();
 	if (c1 || c2 || c3 || c4) {
 		format fmt("%s%s%s%s");
 		string prompt;
@@ -955,11 +984,14 @@ void ObservationSystem::ProcessTakeImage(boost::shared_ptr<ascproto_take_image> 
 			mntnf_->actual2object();
 		}
 		if (proto->iimgtype == IMGTYPE_FLAT) {
-			ptime start, stop;
-			int am_pm = ValidFlat(start, stop);
-			if (am_pm == 1) nf->expdur = 15.0;
-			else if (am_pm == 2) nf->expdur = 2.0;
-			else nf->expdur = 8.0;
+			if (proto->flatmode == 1) {
+				ptime start, stop;
+				int am_pm = ValidFlat(start, stop);
+				if (am_pm == 1) nf->expdur = 15.0;
+				else if (am_pm == 2) nf->expdur = 2.0;
+				else nf->expdur = 8.0;
+			}
+			else nf->expdur = 5.0;
 		}
 		if (!systate_.exposing) {
 			obsplan_->op_sn = INT_MAX;
@@ -1069,13 +1101,6 @@ void ObservationSystem::ProcessAppendPlan(boost::shared_ptr<ascproto_append_gwac
 			if (am_pm == 1) proto->expdur = 15.0;
 			else if (am_pm == 2) proto->expdur = 2.0;
 			else proto->expdur = 8.0;
-
-			if (!start.is_special()) {
-
-			}
-			if (!stop.is_special()) {
-
-			}
 		}
 	}
 
@@ -1416,19 +1441,27 @@ void ObservationSystem::ProcessSlewto(boost::shared_ptr<ascproto_slewto> proto) 
 				groupid_.c_str(), unitid_.c_str(), prompt.c_str());
 	}
 	else {// 检查位置安全性
-		double ra(proto->ra), dc(proto->dec);
-		bool safe = SafePosition(ra, dc, NULL);
+		double ra(proto->ra), ha(proto->ha), dc(proto->dec);
+		int coorsys = valid_ra(ra) ? 1 : (valid_ra(ha) ? 2 : 0);
+		bool safe = coorsys == 1 ? SafePosition(ra, dc, NULL) : SafePositionHD(ha, dc);
 
-		if (!safe) {
+		if (!safe || coorsys == 0) {
 			gLog.Write("slewto<%s:%s> is rejected for lower than 20 degrees", groupid_.c_str(), unitid_.c_str());
 		}
 		else {// 通知转台指向
 			gLog.Write("<%s:%s> points to <%.4f, %.4f>[degree]", groupid_.c_str(), unitid_.c_str(), ra, dc);
 			int n;
-			const char* compacted = mntproto_->compact_slew(groupid_.c_str(), unitid_.c_str(), ra, dc, n);
+			const char* compacted;
+			if (coorsys == 1) {
+				compacted = mntproto_->compact_slew(groupid_.c_str(), unitid_.c_str(), ra, dc, n);
+				mntnf_->set_object(ra, dc);
+			}
+			else {
+				compacted = mntproto_->compact_slewhd(groupid_.c_str(), unitid_.c_str(), ha, dc, n);
+				mntnf_->set_hd(ha, dc);
+			}
 			seqGuide_ = 0;
 			lastGuide_ = ptime(not_a_date_time);
-			mntnf_->set_object(ra, dc);
 			systate_.begin_slew();
 			tcp_mount_->write(compacted, n);
 		}

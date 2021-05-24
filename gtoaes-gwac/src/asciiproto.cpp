@@ -121,6 +121,7 @@ const char* ascii_proto::compact_object_info(const ascproto_object_info* proto, 
 	output += "obj_id="   + proto->obj_id                         + ", ";
 	output += "imgtype="  + proto->imgtype                        + ", ";
 	output += "iimgtype=" + lexical_cast<string>(proto->iimgtype) + ", ";
+	output += "flatmode=" + lexical_cast<string>(proto->flatmode) + ", ";
 	output += "expdur="   + lexical_cast<string>(proto->expdur)   + ", ";
 	output += "delay="    + lexical_cast<string>(proto->delay)    + ", ";
 	output += "frmcnt="   + lexical_cast<string>(proto->frmcnt)   + ", ";
@@ -239,6 +240,10 @@ apbase ascii_proto::resolve_append_gwac(listring& tokens) {
 		else if (iequals(keyword, "begin_time")) proto->begin_time = value;
 		else if (iequals(keyword, "end_time"))   proto->end_time   = value;
 		else if (iequals(keyword, "pair_id"))    proto->pair_id    = atoi(value.c_str());
+		else if (iequals(keyword, "flatmode")) {
+			if (iequals(value, "1") || iequals(value, "sky")) proto->flatmode = 1;
+			else proto->flatmode = 2;
+		}
 	}
 	// 检查数据有效性
 	if (proto->op_sn < 0) {
@@ -572,12 +577,13 @@ apbase ascii_proto::resolve_slewto(listring& tokens) {
 		if      (iequals(keyword, "group_id")) proto->group_id = value;
 		else if (iequals(keyword, "unit_id"))  proto->unit_id  = value;
 		else if (iequals(keyword, "ra"))       proto->ra       = atof(value.c_str());
+		else if (iequals(keyword, "ha"))       proto->ha       = atof(value.c_str());
 		else if (iequals(keyword, "dec"))      proto->dec      = atof(value.c_str());
 		else if (iequals(keyword, "epoch"))    proto->epoch    = atof(value.c_str());
 	}
 	// 检查数据有效性
-	if (!valid_ra(proto->ra)) {
-		errtxt = "RA is out of range; ";
+	if (!(valid_ra(proto->ra) || valid_ra(proto->ha))) {
+		errtxt = "RA or HA is out of range; ";
 		retv = false;
 	}
 	if (!valid_dc(proto->dec)) {
@@ -663,6 +669,10 @@ apbase ascii_proto::resolve_take_image(listring& tokens) {
 		else if (iequals(keyword, "delay"))      proto->delay      = atof(value.c_str());
 		else if (iequals(keyword, "frmcnt"))     proto->frmcnt     = atoi(value.c_str());
 		else if (iequals(keyword, "filter"))     proto->filter     = value;
+		else if (iequals(keyword, "flatmode")) {
+			if (iequals(value, "1") || iequals(value, "sky")) proto->flatmode = 1;
+			else proto->flatmode = 2;
+		}
 	}
 	// 检查数据有效性
 	// 图像类型
@@ -786,6 +796,10 @@ apbase ascii_proto::resolve_object_info(listring& tokens) {
 		else if (iequals(keyword, "end_time"))    proto->end_time   = value;
 		else if (iequals(keyword, "pair_id"))     proto->pair_id    = atoi(value.c_str());
 		else if (iequals(keyword, "filter"))      proto->filter     = value;
+		else if (iequals(keyword, "flatmode")) {
+			if (iequals(value, "1") || iequals(value, "sky")) proto->flatmode = 1;
+			else proto->flatmode = 2;
+		}
 	}
 
 	return boost::static_pointer_cast<ascproto_object_info>(proto);

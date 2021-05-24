@@ -163,7 +163,7 @@ int NTPClient::get_time(struct addrinfo *addr, struct ntp_packet *ret_time) {
 
 	construct_packet();
 	if (sendto(sock_, data, NTP_PCK_LEN, 0, addr->ai_addr, len) < 0) {
-		_gLog.Write("NTPClient::sendto", LOG_WARN, strerror(errno));
+		_gLog.Write(LOG_WARN, "[%s] %d. %s", __FILE__, __LINE__, strerror(errno));
 		close(sock_);
 		sock_ = -1;
 	}
@@ -172,7 +172,7 @@ int NTPClient::get_time(struct addrinfo *addr, struct ntp_packet *ret_time) {
 		FD_SET(sock_, &pending_data);
 		if (select(sock_ + 1, &pending_data, NULL, NULL, &block_time) > 0) {
 			if (recvfrom(sock_, (void*)data, NTP_PCK_LEN * 8, 0, addr->ai_addr, &len) < 0) {
-				_gLog.Write("NTPClient::recvfrom", LOG_WARN, strerror(errno));
+				_gLog.Write(LOG_WARN, "[%s] %d. %s", __FILE__, __LINE__, strerror(errno));
 				close(sock_);
 				sock_ = -1;
 			}

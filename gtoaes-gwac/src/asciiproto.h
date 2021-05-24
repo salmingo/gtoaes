@@ -91,6 +91,7 @@ struct ascproto_append_gwac : public ascproto_base {
 	std::string objerror;	//< 目标位置误差
 	std::string imgtype;	//< 图像类型, 字符串
 	IMAGE_TYPE  iimgtype;	//< 图像类型, 整数
+	int flatmode;			//< 平场模式. 1: Sky; 2: Dome
 	double expdur;			//< 曝光时间, 量纲: 秒
 	double delay;			//< 延迟时间, 量纲: 秒
 	int    frmcnt;			//< 总帧数
@@ -113,6 +114,7 @@ public:
 		objerror = "";
 		imgtype = "";
 		iimgtype= IMGTYPE_LAST;
+		flatmode = 1;
 		expdur = delay = -1.0;
 		frmcnt = 0;
 		priority = 0;
@@ -236,12 +238,13 @@ public:
  */
 struct ascproto_slewto : public ascproto_base {
 	double ra;		//< 目标的赤经坐标, 量纲: 角度
+	double ha;		//< 目标的时角坐标, 量纲: 角度
 	double dec;		//< 目标的的赤纬坐标, 量纲: 角度
 	double epoch;	//< 目标坐标所在的坐标系, 量纲: 年
 
 public:
 	ascproto_slewto() {
-		ra = dec = -1000.0;
+		ra = ha = dec = -1000.0;
 		epoch = 2000.0;
 	}
 };
@@ -294,6 +297,7 @@ struct ascproto_take_image : public ascproto_base {
 	std::string obj_id;		//< 目标名
 	std::string imgtype;	//< 图像类型, 字符串
 	IMAGE_TYPE  iimgtype;	//< 图像类型, 整数
+	int flatmode;			//< 平场模式. 1: Sky; 2: Dome
 	double expdur;			//< 曝光时间, 量纲: 秒
 	double delay;			//< 延迟时间, 量纲: 秒
 	int    frmcnt;			//< 总帧数
@@ -304,6 +308,7 @@ public:
 		obj_id = "";
 		imgtype = "";
 		iimgtype= IMGTYPE_LAST;
+		flatmode= 1;
 		expdur = delay = -1.0;
 		frmcnt = 0;
 		filter  = "";
@@ -331,6 +336,7 @@ struct ascproto_object_info : public ascproto_base {
 	std::string objerror;	//< 目标位置误差
 	std::string imgtype;	//< 图像类型, 字符串
 	IMAGE_TYPE  iimgtype;	//< 图像类型, 整数
+	int flatmode;			//< 平场模式. 1: Sky; 2: Dome
 	double expdur;			//< 曝光时间, 量纲: 秒
 	double delay;			//< 延迟时间, 量纲: 秒
 	int    frmcnt;			//< 总帧数
@@ -350,6 +356,7 @@ public:
 		op_sn = -1;
 		ra = dec = objra = objdec = -1000.0;
 		epoch = objepoch = 2000.0;
+		flatmode = 1;
 		expdur = delay = -1.0;
 		frmcnt = -1;
 		priority = 0;
@@ -376,6 +383,7 @@ public:
 			objepoch	= other.objepoch;
 			objerror	= other.objerror;
 			imgtype		= other.imgtype;
+			flatmode	= other.flatmode;
 			expdur		= other.expdur;
 			delay		= other.delay;
 			frmcnt		= other.frmcnt;
@@ -412,6 +420,7 @@ public:
 		objepoch	= plan.objepoch;
 		objerror	= plan.objerror;
 		imgtype		= plan.imgtype;
+		flatmode	= plan.flatmode;
 		expdur		= plan.expdur;
 		delay		= plan.delay;
 		frmcnt		= plan.frmcnt;
@@ -447,6 +456,7 @@ public:
 		objepoch	= 2000.0;
 		objerror	= "";
 		imgtype		= proto.imgtype;
+		flatmode	= proto.flatmode;
 		expdur		= proto.expdur;
 		delay		= proto.delay;
 		frmcnt		= proto.frmcnt;

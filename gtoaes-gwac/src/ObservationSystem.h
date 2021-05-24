@@ -214,16 +214,21 @@ public:
 		int         state;		//< 工作状态
 		std::string utc;		//< UTC时标
 		/* 位置量纲: 角度 */
-		double      ra00, dc00;		//< 转台当前指向平位置, J2000
-		double      ora00, odc00;	//< 转台目标平位置, J2000
-		double      dra, ddc;		//< 累积偏差量, 量纲: 角度
+		int coorsys;	//< 目标坐标系. 1: RA/DEC; 2: HA/DEC; ...
+		int tmflag;		//< 接收到坐标时的时标
+		double      ra00, ha00, dc00;	//< 转台当前指向平位置, J2000
+		double      ora00, oha00, odc00;//< 转台目标平位置, J2000
+		double      dra, ddc;			//< 累积偏差量, 量纲: 角度
 
 	public:
 		mount_info() {
 			ready = true;
 			state = -1;
 			utc   = "";
-			ra00 = dc00 = ora00 = odc00 = -1000.0;
+			coorsys = 1;
+			tmflag  = 0;
+			ra00 = ha00 = dc00 = 0.0;
+			ora00 =  oha00 = odc00 = -1000.0;
 			dra = ddc = 0.0;
 		}
 
@@ -231,6 +236,7 @@ public:
 		 * @brief 目标位置置为当前转台位置
 		 */
 		void actual2object() {
+			coorsys = 1;
 			ora00 = ra00;
 			odc00 = dc00;
 			dra = ddc = 0.0;
@@ -242,7 +248,20 @@ public:
 		 * @param dc J2000赤纬, 量纲: 角度
 		 */
 		void set_object(double ra, double dc) {
+			coorsys = 1;
 			ora00 = ra;
+			odc00 = dc;
+			dra = ddc = 0.0;
+		}
+
+		/*!
+		 * @brief 设置目标位置
+		 * @param ha J2000时角, 量纲: 角度
+		 * @param dc J2000赤纬, 量纲: 角度
+		 */
+		void set_hd(double ha, double dc) {
+			coorsys = 2;
+			oha00 = ha;
 			odc00 = dc;
 			dra = ddc = 0.0;
 		}
@@ -627,6 +646,14 @@ private:
 	 *  2: 曝光中, 且需要天光
 	 */
 	int AnyExposing();
+	/*!
+	 * @brief 检测输入位置(J2000)在指定时间是否处于安全工作区
+	 * @param ha0 输入时角, 量纲: 角度
+	 * @param dc0 输入赤纬, 量纲: 角度
+	 * @return
+	 * 若(ha0, dc0)在指定时间位于安全区则返回true, 否则返回false
+	 */
+	bool SafePositionHD(double ha0, double dc0);
 	/*!
 	 * @brief 检测输入位置(J2000)在指定时间是否处于安全工作区
 	 * @param ra0 输入赤经, 量纲: 角度

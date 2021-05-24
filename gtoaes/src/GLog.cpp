@@ -108,7 +108,7 @@ void GLog::Write(const char *where, LOG_TYPE type, const char *format, ...) {
 
 bool GLog::valid_file(std::tm &utc) {
 	std::time_t now = std::time(nullptr);
-	memcpy(&utc, std::gmtime(&now), sizeof(std::tm));	// UTC
+	memcpy(&utc, std::localtime(&now), sizeof(std::tm));	// UTC
 
 	if (fd_ == stdout || fd_ == stderr)
 		return true;

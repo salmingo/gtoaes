@@ -176,6 +176,16 @@ const char* mount_proto::compact_slew(const std::string& group_id, const std::st
 	return buff;
 }
 
+const char* mount_proto::compact_slewhd(const std::string& group_id, const std::string& unit_id,
+		double ha, double dec, int& n) {
+	/* 组装指向指令 */
+	char *buff = get_buffptr();
+	if (ha < 0.0) ha += 360.0;
+	n = sprintf(buff, "g#%s%sslewhd%07d%%%+07d%%\n", group_id.c_str(), unit_id.c_str(),
+			int(ha * 10000), int(dec * 10000));
+	return buff;
+}
+
 const char* mount_proto::compact_guide(const std::string& group_id, const std::string& unit_id,
 		const int ra, const int dec, int& n) {
 	/* 组装导星指令 */

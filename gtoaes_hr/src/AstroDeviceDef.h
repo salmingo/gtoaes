@@ -155,9 +155,9 @@ enum {// 观测时间分类
 };
 
 enum {// 雨量传感
+	RAIN_ERROR,	//< 未知
 	RAIN_CLEAR,	//< 晴朗
-	RAIN_RAINY,	//< 有雨
-	RAIN_ERROR	//< 未知
+	RAIN_RAINY	//< 有雨
 };
 
 enum {// 观测计划类型

@@ -249,7 +249,7 @@ public:
 	 */
 	const char* compact_home_sync(const std::string& group_id, const std::string& unit_id, const double ra, const double dec, int& n);
 	/*!
-	 * @brief 组装构建slewto指令
+	 * @brief 组装构建slew指令
 	 * @param group_id 组标志
 	 * @param unit_id  单元标志
 	 * @param ra       当前历元赤经位置, 量纲: 角度
@@ -258,6 +258,16 @@ public:
 	 * 组装后协议
 	 */
 	const char* compact_slew(const std::string& group_id, const std::string& unit_id, const double ra, const double dec, int& n);
+	/*!
+	 * @brief 组装构建slewhd指令
+	 * @param group_id 组标志
+	 * @param unit_id  单元标志
+	 * @param ha       当前历元时角位置, 量纲: 角度
+	 * @param dec      当前历元赤纬位置, 量纲: 角度
+	 * @return
+	 * 组装后协议
+	 */
+	const char* compact_slewhd(const std::string& group_id, const std::string& unit_id, double ha, double dec, int& n);
 	/*!
 	 * @brief 组装构建guide指令
 	 * @param group_id 组标志
