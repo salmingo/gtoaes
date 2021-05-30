@@ -32,17 +32,16 @@ UdpSession::~UdpSession() {
 
 bool UdpSession::Open(uint16_t port, bool v6) {
 	try {
-		if (!port) sock_.open(v6 ? UDP::v6() : UDP::v4());
-		else {// 在端口启动UDP接收服务
-			UDP::endpoint end(v6 ? UDP::v6() : UDP::v4(), port);
-			sock_.open(end.protocol());
-			sock_.bind(end);
+		sock_.open(v6 ? UDP::v6() : UDP::v4());
+		if (port) {// 在端口启动UDP接收服务
+			sock_.bind(UDP::endpoint(v6 ? UDP::v6() : UDP::v4(), port));
 			start_read();
 		}
+		return true;
 	}
 	catch(error_code &ex) {
+		return false;
 	}
-	return sock_.is_open();
 }
 
 void UdpSession::Close() {
@@ -62,20 +61,20 @@ UdpSession::UDP::socket &UdpSession::GetSocket() {
 
 bool UdpSession::Connect(const string& ipPeer, const uint16_t port) {
 	try {
-		UDP::endpoint end(ip::address::from_string(ipPeer), port);
-		sock_.connect(end);
+		sock_.connect(UDP::endpoint(ip::address::from_string(ipPeer), port));
 		connected_ = true;
 		start_read();
+		return true;
 	}
 	catch(system_error& ex) {
 		return false;
 	}
-	return true;
 }
 
 const char *UdpSession::Read(char *buff, int &n) {
 	MtxLck lck(mtx_read_);
 	if ((n = byte_read_)) memcpy(buff, buf_read_.get(), n);
+	byte_read_ = 0;
 	return n == 0 ? NULL : buff;
 }
 
@@ -86,17 +85,14 @@ const char* UdpSession::BlockRead(char *buff, int& n, const int millisec) {
 	block_reading_ = true;
 	cvread_.timed_wait(lck, t);
 	if ((n = byte_read_)) memcpy(buff, buf_read_.get(), n);
+	byte_read_ = 0;
 	return n == 0 ? NULL : buff;
 }
 
 void UdpSession::Write(const void *data, const int n) {
 	MtxLck lck(mtx_write_);
-	if (connected_) {
-		sock_.send(buffer(data, n));
-	}
-	else {
-		sock_.send_to(buffer(data, n), remote_);
-	}
+	if (connected_) sock_.send(buffer(data, n));
+	else sock_.send_to(buffer(data, n), remote_);
 }
 
 void UdpSession::WriteTo(const string& ipPeer, const uint16_t portPeer, const void *data, int n) {

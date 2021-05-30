@@ -16,7 +16,6 @@
 #include <boost/smart_ptr/shared_ptr.hpp>
 #include <boost/smart_ptr/shared_array.hpp>
 #include <boost/signals2/signal.hpp>
-#include <string>
 
 class MessageQueue {
 protected:
@@ -56,7 +55,6 @@ protected:
 
 	//////////////////////////////////////////////////////////////////////////////
 	/* 消息队列 */
-	std::string name_;	///< 消息队列名称
 	const long szFunc_;	///< 自定义回调函数数组长度
 	MQPtr mqptr_;		///< 消息队列
 	CBArray funcs_;		///< 回调函数数组

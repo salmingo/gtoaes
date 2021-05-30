@@ -4,6 +4,7 @@
 
 #include <boost/lexical_cast.hpp>
 #include <boost/bind/bind.hpp>
+#include <boost/asio/buffer.hpp>
 #include <boost/asio/placeholders.hpp>
 #include "AsioTCP.h"
 
@@ -35,14 +36,13 @@ TcpClient::TCP::socket& TcpClient::Socket() {
 
 bool TcpClient::Connect(const std::string& host, const uint16_t port) {
 	try {
-		TCP::resolver resolver(keep_.GetIOService());
+		TCP::resolver rslv(keep_.GetIOService());
 		TCP::resolver::query query(host, boost::lexical_cast<string>(port));
-		TCP::resolver::iterator itertor = resolver.resolve(query);
+		TCP::resolver::iterator itertor = rslv.resolve(query);
 
 		if (mode_async_) {
 			sock_.async_connect(*itertor,
-					boost::bind(&TcpClient::handle_connect, shared_from_this(),
-						placeholders::error));
+					boost::bind(&TcpClient::handle_connect, this, placeholders::error));
 		}
 		else {
 			sock_.connect(*itertor);
@@ -69,8 +69,7 @@ bool TcpClient::ShutDown(int how) {
 
 bool TcpClient::Close() {
 	try {
-		if (sock_.is_open())
-			sock_.close();
+		if (sock_.is_open()) sock_.close();
 		return true;
 	}
 	catch(std::exception& ex) {
@@ -113,16 +112,15 @@ int TcpClient::Write(const char* data, const int n) {
 
 	MtxLck lck(mtx_write_);
 	int had_write(n);
-	if (mode_async_) {
+	if (!mode_async_) had_write = sock_.write_some(buffer(data, n));
+	else {
 		int wait_write(crcbuf_write_.size());
 		for (int i = 0; i < n; ++i)
 			crcbuf_write_.push_back(data[i]);
 		if (!wait_write)
 			start_write();
 	}
-	else {
-		had_write = sock_.write_some(buffer(data, n));
-	}
+
 	return had_write;
 }
 
@@ -180,7 +178,7 @@ void TcpClient::RegisterWrite(const CBSlot& slot) {
 void TcpClient::start_read() {
 	if (sock_.is_open()) {
 		sock_.async_read_some(buffer(buf_read_.get(), TCP_PACK_SIZE),
-				boost::bind(&TcpClient::handle_read, shared_from_this(),
+				boost::bind(&TcpClient::handle_read, this,
 					placeholders::error, placeholders::bytes_transferred));
 	}
 }
@@ -189,7 +187,7 @@ void TcpClient::start_write() {
 	int towrite(crcbuf_write_.size());
 	if (towrite) {
 		sock_.async_write_some(buffer(crcbuf_write_.linearize(), towrite),
-				boost::bind(&TcpClient::handle_write, shared_from_this(),
+				boost::bind(&TcpClient::handle_write, this,
 					placeholders::error, placeholders::bytes_transferred));
 	}
 }
@@ -259,7 +257,8 @@ bool TcpServer::CreateServer(uint16_t port, bool v6) {
 void TcpServer::start_accept() {
 	if (accept_.is_open()) {
 		TcpCPtr client = TcpClient::Create();
-		accept_.async_accept(client->Socket(), boost::bind(&TcpServer::handle_accept, this, client, placeholders::error));
+		accept_.async_accept(client->Socket(),
+				boost::bind(&TcpServer::handle_accept, this, client, placeholders::error));
 	}
 }
 

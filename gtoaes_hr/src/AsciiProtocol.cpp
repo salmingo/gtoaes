@@ -584,9 +584,9 @@ apbase AsciiProtocol::resolve_track(likv &kvs) {
 	for (likv::iterator it = kvs.begin(); it != kvs.end(); ++it) {// 遍历键值对
 		keyword = (*it).keyword;
 		// 识别关键字
-		if      (iequals(keyword, "objid")) proto->objid   = (*it).value;
-		else if (iequals(keyword, "line1"))   proto->line1 = (*it).value;
-		else if (iequals(keyword, "line2"))   proto->line2 = (*it).value;
+		if      (iequals(keyword, "objid")) proto->objid = (*it).value;
+		else if (iequals(keyword, "line1")) proto->line1 = (*it).value;
+		else if (iequals(keyword, "line2")) proto->line2 = (*it).value;
 	}
 
 	return to_apbase(proto);

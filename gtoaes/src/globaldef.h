@@ -18,14 +18,6 @@
 #define DAEMON_NAME			"gtoaes"
 #define DAEMON_AUTHORITY	"© SVOM Group, NAOC"
 #define DAEMON_VERSION		"v1.0 @ July, 2020"
-//#define DAEMON_VERSION		"v0.8 @ Mar, 2018"
-//#define DAEMON_VERSION		"v0.7 @ Sep, 2017"
-//#define DAEMON_VERSION		"v0.6 @ Jun, 2017"
-//#define DAEMON_VERSION		"v0.5 @ May, 2017"
-//#define DAEMON_VERSION		"v0.4 @ May, 2017"
-//#define DAEMON_VERSION		"v0.3 @ Mar, 2017"
-//#define DAEMON_VERSION		"v0.2 @ Jan, 2017"
-//#define DAEMON_VERSION		"v0.1 @ Nov, 2016"
 
 // 日志文件路径与文件名前缀
 const char gLogDir[]    = "/var/log/gtoaes";

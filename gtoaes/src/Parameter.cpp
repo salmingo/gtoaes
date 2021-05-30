@@ -15,7 +15,7 @@ using namespace boost;
 using namespace posix_time;
 using namespace property_tree;
 
-void Parameter::Init(const string &filepath) {
+void Parameter::Init(const char* filepath) {
 	ptree pt;
 
 	pt.add("version", DAEMON_VERSION);
@@ -86,7 +86,7 @@ void Parameter::Init(const string &filepath) {
 	write_xml(filepath, pt, std::locale(), settings);
 }
 
-const char* Parameter::Load(const string &filepath) {
+const char* Parameter::Load(const char* filepath) {
 
 	try {
 		ptree pt;

@@ -27,9 +27,7 @@ bool MessageQueue::Start(const char *name) {
 
 	try {
 		// 启动消息队列
-		name_ = name;
-		MQ::remove(name);
-		mqptr_.reset(new MQ(create_only, name, 1024, sizeof(Message)));
+		mqptr_.reset(new MQ(open_or_create, name, 1024, sizeof(Message)));
 		register_messages();
 		thrd_msg_.reset(new boost::thread(boost::bind(&MessageQueue::thread_message, this)));
 
@@ -46,7 +44,6 @@ void MessageQueue::Stop() {
 		SendMessage(MSG_QUIT);
 		thrd_msg_->join();
 		thrd_msg_.reset();
-		MQ::remove(name_.c_str());
 	}
 }
 

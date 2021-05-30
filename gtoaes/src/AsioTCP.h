@@ -53,15 +53,18 @@ public:
 	using MtxLck = boost::unique_lock<boost::mutex>;	//< 信号灯互斥锁
 
 protected:
-	bool mode_async_;		//< 异步读写/模式
+	bool mode_async_;		//< 工作模式: 异步? 异步需要缓冲区
+	/* socket资源 */
 	AsioIOServiceKeep keep_;	//< 提供boost::asio::io_service对象, 并在实例存在期间保持其运行
 	TCP::socket sock_;			//< 套接口
-	boost::mutex mtx_read_;		//< 互斥锁: 从套接口读取
-	boost::mutex mtx_write_;	//< 互斥锁: 向套接口写入
-	CBuff buf_read_;			//< 缓冲区: 单次接收
+	/* 读写缓冲区 */
 	int byte_read_;				//< 单次接收数据长度
+	CBuff buf_read_;			//< 缓冲区: 单次接收
 	CRCBuff crcbuf_read_;		//< 缓冲区: 所有接收
 	CRCBuff crcbuf_write_;		//< 缓冲区: 所有待写入
+	boost::mutex mtx_read_;		//< 互斥锁: 从套接口读取
+	boost::mutex mtx_write_;	//< 互斥锁: 向套接口写入
+	/* 回调接口 */
 	CallbackFunc  cbconn_;	//< connect回调函数
 	CallbackFunc  cbread_;	//< read回调函数
 	CallbackFunc  cbwrite_;	//< write回调函数
@@ -192,7 +195,7 @@ protected:
 	void handle_write(const boost::system::error_code& ec, int n);
 };
 using TcpCPtr = TcpClient::Pointer;
-using TcpCVec = std::vector<TcpCPtr> ; ///< 网络连接存储区
+using TcpCVec = std::vector<TcpCPtr> ; //< 网络连接存储区
 
 /////////////////////////////////////////////////////////////////////
 /*--------------------- 服务器 ---------------------*/

@@ -26,7 +26,10 @@ DatabaseCurl::~DatabaseCurl() {
 }
 
 int DatabaseCurl::UploadObservationPlan(ObsPlanItemPtr plan) {
-	return 0;
+	prepare();
+	append_pair_kv("plan_sn", plan->plan_sn);
+	//...
+	return upload(upObsPlan_);
 }
 
 int DatabaseCurl::UpdateObservationPlanState(const string&plan_sn, const string& state, const string& utc) {
@@ -62,13 +65,25 @@ int DatabaseCurl::UpdateCameraLinked(const string& gid, const string& uid, const
 }
 
 int DatabaseCurl::UpdateCameraState(kvcamera proto) {
-	return 0;
+	prepare();
+	append_pair_kv("gid",    proto->gid);
+	append_pair_kv("uid",    proto->uid);
+	append_pair_kv("cid",    proto->cid);
+	append_pair_kv("state",  std::to_string(proto->state));
+	return upload(updCameraState_);
 }
 
 int DatabaseCurl::UpdateDomeLinked(const string& gid, bool linked) {
-	return 0;
+	prepare();
+	append_pair_kv("gid",    gid);
+	append_pair_kv("linked", std::to_string(linked));
+
+	return upload(updDomeLinked_);
 }
 
 int DatabaseCurl::UpdateDomeState(const string& gid, const string& state) {
-	return 0;
+	prepare();
+	append_pair_kv("gid",    gid);
+	append_pair_kv("state",  state);
+	return upload(updDomeState_);
 }

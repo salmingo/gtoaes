@@ -105,14 +105,14 @@ public:
 	 * @brief 使用缺省参数创建配置文件
 	 * @param filepath 文件路径
 	 */
-	void Init(const string &filepath);
+	void Init(const char* filepath);
 	/*!
 	 * @brief 从配置文件中加载配置参数
 	 * @param filepath 文件路径
 	 * @return
 	 * 成功读取配置文件时返回NULL, 否则返回错误提示
 	 */
-	const char* Load(const string &filepath);
+	const char* Load(const char* filepath);
 	/*!
 	 * @brief 查看观测系统的参数
 	 * @param gid    组标志

@@ -3,7 +3,7 @@
  */
 
 #include <boost/smart_ptr/make_shared.hpp>
-#include <boost/algorithm/string.hpp>
+#include <boost/algorithm/string/predicate.hpp>
 #include <boost/bind/bind.hpp>
 #include "globaldef.h"
 #include "GLog.h"
@@ -25,8 +25,7 @@ GeneralControl::~GeneralControl() {
 //////////////////////////////////////////////////////////////////////////////
 bool GeneralControl::Start() {
 	// 启动消息机制
-	string name = DAEMON_NAME;
-	if (!MessageQueue::Start(name.c_str())) return false;
+	if (!MessageQueue::Start(DAEMON_NAME)) return false;
 	// 加载参数
 	param_.Load(gConfigPath);
 	// 启动网络服务
@@ -311,14 +310,20 @@ void GeneralControl::resolve_kv_client(const TcpCPtr client) {
 		if (iequals(type, KVTYPE_APPPLAN) || iequals(type, KVTYPE_IMPPLAN)) {
 			ObsPlanItemPtr plan;
 			bool opNow = (type[0] == 'a' || type[0] == 'A') ? false : true;
+			int retc;
 			plan = opNow ? from_kvbase<kv_proto_implement_plan>(base)->plan
 					: from_kvbase<kv_proto_append_plan>(base)->plan;
-			if (plan->CompleteCheck()) {// 计划加入队列, 并判定是否立即尝试执行
+			if ((retc = plan->CompleteCheck()) == 0) {// 计划加入队列, 并判定是否立即尝试执行
 				obsPlans_->AddPlan(plan);
 				if (opNow) try_implement_plan(plan);
 			}
 			else {
-				_gLog.Write(LOG_FAULT, "plan[%s] couldn't pass validity check", plan->plan_sn.c_str());
+				_gLog.Write(LOG_FAULT, "plan[%s] couldn't pass validity check. %s", plan->plan_sn.c_str(),
+						retc == 1 ? "plan_sn is empty"
+							: (retc == 2 ? "wrong image type"
+								: (retc == 3 ? "expdur should be not less than 0"
+									: (retc == 4 ? "frmcnt should be not 0"
+										: "period of between begin and end is less than exposure cycle"))));
 			}
 		}
 		/////////////////////////////////////////////////////////////////////////

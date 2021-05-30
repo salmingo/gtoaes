@@ -43,6 +43,9 @@ struct ObservationPlanItem {
 	string plan_sn;		///< 计划编号
 	string plan_time;	///< 计划生成时间
 	string plan_type;	///< 计划类型
+	int priority;		///< 优先级
+	ptime tmbegin;		///< 观测起始时间
+	ptime tmend;		///< 观测结束时间
 	string obstype;		///< 观测类型
 	string grid_id;		///< 天区划分模式
 	string field_id;	///< 天区编号
@@ -65,10 +68,6 @@ struct ObservationPlanItem {
 	double delay;		///< 帧间延时, 秒
 	int frmcnt;			///< 帧数
 	int loopcnt;		///< 循环次数
-	int priority;		///< 优先级
-	ptime tmbegin;		///< 观测起始时间
-	ptime tmend;		///< 观测结束时间
-	int pair_id;		///< 配对观测标志
 	KVVec kvs;			///< 未定义键值对
 
 	/* 计划: 控制 */
@@ -88,7 +87,6 @@ public:
 		expdur = delay = 0.0;
 		frmcnt = loopcnt = 1;
 		priority = 0;
-		pair_id = -1;
 		iimgtype = 0;
 		ifilter = iloop = 0;
 		state  = 0;
@@ -128,8 +126,7 @@ public:
 	void AppendFilter(const string& filname) {
 		boost::char_separator<char> seps{" |;+"};
 		Tokenizer tok{filname, seps};
-		for (const auto &t : tok)
-			filters.push_back(t);
+		for (const auto &t : tok) filters.push_back(t);
 	}
 
 	/*!
@@ -162,30 +159,30 @@ public:
 	 * @brief 计划主体填充完毕后, 检查计划的有效性, 并初始化控制参数
 	 * @return
 	 * - 本地的观测计划生命周期是1天. 避免某些计划长期沉淀
+	 * 0: 通过检查
+	 * 1: plan_sn为空
+	 * 2: imgtype错误
+	 * 3: 曝光时间不能是负数
+	 * 4: 帧数不能为0
+	 * 5: 计划起止时间不能覆盖观测策略
 	 */
-	bool CompleteCheck() {
-		bool rslt;
-		rslt = plan_sn.size()
-			&& (iimgtype = TypeImage::FromString(imgtype.c_str())) != TypeImage::IMGTYP_MIN
-			&& expdur >= 0.0
-			&& frmcnt != 0;
+	int CompleteCheck() {
+		if (plan_sn.empty()) return 1;
+		if ((iimgtype = TypeImage::FromString(imgtype.c_str())) == TypeImage::IMGTYP_MIN) return 2;
+		if (expdur < 0.0) return 3;
+		if (frmcnt == 0) return 4;
 
-		if (rslt) {
-			ptime now = second_clock::universal_time();
-			double t;
-
-			if (tmbegin.is_special()) tmbegin = now;
-			if (tmend.is_special())   tmend   = tmbegin + hours(23);
-			if ((tmend - tmbegin).total_seconds() > 259200)
-				tmend = tmbegin + ptime::date_duration_type(3);
-			if ((t = expdur + delay) < 0.001) t = 0.001;
-			if (filters.size()) t *= filters.size();
-			period = int(t * frmcnt * loopcnt);
-			rslt = (tmend - now).total_seconds() > period;
-		}
-		if (rslt)
+		double t;
+		if (tmbegin.is_special()) tmbegin = second_clock::universal_time();
+		if (tmend.is_special())   tmend   = tmbegin + hours(23);
+		if ((t = expdur + delay) < 0.001) t = 0.001;
+		if (filters.size()) t *= filters.size();
+		period = int(t * frmcnt * loopcnt);
+		if ((tmend - tmbegin).total_seconds() > period) {
 			state = StateObservationPlan::OBSPLAN_CATALOGED;
-		return rslt;
+			return 0;
+		}
+		return 5;
 	}
 };
 using ObsPlanItemPtr = ObservationPlanItem::Pointer;

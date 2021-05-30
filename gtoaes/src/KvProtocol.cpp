@@ -150,7 +150,6 @@ bool KvProtocol::compact_plan(ObsPlanItemPtr plan, string& output) {
 		tmend   = to_iso_extended_string(plan->tmend);
 	if (tmbegin.size())      join_kv(output, "btime",   tmbegin);
 	if (tmend.size())        join_kv(output, "etime",   tmend);
-	if (plan->pair_id >= 0)  join_kv(output, "pair_id", plan->pair_id);
 
 	ObservationPlanItem::KVVec& kvs = plan->kvs;
 	ObservationPlanItem::KVVec::iterator it;
@@ -528,7 +527,6 @@ const char *KvProtocol::CompactObject(kvobject proto, int &n) {
 	tmend   = to_iso_extended_string(proto->tmend);
 	join_kv(output, "btime",      tmbegin);
 	join_kv(output, "etime",      tmend);
-	join_kv(output, "pair_id",    proto->pair_id);
 	join_kv(output, "iloop",      proto->iloop);
 
 	likv& kvs = proto->kvs;
@@ -993,7 +991,6 @@ void KvProtocol::resolve_plan(likv& kvs, ObsPlanItemPtr plan) {
 			else if (iequals(keyword, "plan_sn"))   plan->plan_sn   = it->value;
 			else if (iequals(keyword, "plan_time")) plan->plan_time = it->value;
 			else if (iequals(keyword, "plan_type")) plan->plan_type = it->value;
-			else if (iequals(keyword, "pair_id"))   plan->pair_id   = stoi(it->value);
 		}
 		else if (ch == 'r') {
 			if      (iequals(keyword, "ra"))      plan->lon     = stod(it->value);
@@ -1271,7 +1268,6 @@ kvbase KvProtocol::resolve_object(likv &kvs) {
 			else if (iequals(keyword, "plan_sn"))   proto->plan_sn   = it->value;
 			else if (iequals(keyword, "plan_time")) proto->plan_time = it->value;
 			else if (iequals(keyword, "plan_type")) proto->plan_type = it->value;
-			else if (iequals(keyword, "pair_id"))   proto->pair_id   = stoi(it->value);
 		}
 		else if (ch == 'f') {
 			if      (iequals(keyword, "filter"))    proto->filter   = it->value;

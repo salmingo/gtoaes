@@ -408,7 +408,6 @@ struct kv_proto_object : public kv_proto_base {// 目标信息与曝光参数
 	int priority;		///< 优先级
 	ptime tmbegin;		///< 观测起始时间
 	ptime tmend;		///< 观测结束时间
-	int pair_id;		///< 配对观测标志
 	int iloop;			///< 循环序号
 	likv kvs;			///< 未定义关键字的键值对
 
@@ -424,7 +423,6 @@ public:
 		delay    = 0.0;
 		frmcnt   = 0;
 		priority = 0;
-		pair_id  = 0;
 		iloop    = 0;
 	}
 
@@ -457,7 +455,6 @@ public:
 		priority	= plan->priority;
 		tmbegin		= start;
 		tmend		= plan->tmend;
-		pair_id		= plan->pair_id;
 		iloop		= plan->iloop;
 
 		ObservationPlanItem::KVVec& kvs_plan = plan->kvs;
