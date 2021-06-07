@@ -89,11 +89,11 @@ public:
 	 * @brief 上传观测计划工作状态
 	 * @param plan_sn  计划编号
 	 * @param state    计划状态
-	 * @param utc      时标, 格式: CCYYMMDDThhmmss.sss
+	 * @param ctime    时标, 格式: CCYYMMDDThhmmss.sss
 	 * @return
 	 * 传输结果
 	 */
-	int UploadObsplanState(const string &plan_sn, const string &state, const string &utc);
+	int UploadObsplanState(const string &plan_sn, const string &state, const string &ctime);
 	/*!
 	 * @brief 更新转台联机状态
 	 * @param gid     组编号
@@ -125,7 +125,7 @@ public:
 	 * @brief 更新转台工作状态
 	 * @param gid     组编号
 	 * @param uid     单元编号
-	 * @param utc     时标, 格式: CCYYMMDDThhmmss.sss
+	 * @param ctime   时标, 格式: CCYYMMDDThhmmss.sss
 	 * @param state   工作状态
 	 * @param errcode 故障字
 	 * @param ra      指向赤经, 量纲: 角度
@@ -135,41 +135,41 @@ public:
 	 * @return
 	 * 传输结果
 	 */
-	int UpdateMountState(const string &gid, const string &uid, const string &utc,
+	int UpdateMountState(const string &gid, const string &uid, const string &ctime,
 			int state, int errcode, double ra, double dec, double azi, double alt);
 	/*!
 	 * @brief 更新相机工作状态
 	 * @param gid      组编号
 	 * @param uid      单元编号
 	 * @param cid      相机编号
-	 * @param utc      时标, 格式: CCYYMMDDThhmmss.sss
+	 * @param ctime    时标, 格式: CCYYMMDDThhmmss.sss
 	 * @param state    工作状态
 	 * @param errcode  故障字
 	 * @param coolget  探测器温度, 量纲: 摄氏度
 	 * @return
 	 * 传输结果
 	 */
-	int UpdateCameraState(const string &gid, const string &uid, const string &cid, const string &utc,
+	int UpdateCameraState(const string &gid, const string &uid, const string &cid, const string &ctime,
 			int state, int errcode, float coolget);
 	/*!
 	 * @brief 更新圆顶工作状态
 	 * @param gid      组编号
-	 * @param utc      时标, 格式: CCYYMMDDThhmmss.sss
+	 * @param ctime    时标, 格式: CCYYMMDDThhmmss.sss
 	 * @param state    工作状态
 	 * @param errcode  故障字
 	 * @return
 	 * 传输结果
 	 */
-	int UpdateDomeState(const string &gid, const string &utc, int state, int errcode);
+	int UpdateDomeState(const string &gid, const string &ctime, int state, int errcode);
 	/*!
 	 * @brief 更新降水状态
 	 * @param gid    组编号
-	 * @param utc    时标, 格式: CCYYMMDDThhmmss.sss
+	 * @param ctime  时标, 格式: CCYYMMDDThhmmss.sss
 	 * @param rainy  降水标志
 	 * @return
 	 * 传输结果
 	 */
-	int UpdateRainfall(const string &gid, const string &utc, bool rainy);
+	int UpdateRainfall(const string &gid, const string &ctime, bool rainy);
 	/*!
 	 * @brief 注册并上传FITS文件
 	 * @param cid       相机编号

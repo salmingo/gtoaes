@@ -130,19 +130,19 @@ const char *DBCurl::GetErrmsg() {
 int DBCurl::UploadObsPlan(const string &plan_sn, int mode, const string &btime, const string &etime) {
 	mmapstr kvs, file;
 
-	kvs.insert(pairstr("opSn",      plan_sn));
+	kvs.insert(pairstr("plan_sn",   plan_sn));	// opSn ==> plan_sn
 	kvs.insert(pairstr("obsType",   to_string(mode)));
 	kvs.insert(pairstr("beginTime", btime));
 	kvs.insert(pairstr("endTime",   etime));
 	return curl_upload(urlObsPlan_, kvs, file, string(""));
 }
 
-int DBCurl::UploadObsplanState(const string &plan_sn, const string &state, const string &utc) {
+int DBCurl::UploadObsplanState(const string &plan_sn, const string &state, const string &ctime) {
 	mmapstr kvs, file;
 
-	kvs.insert(pairstr("opId",  plan_sn));
-	kvs.insert(pairstr("state", state));
-	kvs.insert(pairstr("ctime", utc));
+	kvs.insert(pairstr("plan_sn",  plan_sn));	// opId ==> plan_sn
+	kvs.insert(pairstr("state",    state));
+	kvs.insert(pairstr("ctime",    ctime));
 
 	return curl_upload(urlObsplanState_, kvs, file, string(""));
 }
@@ -177,13 +177,13 @@ int DBCurl::UpdateDomeLinked(const string &gid, bool linked) {
 	return curl_upload(urlDomeLinked_, kvs, file, string(""));
 }
 
-int DBCurl::UpdateMountState(const string &gid, const string &uid, const string &utc,
+int DBCurl::UpdateMountState(const string &gid, const string &uid, const string &ctime,
 		int state, int errcode, double ra, double dec, double azi, double alt) {
 	mmapstr kvs, file;
 
 	kvs.insert(pairstr("gid",     gid));
 	kvs.insert(pairstr("uid",     uid));
-	kvs.insert(pairstr("ctime",   utc));
+	kvs.insert(pairstr("ctime",   ctime));	// utc ==> ctime
 	kvs.insert(pairstr("state",   to_string(state)));
 	kvs.insert(pairstr("errcode", to_string(errcode)));
 	kvs.insert(pairstr("ra",      to_string(ra)));
@@ -195,13 +195,13 @@ int DBCurl::UpdateMountState(const string &gid, const string &uid, const string 
 }
 
 int DBCurl::UpdateCameraState(const string &gid, const string &uid, const string &cid,
-		const string &utc, int state, int errcode, float coolget) {
+		const string &ctime, int state, int errcode, float coolget) {
 	mmapstr kvs, file;
 
-	kvs.insert(pairstr("groupId",   gid));
-	kvs.insert(pairstr("unitId",    uid));
-	kvs.insert(pairstr("camId",     cid));
-	kvs.insert(pairstr("utc",       utc));
+	kvs.insert(pairstr("gid",       gid));	// groupId ==> gid
+	kvs.insert(pairstr("uid",       uid));	// unitId ==> uid
+	kvs.insert(pairstr("cid",       cid));	// camId ==> cid
+	kvs.insert(pairstr("ctime",     ctime));// utc ==> ctime
 	kvs.insert(pairstr("state",     to_string(state)));
 	kvs.insert(pairstr("errcode",   to_string(errcode)));
 	kvs.insert(pairstr("coolget",   to_string(coolget)));
@@ -209,22 +209,22 @@ int DBCurl::UpdateCameraState(const string &gid, const string &uid, const string
 	return curl_upload(urlCameraState_, kvs, file, string(""));
 }
 
-int DBCurl::UpdateDomeState(const string &gid, const string &utc, int state, int errcode) {
+int DBCurl::UpdateDomeState(const string &gid, const string &ctime, int state, int errcode) {
 	mmapstr kvs, file;
 
 	kvs.insert(pairstr("gid",     gid));
-	kvs.insert(pairstr("utc",     utc));
+	kvs.insert(pairstr("ctime",   ctime));	// utc ==> ctime
 	kvs.insert(pairstr("state",   to_string(state)));
 	kvs.insert(pairstr("errcode", to_string(errcode)));
 
 	return curl_upload(urlDomeState_, kvs, file, string(""));
 }
 
-int DBCurl::UpdateRainfall(const string &gid, const string &utc, bool rainy) {
+int DBCurl::UpdateRainfall(const string &gid, const string &ctime, bool rainy) {
 	mmapstr kvs, file;
 
 	kvs.insert(pairstr("gid",    gid));
-	kvs.insert(pairstr("utc",    utc));
+	kvs.insert(pairstr("ctime",  ctime));  // utc ==> ctime
 	kvs.insert(pairstr("value",  to_string(rainy)));
 
 	return curl_upload(urlRainfall_, kvs, file, string(""));
@@ -234,7 +234,7 @@ int DBCurl::RegImageFile(const string &cid, const string &filename, const string
 		const string &tmobs, int microsec) {
 	mmapstr kvs, file;
 
-	kvs.insert (pairstr("camId",        cid));
+	kvs.insert (pairstr("cid",          cid));	// camId ==> cid
 	kvs.insert (pairstr("imgName",      filename));
 	kvs.insert (pairstr("imgPath",      filepath));
 	kvs.insert (pairstr("genTime",      tmobs));
